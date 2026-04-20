@@ -130,7 +130,8 @@ export class ContributionsService {
 
     return {
       contributionId: contribution.id,
-      message: 'Payment details recorded. Receipt confirmation will be sent shortly.',
+      message:
+        'Payment details recorded. Receipt confirmation will be sent shortly.',
     };
   }
 
@@ -197,6 +198,112 @@ export class ContributionsService {
     }
 
     return { ResultCode: 0, ResultDesc: 'Success' };
+  }
+
+  async handleMpesaC2BValidation(body: any) {
+    const payload = this.parseMpesaC2BPayload(body);
+    const { church, fundAccount } = await this.resolveMpesaC2BTarget(payload);
+
+    if (!church) {
+      this.logger.warn(
+        `Rejected M-Pesa C2B validation for unknown shortcode=${payload.shortcode || 'n/a'} account=${payload.billRefNumber || 'n/a'}`,
+      );
+      return {
+        ResultCode: 1,
+        ResultDesc: 'Unknown receiving account',
+      };
+    }
+
+    const subscription =
+      await this.churchSubscriptionsService.getChurchSubscriptionStatus(
+        church.id,
+      );
+    if (subscription.status === 'suspended') {
+      this.logger.warn(
+        `Rejected M-Pesa C2B validation for suspended church=${church.slug}`,
+      );
+      return {
+        ResultCode: 1,
+        ResultDesc: 'Church is not accepting contributions',
+      };
+    }
+
+    if (!fundAccount) {
+      this.logger.warn(
+        `Rejected M-Pesa C2B validation for church=${church.slug} unknown fund account=${payload.billRefNumber || 'n/a'}`,
+      );
+      return {
+        ResultCode: 1,
+        ResultDesc: 'Unknown contribution account',
+      };
+    }
+
+    return {
+      ResultCode: 0,
+      ResultDesc: 'Accepted',
+    };
+  }
+
+  async handleMpesaC2BConfirmation(body: any) {
+    const payload = this.parseMpesaC2BPayload(body);
+    this.logger.log(
+      `M-Pesa C2B confirmation received. transId=${payload.transId || 'n/a'} shortcode=${payload.shortcode || 'n/a'} account=${payload.billRefNumber || 'n/a'} amount=${payload.amount || 0}`,
+    );
+
+    if (!payload.transId) {
+      this.logger.warn('Ignored M-Pesa C2B confirmation without TransID');
+      return { ResultCode: 0, ResultDesc: 'Accepted' };
+    }
+
+    const { church, fundAccount } = await this.resolveMpesaC2BTarget(payload);
+    if (!church) {
+      this.logger.warn(
+        `Ignored M-Pesa C2B confirmation ${payload.transId}; no active church matches shortcode=${payload.shortcode || 'n/a'}`,
+      );
+      return { ResultCode: 0, ResultDesc: 'Accepted' };
+    }
+
+    const existing = await this.contributionRepo.findOne({
+      where: {
+        churchId: church.id,
+        paymentReference: payload.transId,
+      },
+    });
+    if (existing) {
+      this.logger.log(
+        `Ignored duplicate M-Pesa C2B confirmation ${payload.transId} for church=${church.slug}`,
+      );
+      return { ResultCode: 0, ResultDesc: 'Accepted' };
+    }
+
+    const contributor = await this.findOrCreateContributor(church.id, {
+      name: payload.customerName || 'M-Pesa Contributor',
+      phone: payload.phone,
+    });
+
+    const fundAccountName =
+      fundAccount?.name || payload.billRefNumber || 'M-Pesa Unallocated';
+    const contribution = await this.contributionRepo.save(
+      this.contributionRepo.create({
+        churchId: church.id,
+        contributorId: contributor?.id || null,
+        fundAccountId: fundAccount?.id || null,
+        fundAccountName,
+        amount: payload.amount,
+        channel: ContributionChannel.MPESA,
+        status: ContributionStatus.CONFIRMED,
+        paymentReference: payload.transId,
+        notes: this.buildMpesaC2BNote(payload, fundAccount),
+        receivedAt: payload.receivedAt,
+      }),
+    );
+
+    this.logger.log(
+      `Recorded M-Pesa C2B contribution ${contribution.id} for church=${church.slug} fund=${fundAccount?.code || 'unallocated'} amount=${payload.amount} reference=${payload.transId}`,
+    );
+    await this.sendReceipt(contribution.id);
+
+    return { ResultCode: 0, ResultDesc: 'Accepted' };
   }
 
   async listChurchContributions(churchId: string, query: any = {}) {
@@ -374,10 +481,142 @@ export class ContributionsService {
     return fundAccount;
   }
 
+  private async resolveMpesaC2BTarget(payload: ParsedMpesaC2BPayload) {
+    const shortcode = payload.shortcode;
+    const church = shortcode
+      ? await this.churchRepo.findOne({
+          where: {
+            mpesaShortcode: shortcode,
+            status: ChurchStatus.ACTIVE,
+          },
+        })
+      : null;
+
+    if (!church) {
+      return { church: null, fundAccount: null };
+    }
+
+    const fundAccount = await this.findFundAccountByReference(
+      church.id,
+      payload.billRefNumber,
+    );
+
+    return { church, fundAccount };
+  }
+
+  private async findFundAccountByReference(
+    churchId: string,
+    reference?: string | null,
+  ) {
+    if (!reference) {
+      return null;
+    }
+
+    const code = this.slugify(reference);
+    const byCode = await this.fundAccountRepo.findOne({
+      where: { churchId, code, isActive: true },
+    });
+    if (byCode) {
+      return byCode;
+    }
+
+    const normalizedReference = this.normalizeComparisonText(reference);
+    const activeAccounts = await this.fundAccountRepo.find({
+      where: { churchId, isActive: true },
+    });
+
+    return (
+      activeAccounts.find(
+        (account) =>
+          this.normalizeComparisonText(account.name) === normalizedReference ||
+          this.normalizeComparisonText(account.code) === normalizedReference,
+      ) || null
+    );
+  }
+
   private resolveRecordedChannel(channel?: string) {
     return channel === ContributionChannel.MPESA
       ? ContributionChannel.MPESA
       : ContributionChannel.MANUAL_CASH;
+  }
+
+  private parseMpesaC2BPayload(body: any): ParsedMpesaC2BPayload {
+    const transTime = this.normalizeOptionalText(body?.TransTime);
+    const customerName = [body?.FirstName, body?.MiddleName, body?.LastName]
+      .map((item) => this.normalizeOptionalText(item))
+      .filter(Boolean)
+      .join(' ');
+
+    return {
+      transId: this.normalizeOptionalText(
+        body?.TransID || body?.TransId || body?.transactionId,
+      ),
+      transTime,
+      amount: Number(body?.TransAmount || body?.Amount || 0),
+      shortcode: this.normalizeOptionalText(
+        body?.BusinessShortCode || body?.ShortCode || body?.shortcode,
+      ),
+      billRefNumber: this.normalizeOptionalText(
+        body?.BillRefNumber || body?.AccountReference || body?.accountReference,
+      ),
+      phone: this.normalizeOptionalText(
+        body?.MSISDN || body?.PhoneNumber || body?.phone,
+      ),
+      customerName: customerName || null,
+      invoiceNumber: this.normalizeOptionalText(body?.InvoiceNumber),
+      orgAccountBalance: this.normalizeOptionalText(body?.OrgAccountBalance),
+      thirdPartyTransId: this.normalizeOptionalText(body?.ThirdPartyTransID),
+      receivedAt: this.parseMpesaTimestamp(transTime),
+      raw: body,
+    };
+  }
+
+  private parseMpesaTimestamp(value?: string | null) {
+    if (!value || !/^\d{14}$/.test(value)) {
+      return new Date();
+    }
+
+    const year = Number(value.slice(0, 4));
+    const month = Number(value.slice(4, 6)) - 1;
+    const day = Number(value.slice(6, 8));
+    const hour = Number(value.slice(8, 10));
+    const minute = Number(value.slice(10, 12));
+    const second = Number(value.slice(12, 14));
+    return new Date(year, month, day, hour, minute, second);
+  }
+
+  private buildMpesaC2BNote(
+    payload: ParsedMpesaC2BPayload,
+    fundAccount: FundAccount | null,
+  ) {
+    const pieces = [
+      'M-Pesa C2B confirmation',
+      payload.billRefNumber ? `account ref: ${payload.billRefNumber}` : null,
+      !fundAccount && payload.billRefNumber ? 'fund account not matched' : null,
+      payload.invoiceNumber ? `invoice: ${payload.invoiceNumber}` : null,
+      payload.thirdPartyTransId
+        ? `third party ref: ${payload.thirdPartyTransId}`
+        : null,
+    ].filter(Boolean);
+
+    return pieces.join('; ');
+  }
+
+  private normalizeOptionalText(value: any) {
+    const normalized = `${value ?? ''}`.trim();
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  private normalizeComparisonText(value: string) {
+    return this.slugify(value).replace(/-/g, '');
+  }
+
+  private slugify(value: string) {
+    return `${value || ''}`
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
   }
 
   private async findOrCreateContributor(churchId: string, body: any) {
@@ -572,4 +811,19 @@ export class ContributionsService {
       doc.end();
     });
   }
+}
+
+interface ParsedMpesaC2BPayload {
+  transId: string | null;
+  transTime: string | null;
+  amount: number;
+  shortcode: string | null;
+  billRefNumber: string | null;
+  phone: string | null;
+  customerName: string | null;
+  invoiceNumber: string | null;
+  orgAccountBalance: string | null;
+  thirdPartyTransId: string | null;
+  receivedAt: Date;
+  raw: any;
 }

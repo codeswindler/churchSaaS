@@ -19,7 +19,15 @@ function getDefaultMpesaCallbackUrl() {
     return '';
   }
 
-  return `${window.location.origin}/api/payments/mpesa/webhook`;
+  return `${window.location.origin}/api/payments/mpesa/c2b/confirmation`;
+}
+
+function getDefaultMpesaValidationUrl() {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  return `${window.location.origin}/api/payments/mpesa/c2b/validation`;
 }
 
 function createInitialForm() {
@@ -64,7 +72,8 @@ export default function PlatformChurches() {
 
   const { data: churches, isLoading } = useQuery({
     queryKey: ['platform-churches'],
-    queryFn: () => api.get('/platform/churches').then((response) => response.data),
+    queryFn: () =>
+      api.get('/platform/churches').then((response) => response.data),
   });
 
   const { data: history } = useQuery({
@@ -91,7 +100,9 @@ export default function PlatformChurches() {
     },
     onSuccess: (data) => {
       toast.success(
-        formMode === 'edit' ? 'Church settings updated' : 'Church customer created',
+        formMode === 'edit'
+          ? 'Church settings updated'
+          : 'Church customer created',
       );
       setForm(createInitialForm());
       setFormMode('create');
@@ -265,7 +276,10 @@ export default function PlatformChurches() {
     if (!value) {
       return;
     }
-    const reason = window.prompt('Reason for this change?', 'Subscription update');
+    const reason = window.prompt(
+      'Reason for this change?',
+      'Subscription update',
+    );
     actionMutation.mutate({
       churchId,
       endpoint,
@@ -285,8 +299,8 @@ export default function PlatformChurches() {
 
         {!selectedChurchId ? (
           <p className="mt-5 text-stone-300">
-            Choose a church from the registry below to inspect its subscription audit
-            trail.
+            Choose a church from the registry below to inspect its subscription
+            audit trail.
           </p>
         ) : (
           <div className="mt-5 space-y-3">
@@ -326,8 +340,8 @@ export default function PlatformChurches() {
                 Churches and subscriptions
               </h3>
               <p className="mt-2 max-w-2xl text-sm text-stone-300">
-                Keep the customer list in view and open onboarding only when you need
-                to add or update a church tenant.
+                Keep the customer list in view and open onboarding only when you
+                need to add or update a church tenant.
               </p>
             </div>
 
@@ -360,22 +374,33 @@ export default function PlatformChurches() {
                 {churchesList.map((church: any) => (
                   <tr
                     key={church.id}
-                    className={selectedChurchId === church.id ? 'bg-amber-200/5' : ''}
+                    className={
+                      selectedChurchId === church.id ? 'bg-amber-200/5' : ''
+                    }
                   >
                     <td>
-                      <div className="font-medium text-white">{church.name}</div>
+                      <div className="font-medium text-white">
+                        {church.name}
+                      </div>
                       <div className="text-xs text-stone-400">
-                        {church.contactEmail || church.contactPhone || church.slug}
+                        {church.contactEmail ||
+                          church.contactPhone ||
+                          church.slug}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2">
                         <span className="badge border-white/10 bg-white/5 text-stone-100">
                           <MessageSquareText size={12} />
-                          SMS {church.integrations?.smsConfigured ? 'ready' : 'missing'}
+                          SMS{' '}
+                          {church.integrations?.smsConfigured
+                            ? 'ready'
+                            : 'missing'}
                         </span>
                         <span className="badge border-white/10 bg-white/5 text-stone-100">
                           <CreditCard size={12} />
-                          Daraja{' '}
-                          {church.integrations?.mpesaConfigured ? 'ready' : 'missing'}
+                          C2B{' '}
+                          {church.integrations?.mpesaConfigured
+                            ? 'ready'
+                            : 'missing'}
                         </span>
                       </div>
                     </td>
@@ -391,7 +416,9 @@ export default function PlatformChurches() {
                     </td>
                     <td>
                       KES{' '}
-                      {Number(church.contributionTotals?.total || 0).toLocaleString()}
+                      {Number(
+                        church.contributionTotals?.total || 0,
+                      ).toLocaleString()}
                     </td>
                     <td>
                       <div className="flex flex-wrap gap-2">
@@ -414,7 +441,9 @@ export default function PlatformChurches() {
                         <button
                           className="btn-secondary px-3 py-2"
                           type="button"
-                          onClick={() => runDaysAction(church.id, 'add-days', 30)}
+                          onClick={() =>
+                            runDaysAction(church.id, 'add-days', 30)
+                          }
                         >
                           <CirclePlus size={14} />
                           Add days
@@ -445,7 +474,9 @@ export default function PlatformChurches() {
                         <button
                           className="btn-secondary px-3 py-2"
                           type="button"
-                          onClick={() => runDaysAction(church.id, 'reactivate', 30)}
+                          onClick={() =>
+                            runDaysAction(church.id, 'reactivate', 30)
+                          }
                         >
                           <RotateCcw size={14} />
                           Reactivate
@@ -552,7 +583,9 @@ export default function PlatformChurches() {
                           className="input"
                           type="text"
                           value={form.address}
-                          onChange={(event) => updateForm('address', event.target.value)}
+                          onChange={(event) =>
+                            updateForm('address', event.target.value)
+                          }
                         />
                       </div>
 
@@ -561,7 +594,9 @@ export default function PlatformChurches() {
                         <textarea
                           className="input min-h-28 resize-y"
                           value={form.notes}
-                          onChange={(event) => updateForm('notes', event.target.value)}
+                          onChange={(event) =>
+                            updateForm('notes', event.target.value)
+                          }
                         />
                       </div>
                     </div>
@@ -585,7 +620,9 @@ export default function PlatformChurches() {
                             <label className="label">{label}</label>
                             <input
                               className="input"
-                              type={key === 'adminPassword' ? 'password' : 'text'}
+                              type={
+                                key === 'adminPassword' ? 'password' : 'text'
+                              }
                               value={form[key as keyof ChurchFormState]}
                               onChange={(event) =>
                                 updateForm(
@@ -598,7 +635,9 @@ export default function PlatformChurches() {
                         ))}
 
                         <div>
-                          <label className="label">Initial subscription days</label>
+                          <label className="label">
+                            Initial subscription days
+                          </label>
                           <input
                             className="input"
                             min={1}
@@ -675,7 +714,7 @@ export default function PlatformChurches() {
                         ['mpesaConsumerKey', 'Consumer key', 'text'],
                         ['mpesaConsumerSecret', 'Consumer secret', 'password'],
                         ['mpesaPasskey', 'Passkey', 'password'],
-                        ['mpesaCallbackUrl', 'Callback URL', 'text'],
+                        ['mpesaCallbackUrl', 'C2B confirmation URL', 'text'],
                       ].map(([key, label, type]) => (
                         <div key={key}>
                           <label className="label">{label}</label>
@@ -693,12 +732,21 @@ export default function PlatformChurches() {
                         </div>
                       ))}
                     </div>
+                    <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-stone-300">
+                      <div className="font-semibold text-stone-100">
+                        C2B validation URL
+                      </div>
+                      <div className="mt-2 break-all font-mono text-xs text-stone-300">
+                        {getDefaultMpesaValidationUrl()}
+                      </div>
+                    </div>
                     <p className="mt-4 text-sm text-stone-300">
-                      These credentials are only needed if STK push is enabled later.
-                      Normal M-Pesa recording only needs the receipt/reference entered
-                      in the contribution form. The Daraja STK push flow needs the passkey
-                      so the request password can be generated from shortcode + passkey + timestamp.
-                      The callback URL is prefilled with the shared platform webhook.
+                      Direct Paybill/Till payments need the C2B confirmation URL
+                      registered with Safaricom for this shortcode. The
+                      validation URL is optional but recommended so unknown
+                      account references can be rejected before payment
+                      completes. Passkey is only needed if STK push is enabled
+                      later.
                     </p>
                   </section>
 

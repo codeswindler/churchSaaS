@@ -72,14 +72,25 @@ export function hasConfiguredMpesaCredentials(
   );
 }
 
+export function hasConfiguredMpesaC2B(church: ChurchMpesaConfig | null) {
+  return Boolean(
+    church?.mpesaShortcode && getConfiguredMpesaCallbackUrl(church),
+  );
+}
+
 export function buildChurchIntegrationSummary(
   church: ChurchSmsConfig & ChurchMpesaConfig,
 ) {
+  const mpesaC2bConfigured = hasConfiguredMpesaC2B(church);
+  const mpesaStkConfigured = hasConfiguredMpesaCredentials(church);
+
   return {
     smsConfigured: hasConfiguredSmsCredentials(church),
     smsShortcode: church.smsShortcode ?? null,
     smsBaseUrl: church.smsBaseUrl ?? null,
-    mpesaConfigured: hasConfiguredMpesaCredentials(church),
+    mpesaConfigured: mpesaC2bConfigured,
+    mpesaC2bConfigured,
+    mpesaStkConfigured,
     mpesaEnvironment: church.mpesaEnvironment ?? null,
     mpesaShortcode: church.mpesaShortcode ?? null,
     mpesaCallbackUrl: getConfiguredMpesaCallbackUrl(church),
