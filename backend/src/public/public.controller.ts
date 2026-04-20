@@ -45,8 +45,7 @@ export class PublicController {
             order: { displayOrder: 'ASC', createdAt: 'ASC' },
           });
     const integrations = buildChurchIntegrationSummary(church);
-    const acceptingContributions =
-      subscription.status !== 'suspended' && integrations.mpesaConfigured;
+    const acceptingContributions = subscription.status !== 'suspended';
 
     return {
       church: {
@@ -59,6 +58,12 @@ export class PublicController {
       integrations,
       acceptingContributions,
       fundAccounts: acceptingContributions ? fundAccounts : [],
+      paymentInstructions: {
+        channel: 'mpesa',
+        shortcode: church.mpesaShortcode || null,
+        referenceHint:
+          'Pay using the church M-Pesa account, then submit the receipt/reference here.',
+      },
     };
   }
 

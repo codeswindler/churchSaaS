@@ -374,7 +374,7 @@ export default function PlatformChurches() {
                         </span>
                         <span className="badge border-white/10 bg-white/5 text-stone-100">
                           <CreditCard size={12} />
-                          M-Pesa{' '}
+                          Daraja{' '}
                           {church.integrations?.mpesaConfigured ? 'ready' : 'missing'}
                         </span>
                       </div>
@@ -652,7 +652,7 @@ export default function PlatformChurches() {
                     <div className="flex items-center gap-3">
                       <CreditCard size={16} className="text-amber-200" />
                       <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
-                        M-Pesa Daraja Credentials
+                        Optional M-Pesa Daraja Credentials
                       </p>
                     </div>
                     <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -694,8 +694,10 @@ export default function PlatformChurches() {
                       ))}
                     </div>
                     <p className="mt-4 text-sm text-stone-300">
-                      The Daraja STK push flow needs the passkey so the request
-                      password can be generated from shortcode + passkey + timestamp.
+                      These credentials are only needed if STK push is enabled later.
+                      Normal M-Pesa recording only needs the receipt/reference entered
+                      in the contribution form. The Daraja STK push flow needs the passkey
+                      so the request password can be generated from shortcode + passkey + timestamp.
                       The callback URL is prefilled with the shared platform webhook.
                     </p>
                   </section>

@@ -12,6 +12,7 @@ export default function PublicGive() {
     phone: '',
     amount: '',
     fundAccountId: '',
+    paymentReference: '',
     notes: '',
   });
 
@@ -33,15 +34,16 @@ export default function PublicGive() {
       return response.data;
     },
     onSuccess: (result) => {
-      toast.success(result.message || 'M-Pesa prompt sent');
+      toast.success(result.message || 'Payment details recorded');
       setForm((current) => ({
         ...current,
         amount: '',
+        paymentReference: '',
         notes: '',
       }));
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Unable to send M-Pesa prompt');
+      toast.error(error?.response?.data?.message || 'Unable to record payment');
     },
   });
 
@@ -62,14 +64,26 @@ export default function PublicGive() {
             {data?.church?.name || 'Church Giving'}
           </h1>
           <p className="mt-3 text-lg text-stone-300">
-            Select the contribution account, enter your details, and complete the payment from the M-Pesa prompt on your phone.
+            Pay using the church M-Pesa account, then submit your receipt details so the contribution can be recorded under the right fund.
           </p>
+
+          {data?.acceptingContributions ? (
+            <div className="mt-6 rounded-3xl border border-amber-200/20 bg-amber-200/10 p-5 text-sm leading-6 text-amber-50">
+              <div className="font-semibold">M-Pesa payment details</div>
+              <p className="mt-2 text-amber-50/85">
+                {data?.paymentInstructions?.shortcode
+                  ? `Use M-Pesa shortcode ${data.paymentInstructions.shortcode}, then enter the M-Pesa receipt number below.`
+                  : data?.paymentInstructions?.referenceHint ||
+                    'Make the M-Pesa payment, then enter the receipt/reference number below.'}
+              </p>
+            </div>
+          ) : null}
 
           {!data?.acceptingContributions ? (
             <div className="mt-8 rounded-3xl border border-rose-300/20 bg-rose-500/15 p-5 text-rose-50">
               {data?.subscription?.status === 'suspended'
                 ? 'This church is not accepting contributions right now. Please contact the church office for help.'
-                : 'This church has not finished configuring M-Pesa giving yet. Please contact the church office for help.'}
+                : 'This church is not accepting contributions right now. Please contact the church office for help.'}
             </div>
           ) : (
             <form
@@ -84,11 +98,13 @@ export default function PublicGive() {
                   ['name', 'Your name'],
                   ['phone', 'Phone number'],
                   ['amount', 'Amount'],
+                  ['paymentReference', 'M-Pesa receipt number'],
                 ].map(([key, label]) => (
                   <div key={key}>
                     <label className="label">{label}</label>
                     <input
                       className="input"
+                      required={key !== 'name'}
                       value={(form as any)[key]}
                       onChange={(event) =>
                         setForm((current) => ({
@@ -138,8 +154,8 @@ export default function PublicGive() {
 
               <button className="btn-primary w-full justify-center" type="submit">
                 {contributionMutation.isPending
-                  ? 'Sending M-Pesa prompt...'
-                  : 'Send M-Pesa prompt'}
+                  ? 'Recording payment...'
+                  : 'Submit payment details'}
               </button>
             </form>
           )}

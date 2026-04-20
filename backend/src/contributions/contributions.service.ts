@@ -10,7 +10,7 @@ import PDFDocument from 'pdfkit';
 import { Response } from 'express';
 import { Repository } from 'typeorm';
 import { formatCurrency } from '../common/subscription.utils';
-import { ChurchMpesaConfig, ChurchSmsConfig } from '../common/church.utils';
+import { ChurchSmsConfig } from '../common/church.utils';
 import { Church, ChurchStatus } from '../entities/church.entity';
 import { ChurchUser } from '../entities/church-user.entity';
 import {
@@ -20,7 +20,6 @@ import {
 } from '../entities/contribution.entity';
 import { Contributor } from '../entities/contributor.entity';
 import { FundAccount } from '../entities/fund-account.entity';
-import { MpesaService } from '../payments/mpesa.service';
 import { SmsService } from '../sms/sms.service';
 import { ChurchSubscriptionsService } from '../subscriptions/church-subscriptions.service';
 
@@ -40,7 +39,6 @@ export class ContributionsService {
     @InjectRepository(Contribution)
     private readonly contributionRepo: Repository<Contribution>,
     private readonly smsService: SmsService,
-    private readonly mpesaService: MpesaService,
     private readonly churchSubscriptionsService: ChurchSubscriptionsService,
   ) {}
 
@@ -55,6 +53,12 @@ export class ContributionsService {
       body.fundAccountId,
     );
     const contributor = await this.findOrCreateContributor(churchId, body);
+    const channel = this.resolveRecordedChannel(body.channel);
+    const paymentReference = body.paymentReference || body.reference || null;
+
+    if (channel === ContributionChannel.MPESA && !paymentReference) {
+      throw new BadRequestException('M-Pesa receipt/reference is required');
+    }
 
     const contribution = this.contributionRepo.create({
       churchId,
@@ -63,9 +67,9 @@ export class ContributionsService {
       enteredByUserId,
       fundAccountName: fundAccount.name,
       amount: Number(body.amount),
-      channel: ContributionChannel.MANUAL_CASH,
+      channel,
       status: ContributionStatus.CONFIRMED,
-      paymentReference: body.paymentReference || body.reference || null,
+      paymentReference,
       notes: body.notes || null,
       receivedAt: body.receivedAt ? new Date(body.receivedAt) : new Date(),
     });
@@ -96,11 +100,15 @@ export class ContributionsService {
       body.fundAccountId,
       true,
     );
-    this.mpesaService.assertConfigured(this.getChurchMpesaConfig(church));
     const contributor = await this.findOrCreateContributor(church.id, body);
     const amount = Number(body.amount);
+    const paymentReference = body.paymentReference || body.reference || null;
 
-    const pending = await this.contributionRepo.save(
+    if (!paymentReference) {
+      throw new BadRequestException('M-Pesa receipt/reference is required');
+    }
+
+    const contribution = await this.contributionRepo.save(
       this.contributionRepo.create({
         churchId: church.id,
         contributorId: contributor?.id || null,
@@ -108,60 +116,21 @@ export class ContributionsService {
         fundAccountName: fundAccount.name,
         amount,
         channel: ContributionChannel.MPESA,
-        status: ContributionStatus.PENDING,
+        status: ContributionStatus.CONFIRMED,
+        paymentReference,
         notes: body.notes || null,
+        receivedAt: new Date(),
       }),
     );
 
     this.logger.log(
-      `Starting public M-Pesa contribution ${pending.id} for church=${church.slug} fund=${fundAccount.code} amount=${amount}`,
+      `Recorded public M-Pesa contribution ${contribution.id} for church=${church.slug} fund=${fundAccount.code} amount=${amount} reference=${paymentReference}`,
     );
-
-    let mpesaResponse: any;
-    try {
-      mpesaResponse = await this.mpesaService.stkPush(
-        body.phone,
-        amount,
-        fundAccount.code,
-        `${church.name} ${fundAccount.name}`,
-        this.getChurchMpesaConfig(church),
-      );
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.errorMessage ||
-        error?.response?.data?.error_description ||
-        error?.response?.data?.ResponseDescription ||
-        error?.message ||
-        'Unable to initiate M-Pesa prompt';
-
-      pending.status = ContributionStatus.FAILED;
-      pending.notes = message;
-      await this.contributionRepo.save(pending);
-
-      this.logger.error(
-        `STK push failed for contribution ${pending.id}: ${message}`,
-        error?.stack,
-      );
-      throw new BadRequestException(message);
-    }
-
-    pending.providerRequestId =
-      mpesaResponse.CheckoutRequestID ||
-      mpesaResponse.MerchantRequestID ||
-      null;
-    await this.contributionRepo.save(pending);
-
-    this.logger.log(
-      `STK push accepted for contribution ${pending.id}. checkoutRequestId=${pending.providerRequestId || 'n/a'}`,
-    );
+    await this.sendReceipt(contribution.id);
 
     return {
-      contributionId: pending.id,
-      checkoutRequestId: pending.providerRequestId,
-      message:
-        mpesaResponse.CustomerMessage ||
-        'STK push sent. Please complete the payment on your phone.',
-      response: mpesaResponse,
+      contributionId: contribution.id,
+      message: 'Payment details recorded. Receipt confirmation will be sent shortly.',
     };
   }
 
@@ -405,6 +374,12 @@ export class ContributionsService {
     return fundAccount;
   }
 
+  private resolveRecordedChannel(channel?: string) {
+    return channel === ContributionChannel.MPESA
+      ? ContributionChannel.MPESA
+      : ContributionChannel.MANUAL_CASH;
+  }
+
   private async findOrCreateContributor(churchId: string, body: any) {
     if (!body.name && !body.phone) {
       return null;
@@ -536,17 +511,6 @@ export class ContributionsService {
       smsApiKey: church?.smsApiKey,
       smsShortcode: church?.smsShortcode,
       smsBaseUrl: church?.smsBaseUrl,
-    };
-  }
-
-  private getChurchMpesaConfig(church: Church | null): ChurchMpesaConfig {
-    return {
-      mpesaEnvironment: church?.mpesaEnvironment,
-      mpesaConsumerKey: church?.mpesaConsumerKey,
-      mpesaConsumerSecret: church?.mpesaConsumerSecret,
-      mpesaPasskey: church?.mpesaPasskey,
-      mpesaShortcode: church?.mpesaShortcode,
-      mpesaCallbackUrl: church?.mpesaCallbackUrl,
     };
   }
 

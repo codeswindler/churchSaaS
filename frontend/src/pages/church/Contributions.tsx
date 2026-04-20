@@ -9,6 +9,7 @@ const initialManualForm = {
   phone: '',
   amount: '',
   fundAccountId: '',
+  channel: 'mpesa',
   paymentReference: '',
   notes: '',
 };
@@ -63,7 +64,7 @@ export default function ChurchContributions() {
       return response.data;
     },
     onSuccess: () => {
-      toast.success('Manual contribution recorded');
+      toast.success('Contribution recorded');
       setManualForm(initialManualForm);
       setIsManualEntryOpen(false);
       queryClient.invalidateQueries({ queryKey: ['church-contributions'] });
@@ -130,14 +131,14 @@ export default function ChurchContributions() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-              Manual Cash Entry
+              Received Funds
             </p>
             <h3 className="mt-2 text-2xl font-semibold text-white">
-              Record cash contributions
+              Record received contributions
             </h3>
             <p className="mt-3 max-w-3xl text-sm text-stone-300">
-              Update payments done outside system so contribution ledger and filter
-              controls stay clean, aligned, and easy to review.
+              Update cash and M-Pesa payments done outside the system so the
+              contribution ledger, filters, and reports stay clean and easy to review.
             </p>
           </div>
 
@@ -257,7 +258,7 @@ export default function ChurchContributions() {
                 }
               >
                 <option value="">All channels</option>
-                <option value="manual_cash">Manual cash</option>
+                <option value="manual_cash">Cash</option>
                 <option value="mpesa">M-Pesa</option>
               </select>
             </div>
@@ -314,7 +315,7 @@ export default function ChurchContributions() {
                       </div>
                     </td>
                     <td>{item.fundAccountName}</td>
-                    <td>{item.channel}</td>
+                    <td>{item.channel === 'manual_cash' ? 'Cash' : 'M-Pesa'}</td>
                     <td>{item.status}</td>
                     <td>KES {Number(item.amount || 0).toLocaleString()}</td>
                     <td>{item.receiptMessageSent ? 'Sent' : 'Pending / failed'}</td>
@@ -343,17 +344,17 @@ export default function ChurchContributions() {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-                    Manual Cash Entry
+                    Receive Funds
                   </p>
                   <h3
                     id="record-contribution-title"
                     className="mt-2 text-2xl font-semibold text-white"
                   >
-                    Record walk-in contribution
+                    Record received funds
                   </h3>
                   <p className="mt-2 max-w-2xl text-sm text-stone-300">
-                    Capture the contribution in a focused form, then return to the
-                    ledger without losing context.
+                    Capture cash or M-Pesa payment details in a focused form, then
+                    return to the ledger without losing context.
                   </p>
                 </div>
 
@@ -378,7 +379,6 @@ export default function ChurchContributions() {
                   ['name', 'Contributor name'],
                   ['phone', 'Phone number'],
                   ['amount', 'Amount'],
-                  ['paymentReference', 'Cash reference'],
                 ].map(([key, label]) => (
                   <div key={key}>
                     <label className="label">{label}</label>
@@ -395,6 +395,36 @@ export default function ChurchContributions() {
                     />
                   </div>
                 ))}
+
+                <div>
+                  <label className="label">Payment channel</label>
+                  <select
+                    className="input"
+                    value={manualForm.channel}
+                    onChange={(event) =>
+                      updateManualForm('channel', event.target.value)
+                    }
+                  >
+                    <option value="mpesa">M-Pesa</option>
+                    <option value="manual_cash">Cash</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="label">
+                    {manualForm.channel === 'mpesa'
+                      ? 'M-Pesa receipt number'
+                      : 'Payment reference'}
+                  </label>
+                  <input
+                    className="input"
+                    required={manualForm.channel === 'mpesa'}
+                    value={manualForm.paymentReference}
+                    onChange={(event) =>
+                      updateManualForm('paymentReference', event.target.value)
+                    }
+                  />
+                </div>
 
                 <div>
                   <label className="label">Fund account</label>
