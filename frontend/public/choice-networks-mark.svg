@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <rect width="128" height="128" fill="#F6F1E5"/>
+  <path d="M18 99h92" stroke="#215F93" stroke-opacity=".14" stroke-width="8" stroke-linecap="round"/>
+  <path d="M23 108h84" stroke="#215F93" stroke-opacity=".1" stroke-width="8" stroke-linecap="round"/>
+
+  <path d="M31 53 42 47v33l-11 6V53Z" fill="url(#towerLeftSide)"/>
+  <path d="M42 47 58 53v33l-16-6V47Z" fill="url(#towerLeftFront)"/>
+  <path d="M44 40 56 44v8l-12-4v-8Z" fill="#76B9E8"/>
+
+  <path d="M52 34 65 28v51l-13 7V34Z" fill="url(#towerMidSide)"/>
+  <path d="M65 28 82 35v51l-17-7V28Z" fill="url(#towerMidFront)"/>
+  <path d="M67 20 80 25v9l-13-5v-9Z" fill="#5AA7DB"/>
+
+  <path d="M74 24 87 18v57l-13 7V24Z" fill="url(#towerRightSide)"/>
+  <path d="M87 18 104 26v56l-17-7V18Z" fill="url(#towerRightFront)"/>
+  <path d="M89 10 102 16v9l-13-5v-10Z" fill="#458DCA"/>
+
+  <path
+    d="M22 83 45 67l16 12 20-18 11 7"
+    stroke="#4A97D0"
+    stroke-width="7"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M18 79 41 63l16 12 22-20 18 12"
+    stroke="#1D649B"
+    stroke-width="9"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M83 38h19v19"
+    stroke="#1D649B"
+    stroke-width="9"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M63 92 84 73l14 9"
+    stroke="#1D649B"
+    stroke-opacity=".18"
+    stroke-width="7"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+
+  <defs>
+    <linearGradient id="towerLeftSide" x1="31" x2="42" y1="47" y2="86" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4B93CF"/>
+      <stop offset="1" stop-color="#1A5789"/>
+    </linearGradient>
+    <linearGradient id="towerLeftFront" x1="42" x2="58" y1="47" y2="86" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#76B9E8"/>
+      <stop offset="1" stop-color="#2E77B2"/>
+    </linearGradient>
+    <linearGradient id="towerMidSide" x1="52" x2="65" y1="28" y2="86" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#397EBB"/>
+      <stop offset="1" stop-color="#154E7D"/>
+    </linearGradient>
+    <linearGradient id="towerMidFront" x1="65" x2="82" y1="28" y2="86" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5CA8DC"/>
+      <stop offset="1" stop-color="#236CA6"/>
+    </linearGradient>
+    <linearGradient id="towerRightSide" x1="74" x2="87" y1="18" y2="82" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2E70A8"/>
+      <stop offset="1" stop-color="#103F66"/>
+    </linearGradient>
+    <linearGradient id="towerRightFront" x1="87" x2="104" y1="18" y2="82" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4E99D3"/>
+      <stop offset="1" stop-color="#1B5D8F"/>
+    </linearGradient>
+  </defs>
+</svg>

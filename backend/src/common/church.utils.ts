@@ -1,0 +1,81 @@
+export interface ChurchSmsConfig {
+  smsPartnerId?: string | null;
+  smsApiKey?: string | null;
+  smsShortcode?: string | null;
+  smsBaseUrl?: string | null;
+}
+
+export interface ChurchMpesaConfig {
+  mpesaEnvironment?: string | null;
+  mpesaConsumerKey?: string | null;
+  mpesaConsumerSecret?: string | null;
+  mpesaPasskey?: string | null;
+  mpesaShortcode?: string | null;
+  mpesaCallbackUrl?: string | null;
+}
+
+export interface ChurchIdentity {
+  id: string;
+  name: string;
+  slug: string;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  logoUrl?: string | null;
+  address?: string | null;
+  notes?: string | null;
+  status?: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export function sanitizeChurchForTenant(church: ChurchIdentity | null) {
+  if (!church) {
+    return null;
+  }
+
+  return {
+    id: church.id,
+    name: church.name,
+    slug: church.slug,
+    contactEmail: church.contactEmail ?? null,
+    contactPhone: church.contactPhone ?? null,
+    logoUrl: church.logoUrl ?? null,
+    address: church.address ?? null,
+    notes: church.notes ?? null,
+    status: church.status ?? null,
+    createdAt: church.createdAt,
+    updatedAt: church.updatedAt,
+  };
+}
+
+export function hasConfiguredSmsCredentials(church: ChurchSmsConfig | null) {
+  return Boolean(
+    church?.smsPartnerId && church?.smsApiKey && church?.smsShortcode,
+  );
+}
+
+export function hasConfiguredMpesaCredentials(
+  church: ChurchMpesaConfig | null,
+) {
+  return Boolean(
+    church?.mpesaConsumerKey &&
+    church?.mpesaConsumerSecret &&
+    church?.mpesaPasskey &&
+    church?.mpesaShortcode &&
+    church?.mpesaCallbackUrl,
+  );
+}
+
+export function buildChurchIntegrationSummary(
+  church: ChurchSmsConfig & ChurchMpesaConfig,
+) {
+  return {
+    smsConfigured: hasConfiguredSmsCredentials(church),
+    smsShortcode: church.smsShortcode ?? null,
+    smsBaseUrl: church.smsBaseUrl ?? null,
+    mpesaConfigured: hasConfiguredMpesaCredentials(church),
+    mpesaEnvironment: church.mpesaEnvironment ?? null,
+    mpesaShortcode: church.mpesaShortcode ?? null,
+    mpesaCallbackUrl: church.mpesaCallbackUrl ?? null,
+  };
+}
