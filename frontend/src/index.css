@@ -387,16 +387,19 @@ textarea {
 }
 
 .modal-backdrop {
-  @apply fixed inset-0 z-50 backdrop-blur-sm;
+  @apply fixed inset-0 z-50 overflow-y-auto backdrop-blur-sm;
   background: var(--modal-backdrop);
 }
 
 .modal-shell {
-  @apply flex min-h-full items-start justify-center overflow-y-auto p-4 sm:p-8;
+  @apply flex min-h-screen w-full items-start justify-center p-4 sm:p-6 lg:p-8;
 }
 
 .modal-card {
-  @apply my-6 w-full max-w-4xl;
+  @apply my-4 w-full max-w-4xl;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .input-compact {

@@ -14,37 +14,47 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 
-const initialForm = {
-  name: '',
-  slug: '',
-  contactEmail: '',
-  contactPhone: '',
-  address: '',
-  notes: '',
-  adminName: '',
-  adminEmail: '',
-  adminPhone: '',
-  adminUsername: '',
-  adminPassword: '',
-  initialSubscriptionDays: 30,
-  planName: 'Standard Plan',
-  smsPartnerId: '',
-  smsApiKey: '',
-  smsShortcode: '',
-  smsBaseUrl: 'https://quicksms.advantasms.com',
-  mpesaEnvironment: 'sandbox',
-  mpesaConsumerKey: '',
-  mpesaConsumerSecret: '',
-  mpesaPasskey: '',
-  mpesaShortcode: '',
-  mpesaCallbackUrl: '',
-};
+function getDefaultMpesaCallbackUrl() {
+  if (typeof window === 'undefined') {
+    return '';
+  }
 
-type ChurchFormState = typeof initialForm;
+  return `${window.location.origin}/api/payments/mpesa/webhook`;
+}
+
+function createInitialForm() {
+  return {
+    name: '',
+    slug: '',
+    contactEmail: '',
+    contactPhone: '',
+    address: '',
+    notes: '',
+    adminName: '',
+    adminEmail: '',
+    adminPhone: '',
+    adminUsername: '',
+    adminPassword: '',
+    initialSubscriptionDays: 30,
+    planName: 'Standard Plan',
+    smsPartnerId: '',
+    smsApiKey: '',
+    smsShortcode: '',
+    smsBaseUrl: 'https://quicksms.advantasms.com',
+    mpesaEnvironment: 'sandbox',
+    mpesaConsumerKey: '',
+    mpesaConsumerSecret: '',
+    mpesaPasskey: '',
+    mpesaShortcode: '',
+    mpesaCallbackUrl: getDefaultMpesaCallbackUrl(),
+  };
+}
+
+type ChurchFormState = ReturnType<typeof createInitialForm>;
 
 export default function PlatformChurches() {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState<ChurchFormState>(initialForm);
+  const [form, setForm] = useState<ChurchFormState>(() => createInitialForm());
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
   const [isChurchModalOpen, setIsChurchModalOpen] = useState(false);
   const [isLoadingChurchDetails, setIsLoadingChurchDetails] = useState(false);
@@ -83,7 +93,7 @@ export default function PlatformChurches() {
       toast.success(
         formMode === 'edit' ? 'Church settings updated' : 'Church customer created',
       );
-      setForm(initialForm);
+      setForm(createInitialForm());
       setFormMode('create');
       setIsChurchModalOpen(false);
       const nextSelectedChurchId =
@@ -184,7 +194,7 @@ export default function PlatformChurches() {
   };
 
   const openCreateModal = () => {
-    setForm(initialForm);
+    setForm(createInitialForm());
     setFormMode('create');
     setEditingChurchId(null);
     setIsLoadingChurchDetails(false);
@@ -199,9 +209,10 @@ export default function PlatformChurches() {
 
     try {
       const response = await api.get(`/platform/churches/${churchId}`);
+      const defaultCallbackUrl = getDefaultMpesaCallbackUrl();
       setForm((current) => ({
         ...current,
-        ...initialForm,
+        ...createInitialForm(),
         name: response.data.name || '',
         slug: response.data.slug || '',
         contactEmail: response.data.contactEmail || '',
@@ -220,7 +231,7 @@ export default function PlatformChurches() {
         mpesaConsumerSecret: response.data.mpesaConsumerSecret || '',
         mpesaPasskey: response.data.mpesaPasskey || '',
         mpesaShortcode: response.data.mpesaShortcode || '',
-        mpesaCallbackUrl: response.data.mpesaCallbackUrl || '',
+        mpesaCallbackUrl: response.data.mpesaCallbackUrl || defaultCallbackUrl,
       }));
     } catch (error: any) {
       toast.error(
@@ -242,7 +253,7 @@ export default function PlatformChurches() {
     setIsChurchModalOpen(false);
     setFormMode('create');
     setEditingChurchId(null);
-    setForm(initialForm);
+    setForm(createInitialForm());
   };
 
   const runDaysAction = (
@@ -685,6 +696,7 @@ export default function PlatformChurches() {
                     <p className="mt-4 text-sm text-stone-300">
                       The Daraja STK push flow needs the passkey so the request
                       password can be generated from shortcode + passkey + timestamp.
+                      The callback URL is prefilled with the shared platform webhook.
                     </p>
                   </section>
 
