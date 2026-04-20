@@ -329,7 +329,7 @@ textarea {
 }
 
 .table-shell table {
-  @apply min-w-full divide-y divide-white/10 text-sm;
+  @apply w-full min-w-full divide-y divide-white/10 text-sm;
   min-width: 760px;
 }
 
@@ -340,6 +340,13 @@ textarea {
 .table-shell th,
 .table-shell td {
   @apply px-4 py-3 align-top;
+}
+
+@media (min-width: 1280px) {
+  .table-shell th,
+  .table-shell td {
+    @apply px-6 py-4;
+  }
 }
 
 .table-shell tbody tr {
