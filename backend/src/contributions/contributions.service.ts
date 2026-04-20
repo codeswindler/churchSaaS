@@ -259,7 +259,7 @@ export class ContributionsService {
 
     if (!payload.transId) {
       this.logger.warn('Ignored M-Pesa C2B confirmation without TransID');
-      return { ResultCode: 0, ResultDesc: 'Accepted' };
+      return { ResultCode: 0, ResultDesc: 'Accepted - missing TransID' };
     }
 
     const { church, fundAccount } = await this.resolveMpesaC2BTarget(payload);
@@ -267,7 +267,7 @@ export class ContributionsService {
       this.logger.warn(
         `Ignored M-Pesa C2B confirmation ${payload.transId}; no active church matches shortcode=${payload.shortcode || 'n/a'}`,
       );
-      return { ResultCode: 0, ResultDesc: 'Accepted' };
+      return { ResultCode: 0, ResultDesc: 'Accepted - no matching church' };
     }
 
     const existing = await this.contributionRepo.findOne({
@@ -280,7 +280,7 @@ export class ContributionsService {
       this.logger.log(
         `Ignored duplicate M-Pesa C2B confirmation ${payload.transId} for church=${church.slug}`,
       );
-      return { ResultCode: 0, ResultDesc: 'Accepted' };
+      return { ResultCode: 0, ResultDesc: 'Accepted - duplicate' };
     }
 
     const contributor = await this.findOrCreateContributor(church.id, {
@@ -310,7 +310,7 @@ export class ContributionsService {
     );
     await this.sendReceipt(contribution.id);
 
-    return { ResultCode: 0, ResultDesc: 'Accepted' };
+    return { ResultCode: 0, ResultDesc: 'Accepted - recorded' };
   }
 
   async listChurchContributions(churchId: string, query: any = {}) {
