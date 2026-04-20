@@ -138,6 +138,13 @@ export class ContributionsService {
   async handleMpesaWebhook(body: any) {
     const callback = body?.Body?.stkCallback;
     if (!callback?.CheckoutRequestID) {
+      if (body?.TransID || body?.BusinessShortCode || body?.BillRefNumber) {
+        this.logger.log(
+          'Received C2B-style M-Pesa payload on legacy webhook; routing to C2B confirmation handler.',
+        );
+        return this.handleMpesaC2BConfirmation(body);
+      }
+
       this.logger.warn('Ignored M-Pesa webhook without CheckoutRequestID');
       return { ResultCode: 0, ResultDesc: 'Ignored' };
     }
