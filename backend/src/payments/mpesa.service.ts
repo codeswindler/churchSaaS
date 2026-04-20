@@ -100,19 +100,18 @@ export class MpesaService {
     const resolved = {
       environment:
         config.mpesaEnvironment || process.env.MPESA_ENV || 'sandbox',
-      consumerKey: config.mpesaConsumerKey || process.env.MPESA_CONSUMER_KEY,
-      consumerSecret:
-        config.mpesaConsumerSecret || process.env.MPESA_CONSUMER_SECRET,
-      passkey: config.mpesaPasskey || process.env.MPESA_PASSKEY,
-      shortcode: config.mpesaShortcode || process.env.MPESA_SHORTCODE,
+      consumerKey: config.mpesaConsumerKey,
+      consumerSecret: config.mpesaConsumerSecret,
+      passkey: config.mpesaPasskey,
+      shortcode: config.mpesaShortcode,
       callbackUrl: config.mpesaCallbackUrl || process.env.MPESA_CALLBACK_URL,
     };
 
     const missing = [
-      ['consumer key', resolved.consumerKey],
-      ['consumer secret', resolved.consumerSecret],
-      ['passkey', resolved.passkey],
-      ['shortcode', resolved.shortcode],
+      ['church consumer key', resolved.consumerKey],
+      ['church consumer secret', resolved.consumerSecret],
+      ['church passkey', resolved.passkey],
+      ['church shortcode', resolved.shortcode],
       ['callback URL', resolved.callbackUrl],
     ]
       .filter(([, value]) => !value)

@@ -54,6 +54,12 @@ export function hasConfiguredSmsCredentials(church: ChurchSmsConfig | null) {
   );
 }
 
+export function getConfiguredMpesaCallbackUrl(
+  church: ChurchMpesaConfig | null,
+) {
+  return church?.mpesaCallbackUrl || process.env.MPESA_CALLBACK_URL || null;
+}
+
 export function hasConfiguredMpesaCredentials(
   church: ChurchMpesaConfig | null,
 ) {
@@ -62,7 +68,7 @@ export function hasConfiguredMpesaCredentials(
     church?.mpesaConsumerSecret &&
     church?.mpesaPasskey &&
     church?.mpesaShortcode &&
-    church?.mpesaCallbackUrl,
+    getConfiguredMpesaCallbackUrl(church),
   );
 }
 
@@ -76,6 +82,6 @@ export function buildChurchIntegrationSummary(
     mpesaConfigured: hasConfiguredMpesaCredentials(church),
     mpesaEnvironment: church.mpesaEnvironment ?? null,
     mpesaShortcode: church.mpesaShortcode ?? null,
-    mpesaCallbackUrl: church.mpesaCallbackUrl ?? null,
+    mpesaCallbackUrl: getConfiguredMpesaCallbackUrl(church),
   };
 }
