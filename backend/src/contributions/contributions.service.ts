@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -25,6 +26,8 @@ import { ChurchSubscriptionsService } from '../subscriptions/church-subscription
 
 @Injectable()
 export class ContributionsService {
+  private readonly logger = new Logger(ContributionsService.name);
+
   constructor(
     @InjectRepository(Church)
     private readonly churchRepo: Repository<Church>,
@@ -95,6 +98,7 @@ export class ContributionsService {
     );
     this.mpesaService.assertConfigured(this.getChurchMpesaConfig(church));
     const contributor = await this.findOrCreateContributor(church.id, body);
+    const amount = Number(body.amount);
 
     const pending = await this.contributionRepo.save(
       this.contributionRepo.create({
@@ -102,26 +106,54 @@ export class ContributionsService {
         contributorId: contributor?.id || null,
         fundAccountId: fundAccount.id,
         fundAccountName: fundAccount.name,
-        amount: Number(body.amount),
+        amount,
         channel: ContributionChannel.MPESA,
         status: ContributionStatus.PENDING,
         notes: body.notes || null,
       }),
     );
 
-    const mpesaResponse = await this.mpesaService.stkPush(
-      body.phone,
-      Number(body.amount),
-      fundAccount.code,
-      `${church.name} ${fundAccount.name}`,
-      this.getChurchMpesaConfig(church),
+    this.logger.log(
+      `Starting public M-Pesa contribution ${pending.id} for church=${church.slug} fund=${fundAccount.code} amount=${amount}`,
     );
+
+    let mpesaResponse: any;
+    try {
+      mpesaResponse = await this.mpesaService.stkPush(
+        body.phone,
+        amount,
+        fundAccount.code,
+        `${church.name} ${fundAccount.name}`,
+        this.getChurchMpesaConfig(church),
+      );
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.errorMessage ||
+        error?.response?.data?.error_description ||
+        error?.response?.data?.ResponseDescription ||
+        error?.message ||
+        'Unable to initiate M-Pesa prompt';
+
+      pending.status = ContributionStatus.FAILED;
+      pending.notes = message;
+      await this.contributionRepo.save(pending);
+
+      this.logger.error(
+        `STK push failed for contribution ${pending.id}: ${message}`,
+        error?.stack,
+      );
+      throw new BadRequestException(message);
+    }
 
     pending.providerRequestId =
       mpesaResponse.CheckoutRequestID ||
       mpesaResponse.MerchantRequestID ||
       null;
     await this.contributionRepo.save(pending);
+
+    this.logger.log(
+      `STK push accepted for contribution ${pending.id}. checkoutRequestId=${pending.providerRequestId || 'n/a'}`,
+    );
 
     return {
       contributionId: pending.id,
@@ -136,8 +168,13 @@ export class ContributionsService {
   async handleMpesaWebhook(body: any) {
     const callback = body?.Body?.stkCallback;
     if (!callback?.CheckoutRequestID) {
+      this.logger.warn('Ignored M-Pesa webhook without CheckoutRequestID');
       return { ResultCode: 0, ResultDesc: 'Ignored' };
     }
+
+    this.logger.log(
+      `M-Pesa webhook received. checkoutRequestId=${callback.CheckoutRequestID} resultCode=${callback.ResultCode}`,
+    );
 
     const contribution = await this.contributionRepo.findOne({
       where: { providerRequestId: callback.CheckoutRequestID },
@@ -145,6 +182,9 @@ export class ContributionsService {
     });
 
     if (!contribution) {
+      this.logger.warn(
+        `No contribution matched checkoutRequestId=${callback.CheckoutRequestID}`,
+      );
       return { ResultCode: 0, ResultDesc: 'Contribution not found' };
     }
 
@@ -174,11 +214,17 @@ export class ContributionsService {
       }
 
       await this.contributionRepo.save(contribution);
+      this.logger.log(
+        `Contribution ${contribution.id} confirmed from webhook. receipt=${contribution.paymentReference || 'n/a'}`,
+      );
       await this.sendReceipt(contribution.id);
     } else {
       contribution.status = ContributionStatus.FAILED;
       contribution.notes = callback.ResultDesc || 'M-Pesa payment failed';
       await this.contributionRepo.save(contribution);
+      this.logger.warn(
+        `Contribution ${contribution.id} failed from webhook. resultDesc=${callback.ResultDesc || 'M-Pesa payment failed'}`,
+      );
     }
 
     return { ResultCode: 0, ResultDesc: 'Success' };
