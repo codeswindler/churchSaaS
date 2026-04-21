@@ -19,7 +19,7 @@ function getDefaultMpesaCallbackUrl() {
     return '';
   }
 
-  return `${window.location.origin}/api/payments/mpesa/c2b/confirmation`;
+  return `${window.location.origin}/api/c2b/confirmation`;
 }
 
 function getDefaultMpesaValidationUrl() {
@@ -27,7 +27,7 @@ function getDefaultMpesaValidationUrl() {
     return '';
   }
 
-  return `${window.location.origin}/api/payments/mpesa/c2b/validation`;
+  return `${window.location.origin}/api/c2b/validation`;
 }
 
 function createInitialForm() {
