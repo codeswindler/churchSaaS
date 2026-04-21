@@ -11,13 +11,13 @@ const initialDashboardFilters = {
 };
 
 const chartPalette = [
-  '#fde68a',
-  '#93c5fd',
+  '#34d399',
+  '#22c55e',
   '#86efac',
-  '#fca5a5',
-  '#c4b5fd',
-  '#fdba74',
-  '#67e8f9',
+  '#14b8a6',
+  '#a3e635',
+  '#4ade80',
+  '#10b981',
 ];
 
 type DashboardFilters = typeof initialDashboardFilters;
@@ -78,8 +78,8 @@ function TrendChart({ data }: { data: any[] }) {
       >
         <defs>
           <linearGradient id="trendFill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#fde68a" stopOpacity="0.34" />
-            <stop offset="100%" stopColor="#fde68a" stopOpacity="0.02" />
+            <stop offset="0%" stopColor="#34d399" stopOpacity="0.36" />
+            <stop offset="100%" stopColor="#34d399" stopOpacity="0.03" />
           </linearGradient>
         </defs>
         {[0, 1, 2, 3].map((line) => {
@@ -100,7 +100,7 @@ function TrendChart({ data }: { data: any[] }) {
         <polyline
           fill="none"
           points={points}
-          stroke="#fde68a"
+          stroke="#34d399"
           strokeLinecap="round"
           strokeLinejoin="round"
           strokeWidth="4"
@@ -112,7 +112,7 @@ function TrendChart({ data }: { data: any[] }) {
             cy={yFor(Number(item.totalAmount || 0))}
             fill="#0f172a"
             r="6"
-            stroke="#fde68a"
+            stroke="#34d399"
             strokeWidth="3"
           />
         ))}
