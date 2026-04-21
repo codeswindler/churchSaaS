@@ -299,6 +299,7 @@ export class ContributionsService {
         amount: payload.amount,
         channel: ContributionChannel.MPESA,
         status: ContributionStatus.CONFIRMED,
+        providerRequestId: payload.phoneForContributor ? null : payload.phone,
         paymentReference: payload.transId,
         notes: this.buildMpesaC2BNote(payload, fundAccount),
         receivedAt: payload.receivedAt,
@@ -684,18 +685,36 @@ export class ContributionsService {
     if (
       !contribution ||
       contribution.status !== ContributionStatus.CONFIRMED ||
-      !contribution.contributor?.phone ||
       !contribution.fundAccount
     ) {
       return contribution;
     }
 
     const message = this.renderReceiptMessage(contribution);
-    const success = await this.smsService.sendSms(
-      contribution.contributor.phone,
-      message,
-      this.getChurchSmsConfig(contribution.church),
-    );
+    const churchSmsConfig = this.getChurchSmsConfig(contribution.church);
+    const hashedSafaricomMobile =
+      this.resolveHashedSafaricomMobile(contribution);
+    const success = contribution.contributor?.phone
+      ? await this.smsService.sendSms(
+          contribution.contributor.phone,
+          message,
+          churchSmsConfig,
+        )
+      : hashedSafaricomMobile
+        ? await this.smsService.sendSmsToHashedSafaricomNumber(
+            hashedSafaricomMobile,
+            message,
+            churchSmsConfig,
+          )
+        : false;
+
+    if (
+      !success &&
+      !contribution.contributor?.phone &&
+      !hashedSafaricomMobile
+    ) {
+      return contribution;
+    }
 
     contribution.receiptMessageBody = message;
     contribution.receiptMessageSent = success;
@@ -704,6 +723,15 @@ export class ContributionsService {
     await this.contributionRepo.save(contribution);
 
     return contribution;
+  }
+
+  private resolveHashedSafaricomMobile(contribution: Contribution) {
+    const value = contribution.providerRequestId;
+    if (!value || this.extractKenyanPhone(value)) {
+      return null;
+    }
+
+    return value.length >= 32 ? value : null;
   }
 
   private renderReceiptMessage(contribution: Contribution) {

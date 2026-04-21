@@ -116,6 +116,44 @@ export class SmsService {
   }
 
   /**
+   * Send transactional SMS to Safaricom hashed MSISDN values.
+   */
+  async sendSmsToHashedSafaricomNumber(
+    hashedMobile: string,
+    message: string,
+    config: ChurchSmsConfig = {},
+  ): Promise<boolean> {
+    const resolved = this.resolveConfig(config);
+    const url = `${resolved.baseUrl}/api/services/sendotp`;
+    const data = {
+      apikey: resolved.apiKey,
+      partnerID: resolved.partnerId,
+      mobile: hashedMobile,
+      message: this.sanitizeGsm7(message),
+      shortcode: resolved.shortCode,
+      hashed: true,
+    };
+
+    try {
+      this.logger.log('[SMS] Sending hashed Safaricom notification...');
+      const response = await axios.post(url, data, { timeout: 10000 });
+
+      const success =
+        response.data?.['response-code'] == 200 ||
+        response.data?.responses?.[0]?.['response-code'] == 200;
+      if (success) return true;
+
+      this.logger.error(
+        `[SMS] Advanta hashed error: ${JSON.stringify(response.data)}`,
+      );
+      return false;
+    } catch (e) {
+      this.logger.error(`[SMS] Failed to send hashed SMS: ${e.message}`);
+      return false;
+    }
+  }
+
+  /**
    * Check SMS Balance
    */
   async getBalance(config: ChurchSmsConfig = {}): Promise<number> {
