@@ -392,6 +392,34 @@ export class ContributionsService {
       >,
     );
 
+    const trendByDate = confirmed.reduce(
+      (acc, item) => {
+        const date = new Date(item.receivedAt || item.createdAt)
+          .toISOString()
+          .slice(0, 10);
+
+        if (!acc[date]) {
+          acc[date] = {
+            date,
+            totalAmount: 0,
+            count: 0,
+          };
+        }
+
+        acc[date].totalAmount += Number(item.amount || 0);
+        acc[date].count += 1;
+        return acc;
+      },
+      {} as Record<
+        string,
+        {
+          date: string;
+          totalAmount: number;
+          count: number;
+        }
+      >,
+    );
+
     return {
       totals: {
         contributionCount: confirmed.length,
@@ -401,6 +429,9 @@ export class ContributionsService {
       },
       byFundAccount: Object.values(byFundAccount).sort(
         (a, b) => b.totalAmount - a.totalAmount,
+      ),
+      trendByDate: Object.values(trendByDate).sort((a, b) =>
+        a.date.localeCompare(b.date),
       ),
       recentContributions: contributions.slice(0, 10),
     };

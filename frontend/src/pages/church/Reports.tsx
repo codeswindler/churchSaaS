@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
+import { Link } from 'react-router-dom';
 import api from '../../services/api';
 
 export default function ChurchReports() {
@@ -45,6 +46,25 @@ export default function ChurchReports() {
   });
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
+  const generalFundAccountId =
+    (fundAccounts || []).find((item: any) => item.code === 'general')?.id || '';
+  const buildLedgerPath = (overrides: Partial<typeof filters> = {}) => {
+    const params = new URLSearchParams();
+    const status = overrides.status ?? filters.status;
+    const nextFilters = {
+      ...filters,
+      ...overrides,
+      status: status || 'confirmed',
+    };
+
+    Object.entries(nextFilters).forEach(([key, value]) => {
+      if (value) {
+        params.set(key, value);
+      }
+    });
+
+    return `/church/contributions?${params.toString()}`;
+  };
 
   const downloadReport = async (format: 'csv' | 'pdf') => {
     try {
@@ -212,17 +232,40 @@ export default function ChurchReports() {
         <div className="space-y-6">
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             {[
-              ['Contribution Count', data?.totals?.contributionCount || 0],
-              ['Total Amount', `KES ${Number(data?.totals?.totalAmount || 0).toLocaleString()}`],
-              ['M-Pesa Amount', `KES ${Number(data?.totals?.mpesaAmount || 0).toLocaleString()}`],
-              ['Cash Amount', `KES ${Number(data?.totals?.cashAmount || 0).toLocaleString()}`],
-            ].map(([label, value]) => (
-              <div key={label} className="stat-card">
+              {
+                label: 'Contribution Count',
+                value: data?.totals?.contributionCount || 0,
+                to: buildLedgerPath(),
+              },
+              {
+                label: 'Total Amount',
+                value: `KES ${Number(data?.totals?.totalAmount || 0).toLocaleString()}`,
+                to: buildLedgerPath(),
+              },
+              {
+                label: 'M-Pesa Amount',
+                value: `KES ${Number(data?.totals?.mpesaAmount || 0).toLocaleString()}`,
+                to: buildLedgerPath({ channel: 'mpesa' }),
+              },
+              {
+                label: 'Cash Amount',
+                value: `KES ${Number(data?.totals?.cashAmount || 0).toLocaleString()}`,
+                to: buildLedgerPath({ channel: 'manual_cash' }),
+              },
+            ].map(({ label, value, to }) => (
+              <Link
+                key={label}
+                className="stat-card block transition hover:-translate-y-0.5 hover:bg-white/5"
+                to={to}
+              >
                 <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
                   {label}
                 </p>
                 <div className="mt-5 text-3xl font-semibold text-white">{value}</div>
-              </div>
+                <p className="mt-4 text-xs font-semibold uppercase tracking-[0.2em] text-amber-200">
+                  View transactions
+                </p>
+              </Link>
             ))}
           </div>
 
@@ -236,9 +279,17 @@ export default function ChurchReports() {
 
             <div className="mt-5 space-y-3">
               {(data?.byFundAccount || []).map((item: any) => (
-                <div
+                <Link
                   key={item.fundAccountName}
-                  className="rounded-3xl border border-white/10 bg-black/10 p-4"
+                  className="block rounded-3xl border border-white/10 bg-black/10 p-4 transition hover:-translate-y-0.5 hover:bg-white/5"
+                  to={buildLedgerPath(
+                    item.fundAccountId || item.code === 'general'
+                      ? {
+                          fundAccountId:
+                            item.fundAccountId || generalFundAccountId,
+                        }
+                      : {},
+                  )}
                 >
                   <div className="flex items-center justify-between gap-4">
                     <div>
@@ -251,7 +302,7 @@ export default function ChurchReports() {
                       KES {Number(item.totalAmount || 0).toLocaleString()}
                     </div>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           </section>
