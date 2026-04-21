@@ -237,12 +237,8 @@ export class ContributionsService {
 
     if (!fundAccount) {
       this.logger.warn(
-        `Rejected M-Pesa C2B validation for church=${church.slug} unknown fund account=${payload.billRefNumber || 'n/a'}`,
+        `Accepted M-Pesa C2B validation for church=${church.slug} unmatched account=${payload.billRefNumber || 'n/a'}; confirmation will be grouped under General.`,
       );
-      return {
-        ResultCode: 1,
-        ResultDesc: 'Unknown contribution account',
-      };
     }
 
     return {
@@ -262,7 +258,7 @@ export class ContributionsService {
       return { ResultCode: 0, ResultDesc: 'Accepted - missing TransID' };
     }
 
-    const { church, fundAccount } = await this.resolveMpesaC2BTarget(payload);
+    let { church, fundAccount } = await this.resolveMpesaC2BTarget(payload);
     if (!church) {
       this.logger.warn(
         `Ignored M-Pesa C2B confirmation ${payload.transId}; no active church matches shortcode=${payload.shortcode || 'n/a'}`,
@@ -283,31 +279,41 @@ export class ContributionsService {
       return { ResultCode: 0, ResultDesc: 'Accepted - duplicate' };
     }
 
+    const usedGeneralFallback = !fundAccount;
+    if (!fundAccount) {
+      fundAccount = await this.getOrCreateGeneralFundAccount(church.id);
+      this.logger.warn(
+        `Grouped M-Pesa C2B confirmation ${payload.transId} under General for unmatched account=${payload.billRefNumber || 'n/a'}`,
+      );
+    }
+
     const contributor = await this.findOrCreateContributor(church.id, {
       name: payload.customerName || 'M-Pesa Contributor',
       phone: payload.phoneForContributor,
     });
 
-    const fundAccountName =
-      fundAccount?.name || payload.billRefNumber || 'M-Pesa Unallocated';
     const contribution = await this.contributionRepo.save(
       this.contributionRepo.create({
         churchId: church.id,
         contributorId: contributor?.id || null,
-        fundAccountId: fundAccount?.id || null,
-        fundAccountName,
+        fundAccountId: fundAccount.id,
+        fundAccountName: fundAccount.name,
         amount: payload.amount,
         channel: ContributionChannel.MPESA,
         status: ContributionStatus.CONFIRMED,
         providerRequestId: payload.phoneForContributor ? null : payload.phone,
         paymentReference: payload.transId,
-        notes: this.buildMpesaC2BNote(payload, fundAccount),
+        notes: this.buildMpesaC2BNote(
+          payload,
+          fundAccount,
+          usedGeneralFallback,
+        ),
         receivedAt: payload.receivedAt,
       }),
     );
 
     this.logger.log(
-      `Recorded M-Pesa C2B contribution ${contribution.id} for church=${church.slug} fund=${fundAccount?.code || 'unallocated'} amount=${payload.amount} reference=${payload.transId}`,
+      `Recorded M-Pesa C2B contribution ${contribution.id} for church=${church.slug} fund=${fundAccount.code} amount=${payload.amount} reference=${payload.transId}`,
     );
     await this.sendReceipt(contribution.id);
 
@@ -324,7 +330,15 @@ export class ContributionsService {
       .orderBy('contribution.receivedAt', 'DESC')
       .addOrderBy('contribution.createdAt', 'DESC');
 
-    this.applyContributionFilters(qb, query);
+    const filterQuery = { ...query };
+    if (query.fundAccountId) {
+      const fundAccount = await this.fundAccountRepo.findOne({
+        where: { id: query.fundAccountId, churchId },
+      });
+      filterQuery.includeUnassignedFallback = fundAccount?.code === 'general';
+    }
+
+    this.applyContributionFilters(qb, filterQuery);
     return qb.getMany();
   }
 
@@ -347,9 +361,20 @@ export class ContributionsService {
 
     const byFundAccount = confirmed.reduce(
       (acc, item) => {
-        const key = item.fundAccountName;
+        const isUnassignedFallback = !item.fundAccountId;
+        const key = item.fundAccountId || 'general-fallback';
         if (!acc[key]) {
-          acc[key] = { fundAccountName: key, totalAmount: 0, count: 0 };
+          acc[key] = {
+            fundAccountId: item.fundAccountId,
+            fundAccountName: isUnassignedFallback
+              ? 'General'
+              : item.fundAccountName,
+            code:
+              item.fundAccount?.code ||
+              (isUnassignedFallback ? 'general' : null),
+            totalAmount: 0,
+            count: 0,
+          };
         }
         acc[key].totalAmount += Number(item.amount || 0);
         acc[key].count += 1;
@@ -357,7 +382,13 @@ export class ContributionsService {
       },
       {} as Record<
         string,
-        { fundAccountName: string; totalAmount: number; count: number }
+        {
+          fundAccountId: string | null;
+          fundAccountName: string;
+          code: string | null;
+          totalAmount: number;
+          count: number;
+        }
       >,
     );
 
@@ -542,6 +573,33 @@ export class ContributionsService {
     );
   }
 
+  private async getOrCreateGeneralFundAccount(churchId: string) {
+    const existing = await this.fundAccountRepo.findOne({
+      where: { churchId, code: 'general' },
+    });
+    if (existing) {
+      if (!existing.isActive) {
+        existing.isActive = true;
+        return this.fundAccountRepo.save(existing);
+      }
+      return existing;
+    }
+
+    return this.fundAccountRepo.save(
+      this.fundAccountRepo.create({
+        churchId,
+        name: 'General',
+        code: 'general',
+        description:
+          'Fallback account for C2B payments whose account reference does not match an existing fund account.',
+        displayOrder: 999,
+        isActive: true,
+        receiptTemplate:
+          'Dear {name}, we confirm receipt of KES {amount} for {account} on {date}. Ref: {reference}. Thank you.',
+      }),
+    );
+  }
+
   private resolveRecordedChannel(channel?: string) {
     return channel === ContributionChannel.MPESA
       ? ContributionChannel.MPESA
@@ -598,10 +656,14 @@ export class ContributionsService {
   private buildMpesaC2BNote(
     payload: ParsedMpesaC2BPayload,
     fundAccount: FundAccount | null,
+    usedGeneralFallback = false,
   ) {
     const pieces = [
       'M-Pesa C2B confirmation',
       payload.billRefNumber ? `account ref: ${payload.billRefNumber}` : null,
+      usedGeneralFallback && payload.billRefNumber
+        ? 'grouped under General fallback account'
+        : null,
       !fundAccount && payload.billRefNumber ? 'fund account not matched' : null,
       payload.phone && !payload.phoneForContributor
         ? `payer reference: ${payload.phone.slice(0, 12)}...`
@@ -772,9 +834,18 @@ export class ContributionsService {
     }
 
     if (query.fundAccountId) {
-      qb.andWhere('contribution.fundAccountId = :fundAccountId', {
-        fundAccountId: query.fundAccountId,
-      });
+      if (query.includeUnassignedFallback) {
+        qb.andWhere(
+          '(contribution.fundAccountId = :fundAccountId OR contribution.fundAccountId IS NULL)',
+          {
+            fundAccountId: query.fundAccountId,
+          },
+        );
+      } else {
+        qb.andWhere('contribution.fundAccountId = :fundAccountId', {
+          fundAccountId: query.fundAccountId,
+        });
+      }
     }
 
     if (query.channel) {

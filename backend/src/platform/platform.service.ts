@@ -457,6 +457,12 @@ export class PlatformService {
         code: 'harambee',
         description: 'Special fundraising support',
       },
+      {
+        name: 'General',
+        code: 'general',
+        description:
+          'Fallback account for payments whose account reference does not match a configured fund account.',
+      },
     ];
 
     for (let index = 0; index < templates.length; index += 1) {

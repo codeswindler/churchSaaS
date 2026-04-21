@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronUp, Filter, Search, WalletCards, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
+import { useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
 
 const initialManualForm = {
@@ -18,18 +19,37 @@ type ManualFormState = typeof initialManualForm;
 
 export default function ChurchContributions() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
-  const [filters, setFilters] = useState({
+  const readFiltersFromSearch = () => ({
+    from: searchParams.get('from') || '',
+    to: searchParams.get('to') || '',
+    fundAccountId: searchParams.get('fundAccountId') || '',
+    channel: searchParams.get('channel') || '',
+    status: searchParams.get('status') || '',
+    contributor: searchParams.get('contributor') || '',
+  });
+  const [filters, setFilters] = useState(readFiltersFromSearch);
+  const [isManualEntryOpen, setIsManualEntryOpen] = useState(false);
+  const [manualForm, setManualForm] = useState(initialManualForm);
+  const contributorNameRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const nextFilters = readFiltersFromSearch();
+    setFilters(nextFilters);
+    if (Object.values(nextFilters).some(Boolean)) {
+      setIsFiltersOpen(true);
+    }
+  }, [searchParams]);
+
+  const defaultFilters = {
     from: '',
     to: '',
     fundAccountId: '',
     channel: '',
     status: '',
     contributor: '',
-  });
-  const [isManualEntryOpen, setIsManualEntryOpen] = useState(false);
-  const [manualForm, setManualForm] = useState(initialManualForm);
-  const contributorNameRef = useRef<HTMLInputElement | null>(null);
+  };
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
@@ -187,15 +207,29 @@ export default function ChurchContributions() {
               ) : null}
             </div>
 
-            <button
-              aria-expanded={isFiltersOpen}
-              className="btn-secondary px-3 py-2 xl:hidden"
-              type="button"
-              onClick={() => setIsFiltersOpen((current) => !current)}
-            >
-              {isFiltersOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-              {isFiltersOpen ? 'Hide' : 'Show'}
-            </button>
+            <div className="flex items-center gap-2">
+              {activeFilterCount > 0 ? (
+                <button
+                  className="btn-secondary px-3 py-2"
+                  type="button"
+                  onClick={() => {
+                    setSearchParams({});
+                    setFilters(defaultFilters);
+                  }}
+                >
+                  Clear
+                </button>
+              ) : null}
+              <button
+                aria-expanded={isFiltersOpen}
+                className="btn-secondary px-3 py-2 xl:hidden"
+                type="button"
+                onClick={() => setIsFiltersOpen((current) => !current)}
+              >
+                {isFiltersOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                {isFiltersOpen ? 'Hide' : 'Show'}
+              </button>
+            </div>
           </div>
 
           <div
@@ -314,7 +348,7 @@ export default function ChurchContributions() {
                         {item.contributor?.phone || '-'}
                       </div>
                     </td>
-                    <td>{item.fundAccountName}</td>
+                    <td>{item.fundAccountId ? item.fundAccountName : 'General'}</td>
                     <td>{item.channel === 'manual_cash' ? 'Cash' : 'M-Pesa'}</td>
                     <td>{item.status}</td>
                     <td>KES {Number(item.amount || 0).toLocaleString()}</td>

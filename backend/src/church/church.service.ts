@@ -38,10 +38,48 @@ export class ChurchService {
       this.listFundAccounts(churchId),
     ]);
 
+    const contributionTotalsByFundId = new Map(
+      (reportSummary.byFundAccount || [])
+        .filter((item: any) => item.fundAccountId)
+        .map((item: any) => [item.fundAccountId, item]),
+    );
+    const legacyGeneralTotals = (reportSummary.byFundAccount || [])
+      .filter((item: any) => item.code === 'general' && !item.fundAccountId)
+      .reduce(
+        (totals: { totalAmount: number; count: number }, item: any) => ({
+          totalAmount: totals.totalAmount + Number(item.totalAmount || 0),
+          count: totals.count + Number(item.count || 0),
+        }),
+        { totalAmount: 0, count: 0 },
+      );
+    const accountKpis = fundAccounts
+      .filter((item) => item.isActive)
+      .map((account) => {
+        const contributionTotals = contributionTotalsByFundId.get(account.id);
+        const fallbackTotals =
+          account.code === 'general'
+            ? legacyGeneralTotals
+            : { totalAmount: 0, count: 0 };
+        return {
+          fundAccountId: account.id,
+          fundAccountName: account.name,
+          code: account.code,
+          isActive: account.isActive,
+          totalAmount:
+            Number(contributionTotals?.totalAmount || 0) +
+            fallbackTotals.totalAmount,
+          count:
+            Number(contributionTotals?.count || 0) + fallbackTotals.count,
+        };
+      });
+
     return {
       church: sanitizeChurchForTenant(church),
       subscription,
-      reportSummary,
+      reportSummary: {
+        ...reportSummary,
+        accountKpis,
+      },
       activeFundAccounts: fundAccounts.filter((item) => item.isActive).length,
     };
   }
@@ -53,6 +91,7 @@ export class ChurchService {
   }
 
   async listFundAccounts(churchId: string) {
+    await this.ensureGeneralFundAccount(churchId);
     return this.fundAccountRepo.find({
       where: { churchId },
       order: { displayOrder: 'ASC', createdAt: 'ASC' },
@@ -229,6 +268,30 @@ export class ChurchService {
 
   async getReportSummary(churchId: string, query: any) {
     return this.contributionsService.getChurchReportSummary(churchId, query);
+  }
+
+  private async ensureGeneralFundAccount(churchId: string) {
+    const existing = await this.fundAccountRepo.findOne({
+      where: { churchId, code: 'general' },
+    });
+
+    if (existing) {
+      return existing;
+    }
+
+    return this.fundAccountRepo.save(
+      this.fundAccountRepo.create({
+        churchId,
+        name: 'General',
+        code: 'general',
+        description:
+          'Fallback account for payments whose account reference does not match a configured fund account.',
+        isActive: true,
+        displayOrder: 999,
+        receiptTemplate:
+          'Dear {name}, we confirm receipt of KES {amount} for {account} on {date}. Ref: {reference}. Thank you.',
+      }),
+    );
   }
 
   private slugify(value: string) {

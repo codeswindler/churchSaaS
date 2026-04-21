@@ -56,6 +56,11 @@ export default function ChurchFundAccounts() {
         <h3 className="mt-2 text-2xl font-semibold text-white">
           {editingId ? 'Edit contribution account' : 'Create contribution account'}
         </h3>
+        <p className="mt-3 max-w-2xl text-sm text-stone-300">
+          Each account controls its own receipt wording. The system also keeps a
+          General account for payments whose M-Pesa account reference does not
+          match an existing fund account.
+        </p>
 
         <form
           className="mt-6 space-y-4"
@@ -89,10 +94,22 @@ export default function ChurchFundAccounts() {
             </div>
           ))}
 
-          <div>
-            <label className="label">Receipt template</label>
+          <section className="rounded-3xl border border-white/10 bg-black/10 p-5">
+            <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+              Receipt Template
+            </p>
+            <h4 className="mt-2 text-lg font-semibold text-white">
+              Personalized confirmation message
+            </h4>
+            <p className="mt-2 text-sm text-stone-300">
+              Use placeholders like <code>{'{name}'}</code>,{' '}
+              <code>{'{amount}'}</code>, <code>{'{account}'}</code>,{' '}
+              <code>{'{date}'}</code>, and <code>{'{reference}'}</code>. The
+              General account template is used when a payer enters an account
+              reference that does not exist.
+            </p>
             <textarea
-              className="input min-h-40"
+              className="input mt-4 min-h-44"
               value={form.receiptTemplate}
               onChange={(event) =>
                 setForm((current: any) => ({
@@ -101,7 +118,7 @@ export default function ChurchFundAccounts() {
                 }))
               }
             />
-          </div>
+          </section>
 
           <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-sm text-stone-100">
             <input
@@ -145,6 +162,10 @@ export default function ChurchFundAccounts() {
           <h3 className="mt-2 text-2xl font-semibold text-white">
             Fund account list
           </h3>
+          <div className="mt-4 rounded-3xl border border-amber-200/15 bg-amber-200/10 p-4 text-sm text-amber-50">
+            Edit <span className="font-semibold">General</span> to control the
+            fallback receipt message for unmatched M-Pesa account references.
+          </div>
         </div>
 
         {isLoading ? (

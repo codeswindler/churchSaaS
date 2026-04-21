@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { CountdownBadge } from '../../components/CountdownBadge';
 import api from '../../services/api';
 
@@ -14,25 +15,43 @@ export default function ChurchDashboard() {
   }
 
   const totals = data?.reportSummary?.totals || {};
+  const overviewKpis = [
+    {
+      label: 'Confirmed Contributions',
+      value: totals.contributionCount || 0,
+      to: '/church/contributions?status=confirmed',
+    },
+    {
+      label: 'Total Collections',
+      value: `KES ${Number(totals.totalAmount || 0).toLocaleString()}`,
+      to: '/church/contributions?status=confirmed',
+    },
+    {
+      label: 'M-Pesa Collections',
+      value: `KES ${Number(totals.mpesaAmount || 0).toLocaleString()}`,
+      to: '/church/contributions?channel=mpesa&status=confirmed',
+    },
+    {
+      label: 'Cash Collections',
+      value: `KES ${Number(totals.cashAmount || 0).toLocaleString()}`,
+      to: '/church/contributions?channel=manual_cash&status=confirmed',
+    },
+  ];
+  const accountKpis = data?.reportSummary?.accountKpis || [];
 
   return (
     <div className="space-y-6">
       <div className="overview-stat-grid">
-        {[
-          ['Confirmed Contributions', totals.contributionCount || 0],
-          [
-            'Total Collections',
-            `KES ${Number(totals.totalAmount || 0).toLocaleString()}`,
-          ],
-          ['M-Pesa Collections', `KES ${Number(totals.mpesaAmount || 0).toLocaleString()}`],
-          ['Cash Collections', `KES ${Number(totals.cashAmount || 0).toLocaleString()}`],
-        ].map(([label, value]) => (
-          <div key={label} className="stat-card">
+        {overviewKpis.map(({ label, value, to }) => (
+          <Link key={label} className="stat-card block hover:bg-white/5" to={to}>
             <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
               {label}
             </p>
             <div className="mt-5 text-3xl font-semibold text-white">{value}</div>
-          </div>
+            <p className="mt-4 text-xs font-semibold uppercase tracking-[0.2em] text-amber-200">
+              Open ledger
+            </p>
+          </Link>
         ))}
       </div>
 
@@ -53,11 +72,16 @@ export default function ChurchDashboard() {
             <h3 className="mt-2 text-2xl font-semibold text-white">
               Contributions by account
             </h3>
-            <div className="mt-5 space-y-3">
-              {(data.reportSummary?.byFundAccount || []).map((item: any) => (
-                <div
-                  key={item.fundAccountName}
-                  className="rounded-3xl border border-white/10 bg-black/10 p-4"
+            <p className="mt-2 text-sm text-stone-300">
+              Every active fund account appears here. Open any card to inspect
+              its ledger entries.
+            </p>
+            <div className="mt-5 grid gap-3 2xl:grid-cols-2">
+              {accountKpis.map((item: any) => (
+                <Link
+                  key={item.fundAccountId}
+                  className="rounded-3xl border border-white/10 bg-black/10 p-4 transition hover:-translate-y-0.5 hover:bg-white/5"
+                  to={`/church/contributions?fundAccountId=${item.fundAccountId}&status=confirmed`}
                 >
                   <div className="flex items-center justify-between gap-4">
                     <div>
@@ -72,8 +96,13 @@ export default function ChurchDashboard() {
                       KES {Number(item.totalAmount || 0).toLocaleString()}
                     </div>
                   </div>
-                </div>
+                </Link>
               ))}
+              {accountKpis.length === 0 ? (
+                <div className="rounded-3xl border border-white/10 bg-black/10 p-4 text-sm text-stone-300">
+                  No active fund accounts yet.
+                </div>
+              ) : null}
             </div>
           </div>
         </section>
@@ -109,7 +138,7 @@ export default function ChurchDashboard() {
                         {item.contributor?.phone || '-'}
                       </div>
                     </td>
-                    <td>{item.fundAccountName}</td>
+                    <td>{item.fundAccountId ? item.fundAccountName : 'General'}</td>
                     <td>{item.channel}</td>
                     <td>KES {Number(item.amount || 0).toLocaleString()}</td>
                     <td>{item.status}</td>
