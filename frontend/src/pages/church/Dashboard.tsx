@@ -10,14 +10,18 @@ const initialDashboardFilters = {
   fundAccountId: '',
 };
 
-const chartPalette = [
+const trendColor = '#34d399';
+const fundSplitPalette = [
   '#34d399',
-  '#22c55e',
-  '#86efac',
-  '#14b8a6',
-  '#a3e635',
-  '#4ade80',
-  '#10b981',
+  '#60a5fa',
+  '#f59e0b',
+  '#f472b6',
+  '#a78bfa',
+  '#22d3ee',
+  '#fb7185',
+  '#84cc16',
+  '#f97316',
+  '#c084fc',
 ];
 
 type DashboardFilters = typeof initialDashboardFilters;
@@ -78,8 +82,8 @@ function TrendChart({ data }: { data: any[] }) {
       >
         <defs>
           <linearGradient id="trendFill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#34d399" stopOpacity="0.36" />
-            <stop offset="100%" stopColor="#34d399" stopOpacity="0.03" />
+            <stop offset="0%" stopColor={trendColor} stopOpacity="0.36" />
+            <stop offset="100%" stopColor={trendColor} stopOpacity="0.03" />
           </linearGradient>
         </defs>
         {[0, 1, 2, 3].map((line) => {
@@ -100,7 +104,7 @@ function TrendChart({ data }: { data: any[] }) {
         <polyline
           fill="none"
           points={points}
-          stroke="#34d399"
+          stroke={trendColor}
           strokeLinecap="round"
           strokeLinejoin="round"
           strokeWidth="4"
@@ -112,7 +116,7 @@ function TrendChart({ data }: { data: any[] }) {
             cy={yFor(Number(item.totalAmount || 0))}
             fill="#0f172a"
             r="6"
-            stroke="#34d399"
+            stroke={trendColor}
             strokeWidth="3"
           />
         ))}
@@ -155,7 +159,7 @@ function FundSplitChart({
       const start = cursor;
       const size = (Number(item.totalAmount || 0) / total) * 100;
       cursor += size;
-      return `${chartPalette[index % chartPalette.length]} ${start}% ${cursor}%`;
+      return `${fundSplitPalette[index % fundSplitPalette.length]} ${start}% ${cursor}%`;
     })
     .join(', ');
 
@@ -180,7 +184,8 @@ function FundSplitChart({
                 <span
                   className="h-3 w-3 shrink-0 rounded-full"
                   style={{
-                    background: chartPalette[index % chartPalette.length],
+                    background:
+                      fundSplitPalette[index % fundSplitPalette.length],
                   }}
                 />
                 <div className="min-w-0">
