@@ -285,7 +285,7 @@ export class ContributionsService {
 
     const contributor = await this.findOrCreateContributor(church.id, {
       name: payload.customerName || 'M-Pesa Contributor',
-      phone: payload.phone,
+      phone: payload.phoneForContributor,
     });
 
     const fundAccountName =
@@ -549,6 +549,9 @@ export class ContributionsService {
 
   private parseMpesaC2BPayload(body: any): ParsedMpesaC2BPayload {
     const transTime = this.normalizeOptionalText(body?.TransTime);
+    const rawPhone = this.normalizeOptionalText(
+      body?.MSISDN || body?.PhoneNumber || body?.phone,
+    );
     const customerName = [body?.FirstName, body?.MiddleName, body?.LastName]
       .map((item) => this.normalizeOptionalText(item))
       .filter(Boolean)
@@ -566,9 +569,8 @@ export class ContributionsService {
       billRefNumber: this.normalizeOptionalText(
         body?.BillRefNumber || body?.AccountReference || body?.accountReference,
       ),
-      phone: this.normalizeOptionalText(
-        body?.MSISDN || body?.PhoneNumber || body?.phone,
-      ),
+      phone: rawPhone,
+      phoneForContributor: this.extractKenyanPhone(rawPhone),
       customerName: customerName || null,
       invoiceNumber: this.normalizeOptionalText(body?.InvoiceNumber),
       orgAccountBalance: this.normalizeOptionalText(body?.OrgAccountBalance),
@@ -600,6 +602,9 @@ export class ContributionsService {
       'M-Pesa C2B confirmation',
       payload.billRefNumber ? `account ref: ${payload.billRefNumber}` : null,
       !fundAccount && payload.billRefNumber ? 'fund account not matched' : null,
+      payload.phone && !payload.phoneForContributor
+        ? `payer reference: ${payload.phone.slice(0, 12)}...`
+        : null,
       payload.invoiceNumber ? `invoice: ${payload.invoiceNumber}` : null,
       payload.thirdPartyTransId
         ? `third party ref: ${payload.thirdPartyTransId}`
@@ -612,6 +617,25 @@ export class ContributionsService {
   private normalizeOptionalText(value: any) {
     const normalized = `${value ?? ''}`.trim();
     return normalized.length > 0 ? normalized : null;
+  }
+
+  private extractKenyanPhone(value?: string | null) {
+    if (!value) {
+      return null;
+    }
+
+    const digits = value.replace(/\D/g, '');
+    if (digits.length === 10 && digits.startsWith('0')) {
+      return `254${digits.slice(1)}`;
+    }
+    if (digits.length === 12 && digits.startsWith('254')) {
+      return digits;
+    }
+    if (digits.length === 9 && /^[17]\d{8}$/.test(digits)) {
+      return `254${digits}`;
+    }
+
+    return null;
   }
 
   private normalizeComparisonText(value: string) {
@@ -827,6 +851,7 @@ interface ParsedMpesaC2BPayload {
   shortcode: string | null;
   billRefNumber: string | null;
   phone: string | null;
+  phoneForContributor: string | null;
   customerName: string | null;
   invoiceNumber: string | null;
   orgAccountBalance: string | null;
