@@ -9,6 +9,7 @@ import ChurchReports from './pages/church/Reports';
 import ChurchUsers from './pages/church/Users';
 import PlatformChurches from './pages/platform/Churches';
 import PlatformDashboard from './pages/platform/Dashboard';
+import PlatformEnquiries from './pages/platform/Enquiries';
 import PlatformUsers from './pages/platform/Users';
 import PublicGive from './pages/public/Give';
 import { getPortalPath, getSession } from './services/api';
@@ -40,6 +41,7 @@ export default function App() {
       >
         <Route path="dashboard" element={<PlatformDashboard />} />
         <Route path="churches" element={<PlatformChurches />} />
+        <Route path="enquiries" element={<PlatformEnquiries />} />
         <Route path="users" element={<PlatformUsers />} />
         <Route index element={<Navigate to="/platform/dashboard" replace />} />
       </Route>

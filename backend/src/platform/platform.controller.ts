@@ -50,6 +50,11 @@ export class PlatformController {
     return this.platformService.listPlatformUsers();
   }
 
+  @Get('enquiries')
+  listClientEnquiries() {
+    return this.platformService.listClientEnquiries();
+  }
+
   @Post('users')
   createPlatformUser(@Body() body: any) {
     return this.platformService.createPlatformUser(body);

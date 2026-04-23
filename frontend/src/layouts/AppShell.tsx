@@ -7,6 +7,7 @@ import {
   Landmark,
   LogOut,
   Menu,
+  MessageSquareText,
   Moon,
   Palette,
   ShieldCheck,
@@ -17,6 +18,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { BrandLogo } from '../components/BrandLogo';
 import { CountdownBadge } from '../components/CountdownBadge';
 import api, {
   clearSession,
@@ -34,6 +36,7 @@ const COLOR_MODE_STORAGE_KEY = 'church_saas_color_mode';
 const platformLinks = [
   { to: '/platform/dashboard', label: 'Overview', icon: Landmark },
   { to: '/platform/churches', label: 'Churches', icon: Building2 },
+  { to: '/platform/enquiries', label: 'Enquiries', icon: MessageSquareText },
   { to: '/platform/users', label: 'Platform Users', icon: Users },
 ];
 
@@ -60,6 +63,11 @@ const pageMeta = {
       variant: 'hero',
     },
     { prefix: '/platform/churches', title: 'Churches', variant: 'compact' },
+    {
+      prefix: '/platform/enquiries',
+      title: 'Enquiries',
+      variant: 'compact',
+    },
     {
       prefix: '/platform/users',
       title: 'Platform users',
@@ -249,9 +257,12 @@ export function AppShell({ userType }: AppShellProps) {
   const sidebarIntro = (
     <div className="space-y-4">
       <div className="sidebar-header-row">
-        <p className="text-xs uppercase tracking-[0.3em] text-amber-200/70">
-          {userType === 'platform' ? 'Platform Admin' : 'Church Console'}
-        </p>
+        <div className="flex items-center gap-3">
+          <BrandLogo size="sm" />
+          <p className="text-xs uppercase tracking-[0.3em] text-amber-200/70">
+            {userType === 'platform' ? 'Platform Admin' : 'Church Console'}
+          </p>
+        </div>
         <div className="sidebar-header-actions">
           <button
             aria-label={`Change theme. Current theme is ${activeThemeLabel}`}
@@ -362,6 +373,8 @@ export function AppShell({ userType }: AppShellProps) {
             >
               <Menu size={18} />
             </button>
+
+            <BrandLogo size="sm" className="rounded-2xl" />
 
             <div className="min-w-0 flex-1">
               <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-stone-400">

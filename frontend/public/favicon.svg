@@ -1,73 +1,61 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
-  <rect width="128" height="128" fill="#F6F1E5"/>
-  <path d="M18 99h92" stroke="#215F93" stroke-opacity=".14" stroke-width="8" stroke-linecap="round"/>
-  <path d="M23 108h84" stroke="#215F93" stroke-opacity=".1" stroke-width="8" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none">
+  <path d="M18 45 25 41v22l-7 4V45Z" fill="url(#towerLeftSide)" />
+  <path d="M25 41 35 45v22l-10-4V41Z" fill="url(#towerLeftFront)" />
+  <path d="M26.5 36 34 38.8v5.5L26.5 41.4V36Z" fill="#79BDF0" />
 
-  <path d="M31 53 42 47v33l-11 6V53Z" fill="url(#towerLeftSide)"/>
-  <path d="M42 47 58 53v33l-16-6V47Z" fill="url(#towerLeftFront)"/>
-  <path d="M44 40 56 44v8l-12-4v-8Z" fill="#76B9E8"/>
+  <path d="M33 31 41 27v34l-8 4.5V31Z" fill="url(#towerMidSide)" />
+  <path d="M41 27 52 31.5v34L41 61V27Z" fill="url(#towerMidFront)" />
+  <path d="M42.5 22 50.5 25.2v6.1l-8-3.2V22Z" fill="#61AFE4" />
 
-  <path d="M52 34 65 28v51l-13 7V34Z" fill="url(#towerMidSide)"/>
-  <path d="M65 28 82 35v51l-17-7V28Z" fill="url(#towerMidFront)"/>
-  <path d="M67 20 80 25v9l-13-5v-9Z" fill="#5AA7DB"/>
-
-  <path d="M74 24 87 18v57l-13 7V24Z" fill="url(#towerRightSide)"/>
-  <path d="M87 18 104 26v56l-17-7V18Z" fill="url(#towerRightFront)"/>
-  <path d="M89 10 102 16v9l-13-5v-10Z" fill="#458DCA"/>
+  <path d="M47 24 55 20v37l-8 4.5V24Z" fill="url(#towerRightSide)" />
+  <path d="M55 20 66 25v36l-11-4.5V20Z" fill="url(#towerRightFront)" />
+  <path d="M56.5 13 64.5 16.5v6.1l-8-3.3V13Z" fill="#4D98D6" />
 
   <path
-    d="M22 83 45 67l16 12 20-18 11 7"
-    stroke="#4A97D0"
-    stroke-width="7"
+    d="M11 60 25 50l10 8 15-13 8 5"
+    stroke="#4DA0D9"
+    stroke-width="5"
     stroke-linecap="round"
     stroke-linejoin="round"
   />
   <path
-    d="M18 79 41 63l16 12 22-20 18 12"
-    stroke="#1D649B"
-    stroke-width="9"
+    d="M9 57 23 47l10 8 17-15 12 8"
+    stroke="#165C93"
+    stroke-width="6.5"
     stroke-linecap="round"
     stroke-linejoin="round"
   />
   <path
-    d="M83 38h19v19"
-    stroke="#1D649B"
-    stroke-width="9"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  />
-  <path
-    d="M63 92 84 73l14 9"
-    stroke="#1D649B"
-    stroke-opacity=".18"
-    stroke-width="7"
+    d="M51 33h15v15"
+    stroke="#165C93"
+    stroke-width="6.5"
     stroke-linecap="round"
     stroke-linejoin="round"
   />
   <defs>
-    <linearGradient id="towerLeftSide" x1="31" x2="42" y1="47" y2="86" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#4B93CF"/>
-      <stop offset="1" stop-color="#1A5789"/>
+    <linearGradient id="towerLeftSide" x1="18" x2="25" y1="41" y2="67" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4D99D7" />
+      <stop offset="1" stop-color="#1B5B8F" />
     </linearGradient>
-    <linearGradient id="towerLeftFront" x1="42" x2="58" y1="47" y2="86" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#76B9E8"/>
-      <stop offset="1" stop-color="#2E77B2"/>
+    <linearGradient id="towerLeftFront" x1="25" x2="35" y1="41" y2="67" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7BC0F1" />
+      <stop offset="1" stop-color="#2F7AB7" />
     </linearGradient>
-    <linearGradient id="towerMidSide" x1="52" x2="65" y1="28" y2="86" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#397EBB"/>
-      <stop offset="1" stop-color="#154E7D"/>
+    <linearGradient id="towerMidSide" x1="33" x2="41" y1="27" y2="65.5" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3E84C1" />
+      <stop offset="1" stop-color="#16527F" />
     </linearGradient>
-    <linearGradient id="towerMidFront" x1="65" x2="82" y1="28" y2="86" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#5CA8DC"/>
-      <stop offset="1" stop-color="#236CA6"/>
+    <linearGradient id="towerMidFront" x1="41" x2="52" y1="27" y2="65.5" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#62B0E6" />
+      <stop offset="1" stop-color="#246EA7" />
     </linearGradient>
-    <linearGradient id="towerRightSide" x1="74" x2="87" y1="18" y2="82" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#2E70A8"/>
-      <stop offset="1" stop-color="#103F66"/>
+    <linearGradient id="towerRightSide" x1="47" x2="55" y1="20" y2="61.5" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2D74AE" />
+      <stop offset="1" stop-color="#12496F" />
     </linearGradient>
-    <linearGradient id="towerRightFront" x1="87" x2="104" y1="18" y2="82" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#4E99D3"/>
-      <stop offset="1" stop-color="#1B5D8F"/>
+    <linearGradient id="towerRightFront" x1="55" x2="66" y1="20" y2="61" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4E9DD8" />
+      <stop offset="1" stop-color="#1C5E8F" />
     </linearGradient>
   </defs>
 </svg>

@@ -8,6 +8,7 @@ import {
   MessageSquareText,
   PencilLine,
   RotateCcw,
+  ShieldAlert,
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -59,6 +60,24 @@ function createInitialForm() {
 }
 
 type ChurchFormState = ReturnType<typeof createInitialForm>;
+type SubscriptionActionEndpoint =
+  | 'add-days'
+  | 'subtract-days'
+  | 'reactivate'
+  | 'suspend';
+
+interface SubscriptionActionDialogState {
+  churchId: string;
+  churchName: string;
+  endpoint: SubscriptionActionEndpoint;
+  title: string;
+  description: string;
+  confirmLabel: string;
+  days: number;
+  reason: string;
+  requiresDays: boolean;
+  tone: 'primary' | 'danger';
+}
 
 export default function PlatformChurches() {
   const queryClient = useQueryClient();
@@ -69,6 +88,9 @@ export default function PlatformChurches() {
   const [editingChurchId, setEditingChurchId] = useState<string | null>(null);
   const [selectedChurchId, setSelectedChurchId] = useState<string | null>(null);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const subscriptionDaysInputRef = useRef<HTMLInputElement | null>(null);
+  const [subscriptionDialog, setSubscriptionDialog] =
+    useState<SubscriptionActionDialogState | null>(null);
 
   const { data: churches, isLoading } = useQuery({
     queryKey: ['platform-churches'],
@@ -147,6 +169,7 @@ export default function PlatformChurches() {
     },
     onSuccess: () => {
       toast.success('Subscription updated');
+      setSubscriptionDialog(null);
       queryClient.invalidateQueries({ queryKey: ['platform-churches'] });
       queryClient.invalidateQueries({ queryKey: ['platform-dashboard'] });
       if (selectedChurchId) {
@@ -193,6 +216,34 @@ export default function PlatformChurches() {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isChurchModalOpen, isLoadingChurchDetails, isModalBusy]);
+
+  useEffect(() => {
+    if (!subscriptionDialog) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const focusTimer = window.requestAnimationFrame(() => {
+      subscriptionDaysInputRef.current?.focus();
+      subscriptionDaysInputRef.current?.select();
+    });
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !actionMutation.isPending) {
+        setSubscriptionDialog(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.cancelAnimationFrame(focusTimer);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [subscriptionDialog, actionMutation.isPending]);
 
   const updateForm = <K extends keyof ChurchFormState>(
     key: K,
@@ -267,23 +318,102 @@ export default function PlatformChurches() {
     setForm(createInitialForm());
   };
 
-  const runDaysAction = (
+  const openSubscriptionDialog = (
     churchId: string,
-    endpoint: string,
+    churchName: string,
+    endpoint: SubscriptionActionEndpoint,
     fallbackDays: number,
   ) => {
-    const value = window.prompt('How many days?', `${fallbackDays}`);
-    if (!value) {
-      return;
-    }
-    const reason = window.prompt(
-      'Reason for this change?',
-      'Subscription update',
-    );
-    actionMutation.mutate({
+    const actionConfig: Record<
+      SubscriptionActionEndpoint,
+      Pick<
+        SubscriptionActionDialogState,
+        'title' | 'description' | 'confirmLabel' | 'requiresDays' | 'tone'
+      >
+    > = {
+      'add-days': {
+        title: 'Extend church access',
+        description:
+          'Add subscription days to keep this church active and extend its operating window.',
+        confirmLabel: 'Add days',
+        requiresDays: true,
+        tone: 'primary',
+      },
+      'subtract-days': {
+        title: 'Reduce subscription days',
+        description:
+          'Remove days from the current subscription while keeping the audit trail intact.',
+        confirmLabel: 'Subtract days',
+        requiresDays: true,
+        tone: 'primary',
+      },
+      reactivate: {
+        title: 'Reactivate church subscription',
+        description:
+          'Restore church access and set a fresh subscription window for the tenant.',
+        confirmLabel: 'Reactivate church',
+        requiresDays: true,
+        tone: 'primary',
+      },
+      suspend: {
+        title: 'Suspend church access',
+        description:
+          'Suspend access immediately while preserving historical records and reporting.',
+        confirmLabel: 'Suspend church',
+        requiresDays: false,
+        tone: 'danger',
+      },
+    };
+
+    const config = actionConfig[endpoint];
+
+    setSubscriptionDialog({
       churchId,
       endpoint,
-      payload: { days: Number(value), reason: reason || undefined },
+      churchName,
+      title: config.title,
+      description: config.description,
+      confirmLabel: config.confirmLabel,
+      days: fallbackDays,
+      reason:
+        endpoint === 'suspend' ? 'Suspended by admin' : 'Subscription update',
+      requiresDays: config.requiresDays,
+      tone: config.tone,
+    });
+  };
+
+  const closeSubscriptionDialog = () => {
+    if (actionMutation.isPending) {
+      return;
+    }
+
+    setSubscriptionDialog(null);
+  };
+
+  const submitSubscriptionDialog = () => {
+    if (!subscriptionDialog) {
+      return;
+    }
+
+    if (
+      subscriptionDialog.requiresDays &&
+      (!Number.isFinite(subscriptionDialog.days) || subscriptionDialog.days <= 0)
+    ) {
+      toast.error('Enter a valid number of days');
+      return;
+    }
+
+    actionMutation.mutate({
+      churchId: subscriptionDialog.churchId,
+      endpoint: subscriptionDialog.endpoint,
+      payload: subscriptionDialog.requiresDays
+        ? {
+            days: Number(subscriptionDialog.days),
+            reason: subscriptionDialog.reason || undefined,
+          }
+        : {
+            reason: subscriptionDialog.reason || undefined,
+          },
     });
   };
 
@@ -442,7 +572,12 @@ export default function PlatformChurches() {
                           className="btn-secondary px-3 py-2"
                           type="button"
                           onClick={() =>
-                            runDaysAction(church.id, 'add-days', 30)
+                            openSubscriptionDialog(
+                              church.id,
+                              church.name,
+                              'add-days',
+                              30,
+                            )
                           }
                         >
                           <CirclePlus size={14} />
@@ -452,7 +587,12 @@ export default function PlatformChurches() {
                           className="btn-secondary px-3 py-2"
                           type="button"
                           onClick={() =>
-                            runDaysAction(church.id, 'subtract-days', 7)
+                            openSubscriptionDialog(
+                              church.id,
+                              church.name,
+                              'subtract-days',
+                              7,
+                            )
                           }
                         >
                           <CircleMinus size={14} />
@@ -462,11 +602,12 @@ export default function PlatformChurches() {
                           className="btn-danger px-3 py-2"
                           type="button"
                           onClick={() =>
-                            actionMutation.mutate({
-                              churchId: church.id,
-                              endpoint: 'suspend',
-                              payload: { reason: 'Suspended by admin' },
-                            })
+                            openSubscriptionDialog(
+                              church.id,
+                              church.name,
+                              'suspend',
+                              0,
+                            )
                           }
                         >
                           Suspend
@@ -475,7 +616,12 @@ export default function PlatformChurches() {
                           className="btn-secondary px-3 py-2"
                           type="button"
                           onClick={() =>
-                            runDaysAction(church.id, 'reactivate', 30)
+                            openSubscriptionDialog(
+                              church.id,
+                              church.name,
+                              'reactivate',
+                              30,
+                            )
                           }
                         >
                           <RotateCcw size={14} />
@@ -773,6 +919,140 @@ export default function PlatformChurches() {
                   </div>
                 </form>
               )}
+            </section>
+          </div>
+        </div>
+      ) : null}
+
+      {subscriptionDialog ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={closeSubscriptionDialog}
+        >
+          <div className="modal-shell">
+            <section
+              aria-labelledby="subscription-action-title"
+              aria-modal="true"
+              className="panel modal-card max-w-2xl p-6 sm:p-7"
+              role="dialog"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-4">
+                  <div
+                    className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border ${
+                      subscriptionDialog.tone === 'danger'
+                        ? 'border-rose-300/20 bg-rose-500/10 text-rose-100'
+                        : 'border-amber-200/20 bg-amber-200/10 text-amber-100'
+                    }`}
+                  >
+                    {subscriptionDialog.tone === 'danger' ? (
+                      <ShieldAlert size={20} />
+                    ) : subscriptionDialog.endpoint === 'reactivate' ? (
+                      <RotateCcw size={20} />
+                    ) : subscriptionDialog.endpoint === 'subtract-days' ? (
+                      <CircleMinus size={20} />
+                    ) : (
+                      <CirclePlus size={20} />
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+                      Subscription action
+                    </p>
+                    <h3
+                      id="subscription-action-title"
+                      className="mt-2 text-2xl font-semibold text-white"
+                    >
+                      {subscriptionDialog.title}
+                    </h3>
+                    <p className="mt-2 text-sm leading-6 text-stone-300">
+                      {subscriptionDialog.description}
+                    </p>
+                    <div className="mt-4 inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-stone-200">
+                      {subscriptionDialog.churchName}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  aria-label="Close subscription action"
+                  className="btn-secondary px-3 py-2"
+                  type="button"
+                  onClick={closeSubscriptionDialog}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="mt-6 space-y-5">
+                {subscriptionDialog.requiresDays ? (
+                  <div className="rounded-3xl border border-white/10 bg-black/10 p-5">
+                    <label className="label">Subscription days</label>
+                    <input
+                      ref={subscriptionDaysInputRef}
+                      className="input"
+                      min={1}
+                      type="number"
+                      value={subscriptionDialog.days}
+                      onChange={(event) =>
+                        setSubscriptionDialog((current) =>
+                          current
+                            ? {
+                                ...current,
+                                days: Number(event.target.value || 0),
+                              }
+                            : current,
+                        )
+                      }
+                    />
+                  </div>
+                ) : null}
+
+                <div className="rounded-3xl border border-white/10 bg-black/10 p-5">
+                  <label className="label">Reason</label>
+                  <textarea
+                    className="input min-h-28 resize-y"
+                    value={subscriptionDialog.reason}
+                    onChange={(event) =>
+                      setSubscriptionDialog((current) =>
+                        current
+                          ? {
+                              ...current,
+                              reason: event.target.value,
+                            }
+                          : current,
+                      )
+                    }
+                    placeholder="Add an internal note for this subscription change"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <button
+                    className="btn-secondary flex-1 justify-center"
+                    type="button"
+                    onClick={closeSubscriptionDialog}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className={`flex-1 justify-center ${
+                      subscriptionDialog.tone === 'danger'
+                        ? 'btn-danger'
+                        : 'btn-primary'
+                    }`}
+                    type="button"
+                    onClick={submitSubscriptionDialog}
+                  >
+                    {actionMutation.isPending
+                      ? 'Saving change...'
+                      : subscriptionDialog.confirmLabel}
+                  </button>
+                </div>
+              </div>
             </section>
           </div>
         </div>

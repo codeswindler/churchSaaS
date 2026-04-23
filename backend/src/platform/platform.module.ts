@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ContributionsModule } from '../contributions/contributions.module';
 import { Church } from '../entities/church.entity';
 import { ChurchUser } from '../entities/church-user.entity';
+import { ClientEnquiry } from '../entities/client-enquiry.entity';
 import { Contribution } from '../entities/contribution.entity';
 import { FundAccount } from '../entities/fund-account.entity';
 import { PlatformUser } from '../entities/platform-user.entity';
@@ -18,6 +19,7 @@ import { PlatformService } from './platform.service';
       ChurchUser,
       Contribution,
       FundAccount,
+      ClientEnquiry,
     ]),
     ChurchSubscriptionsModule,
     ContributionsModule,

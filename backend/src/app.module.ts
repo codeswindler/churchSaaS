@@ -13,6 +13,7 @@ import { Church } from './entities/church.entity';
 import { ChurchSubscription } from './entities/church-subscription.entity';
 import { ChurchSubscriptionAdjustment } from './entities/church-subscription-adjustment.entity';
 import { ChurchUser } from './entities/church-user.entity';
+import { ClientEnquiry } from './entities/client-enquiry.entity';
 import { Contribution } from './entities/contribution.entity';
 import { Contributor } from './entities/contributor.entity';
 import { FundAccount } from './entities/fund-account.entity';
@@ -40,6 +41,7 @@ import { SchemaBootstrapService } from './common/schema-bootstrap.service';
         FundAccount,
         Contributor,
         Contribution,
+        ClientEnquiry,
       ],
       synchronize: (process.env.DB_SYNCHRONIZE || 'false') === 'true',
     }),

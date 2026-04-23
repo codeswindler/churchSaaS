@@ -6,6 +6,7 @@ import { buildChurchIntegrationSummary } from '../common/church.utils';
 import { ContributionsService } from '../contributions/contributions.service';
 import { Church, ChurchStatus } from '../entities/church.entity';
 import { ChurchUser, ChurchUserRole } from '../entities/church-user.entity';
+import { ClientEnquiry } from '../entities/client-enquiry.entity';
 import {
   Contribution,
   ContributionStatus,
@@ -30,6 +31,8 @@ export class PlatformService {
     private readonly contributionRepo: Repository<Contribution>,
     @InjectRepository(FundAccount)
     private readonly fundAccountRepo: Repository<FundAccount>,
+    @InjectRepository(ClientEnquiry)
+    private readonly clientEnquiryRepo: Repository<ClientEnquiry>,
     private readonly churchSubscriptionsService: ChurchSubscriptionsService,
     private readonly contributionsService: ContributionsService,
   ) {}
@@ -70,6 +73,24 @@ export class PlatformService {
       order: { createdAt: 'DESC' },
     });
     return users.map(({ passwordHash, ...user }) => user);
+  }
+
+  async listClientEnquiries() {
+    const enquiries = await this.clientEnquiryRepo.find({
+      order: { createdAt: 'DESC' },
+    });
+
+    return enquiries.map((enquiry) => ({
+      id: enquiry.id,
+      organizationName: enquiry.organizationName,
+      contactName: enquiry.contactName,
+      email: enquiry.email,
+      phone: enquiry.phone,
+      message: enquiry.message,
+      status: enquiry.status,
+      createdAt: enquiry.createdAt,
+      updatedAt: enquiry.updatedAt,
+    }));
   }
 
   async createChurch(body: any, performedByPlatformUserId: string) {
