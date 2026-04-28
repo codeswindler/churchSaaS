@@ -3,6 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { ChurchSmsConfig } from '../common/church.utils';
 
+type ResolvedSmsConfig = {
+  partnerId: string;
+  apiKey: string;
+  shortCode: string;
+  baseUrl: string;
+};
+
 @Injectable()
 export class SmsService {
   private readonly logger = new Logger(SmsService.name);
@@ -32,6 +39,7 @@ export class SmsService {
     config: ChurchSmsConfig = {},
   ): Promise<boolean> {
     const resolved = this.resolveConfig(config);
+    const diagnostics = this.buildDiagnostics(config, resolved);
     const cleanPhone = this.formatPhone(phone);
     // Official OTP endpoint for transactional/OTP messages
     const url = `${resolved.baseUrl}/api/services/sendotp`;
@@ -53,7 +61,7 @@ export class SmsService {
 
     try {
       this.logger.log(
-        `[SMS] Sending OTP to ${cleanPhone}${isFlash ? ' (FLASH)' : ''}...`,
+        `[SMS] Sending OTP to ${this.maskPhone(cleanPhone)}${isFlash ? ' (FLASH)' : ''} | ${this.formatDiagnostics(diagnostics)}`,
       );
       const response = await axios.post(url, data, { timeout: 10000 });
 
@@ -63,16 +71,20 @@ export class SmsService {
         response.data?.['response-code'] == 200;
 
       if (success) {
-        this.logger.log(`[SMS] OTP Sent Successfully to ${cleanPhone}`);
+        this.logger.log(
+          `[SMS] OTP sent successfully to ${this.maskPhone(cleanPhone)} | ${this.formatDiagnostics(diagnostics)}`,
+        );
         return true;
       }
 
       this.logger.error(
-        `[SMS] Advanta Error: ${JSON.stringify(response.data)}`,
+        `[SMS] Advanta OTP error | ${this.formatDiagnostics(diagnostics)} | ${this.describeProviderResponse(response.data)}`,
       );
       return false;
     } catch (e) {
-      this.logger.error(`[SMS] Failed to send OTP: ${e.message}`);
+      this.logger.error(
+        `[SMS] Failed to send OTP | ${this.formatDiagnostics(diagnostics)} | ${this.describeAxiosError(e)}`,
+      );
       return false;
     }
   }
@@ -86,6 +98,7 @@ export class SmsService {
     config: ChurchSmsConfig = {},
   ): Promise<boolean> {
     const resolved = this.resolveConfig(config);
+    const diagnostics = this.buildDiagnostics(config, resolved);
     const cleanPhone = this.formatPhone(phone);
     const url = `${resolved.baseUrl}/api/services/sendsms`;
     const data = {
@@ -97,20 +110,29 @@ export class SmsService {
     };
 
     try {
-      this.logger.log(`[SMS] Sending Notification...`);
+      this.logger.log(
+        `[SMS] Sending notification to ${this.maskPhone(cleanPhone)} | ${this.formatDiagnostics(diagnostics)}`,
+      );
       const response = await axios.post(url, data, { timeout: 10000 });
 
       const success =
         response.data?.['response-code'] == 200 ||
         response.data?.responses?.[0]?.['response-code'] == 200;
-      if (success) return true;
+      if (success) {
+        this.logger.log(
+          `[SMS] Notification sent successfully to ${this.maskPhone(cleanPhone)} | ${this.formatDiagnostics(diagnostics)}`,
+        );
+        return true;
+      }
 
       this.logger.error(
-        `[SMS] Advanta Error: ${JSON.stringify(response.data)}`,
+        `[SMS] Advanta notification error | ${this.formatDiagnostics(diagnostics)} | ${this.describeProviderResponse(response.data)}`,
       );
       return false;
     } catch (e) {
-      this.logger.error(`[SMS] Failed to send SMS: ${e.message}`);
+      this.logger.error(
+        `[SMS] Failed to send SMS | ${this.formatDiagnostics(diagnostics)} | ${this.describeAxiosError(e)}`,
+      );
       return false;
     }
   }
@@ -124,6 +146,7 @@ export class SmsService {
     config: ChurchSmsConfig = {},
   ): Promise<boolean> {
     const resolved = this.resolveConfig(config);
+    const diagnostics = this.buildDiagnostics(config, resolved);
     const url = `${resolved.baseUrl}/api/services/sendotp`;
     const data = {
       apikey: resolved.apiKey,
@@ -135,20 +158,29 @@ export class SmsService {
     };
 
     try {
-      this.logger.log('[SMS] Sending hashed Safaricom notification...');
+      this.logger.log(
+        `[SMS] Sending hashed Safaricom notification to ${this.maskHashedMobile(hashedMobile)} | ${this.formatDiagnostics(diagnostics)}`,
+      );
       const response = await axios.post(url, data, { timeout: 10000 });
 
       const success =
         response.data?.['response-code'] == 200 ||
         response.data?.responses?.[0]?.['response-code'] == 200;
-      if (success) return true;
+      if (success) {
+        this.logger.log(
+          `[SMS] Hashed Safaricom notification sent successfully to ${this.maskHashedMobile(hashedMobile)} | ${this.formatDiagnostics(diagnostics)}`,
+        );
+        return true;
+      }
 
       this.logger.error(
-        `[SMS] Advanta hashed error: ${JSON.stringify(response.data)}`,
+        `[SMS] Advanta hashed error | ${this.formatDiagnostics(diagnostics)} | ${this.describeProviderResponse(response.data)}`,
       );
       return false;
     } catch (e) {
-      this.logger.error(`[SMS] Failed to send hashed SMS: ${e.message}`);
+      this.logger.error(
+        `[SMS] Failed to send hashed SMS | ${this.formatDiagnostics(diagnostics)} | ${this.describeAxiosError(e)}`,
+      );
       return false;
     }
   }
@@ -158,6 +190,7 @@ export class SmsService {
    */
   async getBalance(config: ChurchSmsConfig = {}): Promise<number> {
     const resolved = this.resolveConfig(config);
+    const diagnostics = this.buildDiagnostics(config, resolved);
     const url = `${resolved.baseUrl}/api/services/getbalance`;
     const data = {
       apikey: resolved.apiKey,
@@ -171,11 +204,13 @@ export class SmsService {
         return parseFloat(response.data?.credit || '0');
       }
       this.logger.error(
-        `[SMS] Balance failed: ${JSON.stringify(response.data)}`,
+        `[SMS] Balance failed | ${this.formatDiagnostics(diagnostics)} | ${this.describeProviderResponse(response.data)}`,
       );
       return 0;
     } catch (e) {
-      this.logger.error(`[SMS] Balance Check Failed: ${e.message}`);
+      this.logger.error(
+        `[SMS] Balance check failed | ${this.formatDiagnostics(diagnostics)} | ${this.describeAxiosError(e)}`,
+      );
       return 0;
     }
   }
@@ -213,12 +248,120 @@ export class SmsService {
       .join('');
   }
 
-  private resolveConfig(config: ChurchSmsConfig) {
+  private resolveConfig(config: ChurchSmsConfig): ResolvedSmsConfig {
     return {
       partnerId: config.smsPartnerId || this.partnerId,
       apiKey: config.smsApiKey || this.apiKey,
       shortCode: config.smsShortcode || this.shortCode,
       baseUrl: (config.smsBaseUrl || this.baseUrl).replace(/\/$/, ''),
     };
+  }
+
+  private buildDiagnostics(
+    config: ChurchSmsConfig,
+    resolved: ResolvedSmsConfig,
+  ) {
+    return {
+      partnerIdSource: this.resolveFieldSource(config.smsPartnerId, this.partnerId),
+      apiKeySource: this.resolveFieldSource(config.smsApiKey, this.apiKey),
+      shortCodeSource: this.resolveFieldSource(config.smsShortcode, this.shortCode),
+      baseUrlSource: this.resolveFieldSource(config.smsBaseUrl, this.baseUrl),
+      partnerIdHint: this.maskSecret(resolved.partnerId),
+      shortCodeHint: this.maskSecret(resolved.shortCode),
+      apiKeyPresent: Boolean(resolved.apiKey),
+      baseUrl: resolved.baseUrl,
+    };
+  }
+
+  private resolveFieldSource(
+    churchValue: string | null | undefined,
+    envValue: string | null | undefined,
+  ) {
+    if (churchValue) {
+      return 'church';
+    }
+
+    if (envValue) {
+      return 'env';
+    }
+
+    return 'missing';
+  }
+
+  private formatDiagnostics(diagnostics: ReturnType<typeof this.buildDiagnostics>) {
+    return [
+      `partnerIdSource=${diagnostics.partnerIdSource}`,
+      `apiKeySource=${diagnostics.apiKeySource}`,
+      `shortCodeSource=${diagnostics.shortCodeSource}`,
+      `baseUrlSource=${diagnostics.baseUrlSource}`,
+      `partnerId=${diagnostics.partnerIdHint}`,
+      `shortcode=${diagnostics.shortCodeHint}`,
+      `apiKeyPresent=${diagnostics.apiKeyPresent}`,
+      `baseUrl=${diagnostics.baseUrl}`,
+    ].join(' | ');
+  }
+
+  private describeProviderResponse(data: any) {
+    if (!data) {
+      return 'providerResponse=empty';
+    }
+
+    const nested = data?.responses?.[0];
+    const responseCode = nested?.['response-code'] ?? data?.['response-code'];
+    const responseDescription =
+      nested?.['response-description'] ?? data?.['response-description'];
+    const messageId = nested?.messageid ?? data?.messageid;
+
+    return [
+      `providerCode=${responseCode ?? 'unknown'}`,
+      `providerDescription=${responseDescription ?? 'n/a'}`,
+      `messageId=${messageId ? this.maskSecret(String(messageId)) : 'n/a'}`,
+    ].join(' | ');
+  }
+
+  private describeAxiosError(error: any) {
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status ?? 'no-status';
+      const providerResponse = this.describeProviderResponse(error.response?.data);
+      return `status=${status} | message=${error.message} | ${providerResponse}`;
+    }
+
+    return `message=${error?.message || 'Unknown error'}`;
+  }
+
+  private maskSecret(value: string | null | undefined) {
+    if (!value) {
+      return 'missing';
+    }
+
+    if (value.length <= 4) {
+      return `***${value.slice(-1)}`;
+    }
+
+    return `${'*'.repeat(Math.max(3, value.length - 4))}${value.slice(-4)}`;
+  }
+
+  private maskPhone(phone: string) {
+    if (!phone) {
+      return 'missing';
+    }
+
+    if (phone.length <= 6) {
+      return `***${phone.slice(-2)}`;
+    }
+
+    return `${phone.slice(0, 3)}***${phone.slice(-3)}`;
+  }
+
+  private maskHashedMobile(hashedMobile: string) {
+    if (!hashedMobile) {
+      return 'missing';
+    }
+
+    if (hashedMobile.length <= 12) {
+      return this.maskSecret(hashedMobile);
+    }
+
+    return `${hashedMobile.slice(0, 6)}...${hashedMobile.slice(-6)}`;
   }
 }

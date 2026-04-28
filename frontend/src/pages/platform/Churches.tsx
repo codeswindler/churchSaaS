@@ -5,6 +5,8 @@ import {
   CircleMinus,
   CirclePlus,
   CreditCard,
+  Eye,
+  EyeOff,
   MessageSquareText,
   PencilLine,
   RotateCcw,
@@ -87,6 +89,9 @@ export default function PlatformChurches() {
   const [isLoadingChurchDetails, setIsLoadingChurchDetails] = useState(false);
   const [editingChurchId, setEditingChurchId] = useState<string | null>(null);
   const [selectedChurchId, setSelectedChurchId] = useState<string | null>(null);
+  const [visibleCredentialFields, setVisibleCredentialFields] = useState<
+    Partial<Record<keyof ChurchFormState, boolean>>
+  >({});
   const nameInputRef = useRef<HTMLInputElement | null>(null);
   const subscriptionDaysInputRef = useRef<HTMLInputElement | null>(null);
   const [subscriptionDialog, setSubscriptionDialog] =
@@ -260,6 +265,7 @@ export default function PlatformChurches() {
     setFormMode('create');
     setEditingChurchId(null);
     setIsLoadingChurchDetails(false);
+    setVisibleCredentialFields({});
     setIsChurchModalOpen(true);
   };
 
@@ -268,6 +274,7 @@ export default function PlatformChurches() {
     setEditingChurchId(churchId);
     setIsChurchModalOpen(true);
     setIsLoadingChurchDetails(true);
+    setVisibleCredentialFields({});
 
     try {
       const response = await api.get(`/platform/churches/${churchId}`);
@@ -316,6 +323,44 @@ export default function PlatformChurches() {
     setFormMode('create');
     setEditingChurchId(null);
     setForm(createInitialForm());
+    setVisibleCredentialFields({});
+  };
+
+  const toggleCredentialVisibility = (field: keyof ChurchFormState) => {
+    setVisibleCredentialFields((current) => ({
+      ...current,
+      [field]: !current[field],
+    }));
+  };
+
+  const renderSensitiveField = (
+    key: keyof ChurchFormState,
+    label: string,
+    hiddenType: 'password' | 'text' = 'password',
+  ) => {
+    const isVisible = Boolean(visibleCredentialFields[key]);
+
+    return (
+      <div key={key}>
+        <label className="label">{label}</label>
+        <div className="relative">
+          <input
+            className="input pr-12"
+            type={isVisible ? 'text' : hiddenType}
+            value={form[key]}
+            onChange={(event) => updateForm(key, event.target.value as never)}
+          />
+          <button
+            aria-label={isVisible ? `Hide ${label}` : `Show ${label}`}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 transition hover:text-white"
+            type="button"
+            onClick={() => toggleCredentialVisibility(key)}
+          >
+            {isVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
+      </div>
+    );
   };
 
   const openSubscriptionDialog = (
@@ -753,18 +798,17 @@ export default function PlatformChurches() {
                       <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
                         First Church Admin
                       </p>
-                      <div className="mt-4 grid gap-4 md:grid-cols-2">
-                        {[
-                          ['adminName', 'First admin name'],
-                          ['adminEmail', 'First admin email'],
-                          ['adminPhone', 'First admin phone'],
-                          ['adminUsername', 'First admin username'],
-                          ['adminPassword', 'First admin password'],
-                          ['planName', 'Plan name'],
-                        ].map(([key, label]) => (
-                          <div key={key}>
-                            <label className="label">{label}</label>
-                            <input
+                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                      {[
+                        ['adminName', 'First admin name'],
+                        ['adminEmail', 'First admin email'],
+                        ['adminPhone', 'First admin phone'],
+                        ['adminUsername', 'First admin username'],
+                        ['planName', 'Plan name'],
+                      ].map(([key, label]) => (
+                        <div key={key}>
+                          <label className="label">{label}</label>
+                          <input
                               className="input"
                               type={
                                 key === 'adminPassword' ? 'password' : 'text'
@@ -774,15 +818,20 @@ export default function PlatformChurches() {
                                 updateForm(
                                   key as keyof ChurchFormState,
                                   event.target.value as never,
-                                )
-                              }
-                            />
-                          </div>
-                        ))}
+                              )
+                            }
+                          />
+                        </div>
+                      ))}
 
-                        <div>
-                          <label className="label">
-                            Initial subscription days
+                      {renderSensitiveField(
+                        'adminPassword',
+                        'First admin password',
+                      )}
+
+                      <div>
+                        <label className="label">
+                          Initial subscription days
                           </label>
                           <input
                             className="input"
@@ -810,16 +859,15 @@ export default function PlatformChurches() {
                     </div>
                     <div className="mt-4 grid gap-4 md:grid-cols-2">
                       {[
-                        ['smsPartnerId', 'Partner ID', 'text'],
-                        ['smsApiKey', 'API key', 'password'],
-                        ['smsShortcode', 'Shortcode', 'text'],
-                        ['smsBaseUrl', 'Base URL', 'text'],
-                      ].map(([key, label, type]) => (
+                        ['smsPartnerId', 'Partner ID'],
+                        ['smsShortcode', 'Shortcode'],
+                        ['smsBaseUrl', 'Base URL'],
+                      ].map(([key, label]) => (
                         <div key={key}>
                           <label className="label">{label}</label>
                           <input
                             className="input"
-                            type={type}
+                            type="text"
                             value={form[key as keyof ChurchFormState]}
                             onChange={(event) =>
                               updateForm(
@@ -830,6 +878,7 @@ export default function PlatformChurches() {
                           />
                         </div>
                       ))}
+                      {renderSensitiveField('smsApiKey', 'API key')}
                     </div>
                   </section>
 
@@ -856,17 +905,14 @@ export default function PlatformChurches() {
                       </div>
 
                       {[
-                        ['mpesaShortcode', 'Shortcode', 'text'],
-                        ['mpesaConsumerKey', 'Consumer key', 'text'],
-                        ['mpesaConsumerSecret', 'Consumer secret', 'password'],
-                        ['mpesaPasskey', 'Passkey', 'password'],
-                        ['mpesaCallbackUrl', 'C2B confirmation URL', 'text'],
-                      ].map(([key, label, type]) => (
+                        ['mpesaShortcode', 'Shortcode'],
+                        ['mpesaCallbackUrl', 'C2B confirmation URL'],
+                      ].map(([key, label]) => (
                         <div key={key}>
                           <label className="label">{label}</label>
                           <input
                             className="input"
-                            type={type}
+                            type="text"
                             value={form[key as keyof ChurchFormState]}
                             onChange={(event) =>
                               updateForm(
@@ -877,6 +923,16 @@ export default function PlatformChurches() {
                           />
                         </div>
                       ))}
+                      {renderSensitiveField(
+                        'mpesaConsumerKey',
+                        'Consumer key',
+                        'text',
+                      )}
+                      {renderSensitiveField(
+                        'mpesaConsumerSecret',
+                        'Consumer secret',
+                      )}
+                      {renderSensitiveField('mpesaPasskey', 'Passkey')}
                     </div>
                     <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-stone-300">
                       <div className="font-semibold text-stone-100">
