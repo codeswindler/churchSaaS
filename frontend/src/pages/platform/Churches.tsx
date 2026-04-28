@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
+import { Link } from 'react-router-dom';
 import api from '../../services/api';
 
 function getDefaultMpesaCallbackUrl() {
@@ -58,10 +59,39 @@ function createInitialForm() {
     mpesaPasskey: '',
     mpesaShortcode: '',
     mpesaCallbackUrl: getDefaultMpesaCallbackUrl(),
+    commissionRatePct: 0,
+    enabledFeatures: [
+      'finance',
+      'fund_accounts',
+      'messaging',
+      'staff_management',
+    ],
   };
 }
 
 type ChurchFormState = ReturnType<typeof createInitialForm>;
+const featureOptions = [
+  {
+    value: 'finance',
+    label: 'Finance and reports',
+    description: 'Dashboard, contributions, reports, and exports.',
+  },
+  {
+    value: 'fund_accounts',
+    label: 'Fund accounts',
+    description: 'Fund setup and personalized receipt templates.',
+  },
+  {
+    value: 'messaging',
+    label: 'Messaging',
+    description: 'Bulk SMS, outbox, contributors, and delivery reports.',
+  },
+  {
+    value: 'staff_management',
+    label: 'Staff management',
+    description: 'Church users, roles, and permission assignment.',
+  },
+];
 type SubscriptionActionEndpoint =
   | 'add-days'
   | 'subtract-days'
@@ -260,6 +290,22 @@ export default function PlatformChurches() {
     }));
   };
 
+  const toggleFeature = (feature: string) => {
+    setForm((current) => {
+      const enabled = new Set(current.enabledFeatures);
+      if (enabled.has(feature)) {
+        enabled.delete(feature);
+      } else {
+        enabled.add(feature);
+      }
+
+      return {
+        ...current,
+        enabledFeatures: Array.from(enabled),
+      };
+    });
+  };
+
   const openCreateModal = () => {
     setForm(createInitialForm());
     setFormMode('create');
@@ -301,6 +347,9 @@ export default function PlatformChurches() {
         mpesaPasskey: response.data.mpesaPasskey || '',
         mpesaShortcode: response.data.mpesaShortcode || '',
         mpesaCallbackUrl: response.data.mpesaCallbackUrl || defaultCallbackUrl,
+        commissionRatePct: Number(response.data.commissionRatePct || 0),
+        enabledFeatures:
+          response.data.enabledFeatures || createInitialForm().enabledFeatures,
       }));
     } catch (error: any) {
       toast.error(
@@ -541,7 +590,10 @@ export default function PlatformChurches() {
                   <th>Church</th>
                   <th>Subscription</th>
                   <th>Countdown</th>
-                  <th>Collections</th>
+                  <th>Direct M-Pesa</th>
+                  <th>Commission</th>
+                  <th>Revenue</th>
+                  <th>SMS Units</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -590,10 +642,35 @@ export default function PlatformChurches() {
                       {church.subscription?.countdown?.minutes || 0}m
                     </td>
                     <td>
-                      KES{' '}
-                      {Number(
-                        church.contributionTotals?.total || 0,
-                      ).toLocaleString()}
+                      <Link
+                        className="font-semibold text-amber-100 transition hover:text-white"
+                        to={`/platform/collections?churchId=${church.id}`}
+                      >
+                        KES{' '}
+                        {Number(
+                          church.contributionTotals?.total || 0,
+                        ).toLocaleString()}
+                      </Link>
+                    </td>
+                    <td>{Number(church.commissionRatePct || 0)}%</td>
+                    <td>
+                      <Link
+                        className="font-semibold text-amber-100 transition hover:text-white"
+                        to={`/platform/collections?churchId=${church.id}`}
+                      >
+                        KES{' '}
+                        {Number(
+                          church.contributionTotals?.revenue || 0,
+                        ).toLocaleString()}
+                      </Link>
+                    </td>
+                    <td>
+                      <Link
+                        className="font-semibold text-sky-200 transition hover:text-white"
+                        to={`/platform/collections?churchId=${church.id}`}
+                      >
+                        {Number(church.smsUnitsConsumed || 0).toLocaleString()}
+                      </Link>
                     </td>
                     <td>
                       <div className="flex flex-wrap gap-2">
@@ -789,6 +866,66 @@ export default function PlatformChurches() {
                             updateForm('notes', event.target.value)
                           }
                         />
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-3xl border border-white/10 bg-black/10 p-5">
+                    <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                      Revenue and feature access
+                    </p>
+                    <div className="mt-4 grid gap-4 md:grid-cols-[240px_1fr]">
+                      <div>
+                        <label className="label">Commission rate (%)</label>
+                        <input
+                          className="input"
+                          min={0}
+                          max={100}
+                          step="0.01"
+                          type="number"
+                          value={form.commissionRatePct}
+                          onChange={(event) =>
+                            updateForm(
+                              'commissionRatePct',
+                              Number(event.target.value || 0),
+                            )
+                          }
+                        />
+                        <p className="mt-2 text-xs text-stone-400">
+                          Applied only to direct M-Pesa callbacks. Manual
+                          church records are excluded from platform revenue.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="label">Enabled modules</label>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          {featureOptions.map((feature) => (
+                            <label
+                              key={feature.value}
+                              className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-stone-200"
+                            >
+                              <div className="flex items-start gap-3">
+                                <input
+                                  className="mt-1"
+                                  checked={form.enabledFeatures.includes(
+                                    feature.value,
+                                  )}
+                                  type="checkbox"
+                                  onChange={() => toggleFeature(feature.value)}
+                                />
+                                <span>
+                                  <span className="block font-semibold text-white">
+                                    {feature.label}
+                                  </span>
+                                  <span className="mt-1 block text-xs text-stone-400">
+                                    {feature.description}
+                                  </span>
+                                </span>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   </section>
@@ -1135,5 +1272,7 @@ function buildUpdatePayload(form: ChurchFormState) {
     mpesaPasskey: form.mpesaPasskey,
     mpesaShortcode: form.mpesaShortcode,
     mpesaCallbackUrl: form.mpesaCallbackUrl,
+    commissionRatePct: form.commissionRatePct,
+    enabledFeatures: form.enabledFeatures,
   };
 }

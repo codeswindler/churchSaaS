@@ -9,6 +9,12 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
 import { Repository } from 'typeorm';
+import {
+  ChurchPermission,
+  PERMISSION_FEATURE_MAP,
+  normalizeFeatureList,
+  resolveChurchPermissions,
+} from '../common/access-control';
 import { sanitizeChurchForTenant } from '../common/church.utils';
 import { ChurchStatus } from '../entities/church.entity';
 import { ChurchUser } from '../entities/church-user.entity';
@@ -141,12 +147,14 @@ export class AuthService {
         churchUser.churchId,
       );
     const { passwordHash: _, ...result } = churchUser;
+    const access = this.buildChurchAccess(churchUser);
 
     return {
       ...result,
       userType: 'church',
       church: sanitizeChurchForTenant(churchUser.church),
       subscription,
+      ...access,
     };
   }
 
@@ -204,12 +212,14 @@ export class AuthService {
         savedUser.churchId,
       );
     const { passwordHash: _, ...result } = savedUser;
+    const access = this.buildChurchAccess(savedUser);
 
     return {
       ...result,
       userType: 'church',
       church: sanitizeChurchForTenant(churchUser.church),
       subscription,
+      ...access,
     };
   }
 
@@ -218,11 +228,14 @@ export class AuthService {
     userType: 'platform' | 'church',
     extra: Record<string, any> = {},
   ) {
+    const access =
+      userType === 'church' ? this.buildChurchAccess(user as ChurchUser) : {};
     const payload = {
       sub: user.id,
       role: user.role,
       userType,
       churchId: userType === 'church' ? (user as ChurchUser).churchId : null,
+      ...(userType === 'church' ? access : {}),
     };
 
     return {
@@ -238,8 +251,26 @@ export class AuthService {
         ...(userType === 'church'
           ? { churchId: (user as ChurchUser).churchId }
           : {}),
+        ...(userType === 'church' ? access : {}),
       },
       ...extra,
+    };
+  }
+
+  private buildChurchAccess(user: ChurchUser) {
+    const enabledFeatures = normalizeFeatureList(user.church?.enabledFeatures);
+    const permissions = resolveChurchPermissions(
+      user.role,
+      user.permissionOverrides,
+    ).filter((permission) =>
+      permission === ChurchPermission.DASHBOARD_VIEW ||
+      enabledFeatures.includes(PERMISSION_FEATURE_MAP[permission]),
+    );
+
+    return {
+      enabledFeatures,
+      permissionOverrides: user.permissionOverrides || [],
+      permissions,
     };
   }
 

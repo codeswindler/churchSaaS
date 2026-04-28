@@ -73,6 +73,12 @@ export class Church {
   @Column({ type: 'varchar', length: 255, nullable: true })
   mpesaCallbackUrl: string | null;
 
+  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
+  commissionRatePct: number;
+
+  @Column({ type: 'simple-json', nullable: true })
+  enabledFeatures: string[] | null;
+
   @Column({
     type: 'enum',
     enum: ChurchStatus,

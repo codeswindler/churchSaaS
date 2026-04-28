@@ -11,6 +11,7 @@ const initialManualForm = {
   amount: '',
   fundAccountId: '',
   channel: 'mpesa',
+  gender: '',
   paymentReference: '',
   notes: '',
 };
@@ -95,6 +96,29 @@ export default function ChurchContributions() {
       toast.error(
         error?.response?.data?.message || 'Unable to record contribution',
       );
+    },
+  });
+
+  const contributorMutation = useMutation({
+    mutationFn: async ({
+      contributorId,
+      gender,
+    }: {
+      contributorId: string;
+      gender: string;
+    }) => {
+      const response = await api.patch(`/church/contributors/${contributorId}`, {
+        gender: gender || null,
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      toast.success('Contributor updated');
+      queryClient.invalidateQueries({ queryKey: ['church-contributions'] });
+      queryClient.invalidateQueries({ queryKey: ['church-sms-outbox'] });
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Unable to update contributor');
     },
   });
 
@@ -347,6 +371,22 @@ export default function ChurchContributions() {
                       <div className="text-xs text-stone-400">
                         {item.contributor?.phone || '-'}
                       </div>
+                      {item.contributor?.id ? (
+                        <select
+                          className="mt-2 rounded-xl border border-white/10 bg-black/20 px-2 py-1 text-xs text-stone-100"
+                          value={item.contributor?.gender || ''}
+                          onChange={(event) =>
+                            contributorMutation.mutate({
+                              contributorId: item.contributor.id,
+                              gender: event.target.value,
+                            })
+                          }
+                        >
+                          <option value="">Gender not set</option>
+                          <option value="male">Male</option>
+                          <option value="female">Female</option>
+                        </select>
+                      ) : null}
                     </td>
                     <td>{item.fundAccountId ? item.fundAccountName : 'General'}</td>
                     <td>{item.channel === 'manual_cash' ? 'Cash' : 'M-Pesa'}</td>
@@ -441,6 +481,21 @@ export default function ChurchContributions() {
                   >
                     <option value="mpesa">M-Pesa</option>
                     <option value="manual_cash">Cash</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="label">Contributor gender</label>
+                  <select
+                    className="input"
+                    value={manualForm.gender}
+                    onChange={(event) =>
+                      updateManualForm('gender', event.target.value)
+                    }
+                  >
+                    <option value="">Not specified</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
                   </select>
                 </div>
 

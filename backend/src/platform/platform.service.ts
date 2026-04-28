@@ -2,13 +2,21 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
 import { Repository } from 'typeorm';
-import { buildChurchIntegrationSummary } from '../common/church.utils';
+import {
+  buildChurchIntegrationSummary,
+} from '../common/church.utils';
+import {
+  DEFAULT_CHURCH_FEATURES,
+  normalizeFeatureList,
+} from '../common/access-control';
 import { ContributionsService } from '../contributions/contributions.service';
 import { Church, ChurchStatus } from '../entities/church.entity';
 import { ChurchUser, ChurchUserRole } from '../entities/church-user.entity';
 import { ClientEnquiry } from '../entities/client-enquiry.entity';
 import {
   Contribution,
+  ContributionChannel,
+  ContributionSourceType,
   ContributionStatus,
 } from '../entities/contribution.entity';
 import { FundAccount } from '../entities/fund-account.entity';
@@ -16,6 +24,7 @@ import {
   PlatformUser,
   PlatformUserRole,
 } from '../entities/platform-user.entity';
+import { SmsOutbox, SmsSendStatus } from '../entities/sms-outbox.entity';
 import { ChurchSubscriptionsService } from '../subscriptions/church-subscriptions.service';
 
 @Injectable()
@@ -33,6 +42,8 @@ export class PlatformService {
     private readonly fundAccountRepo: Repository<FundAccount>,
     @InjectRepository(ClientEnquiry)
     private readonly clientEnquiryRepo: Repository<ClientEnquiry>,
+    @InjectRepository(SmsOutbox)
+    private readonly smsOutboxRepo: Repository<SmsOutbox>,
     private readonly churchSubscriptionsService: ChurchSubscriptionsService,
     private readonly contributionsService: ContributionsService,
   ) {}
@@ -130,6 +141,10 @@ export class PlatformService {
         mpesaPasskey: this.normalizeOptionalText(body.mpesaPasskey),
         mpesaShortcode: this.normalizeOptionalText(body.mpesaShortcode),
         mpesaCallbackUrl: this.normalizeOptionalText(body.mpesaCallbackUrl),
+        commissionRatePct: this.normalizeCommissionRate(
+          body.commissionRatePct,
+        ),
+        enabledFeatures: this.normalizeChurchFeatures(body.enabledFeatures),
         status: ChurchStatus.ACTIVE,
       }),
     );
@@ -142,7 +157,7 @@ export class PlatformService {
         username: body.adminUsername || null,
         phone: body.adminPhone || null,
         passwordHash: await bcrypt.hash(body.adminPassword, 10),
-        role: ChurchUserRole.CHURCH_ADMIN,
+        role: ChurchUserRole.PRIEST,
         isActive: true,
       }),
     );
@@ -189,9 +204,16 @@ export class PlatformService {
       .createQueryBuilder('contribution')
       .select('contribution.churchId', 'churchId')
       .addSelect('SUM(contribution.amount)', 'total')
+      .addSelect('SUM(COALESCE(contribution.commissionAmount, 0))', 'revenue')
       .addSelect('COUNT(contribution.id)', 'count')
       .where('contribution.status = :status', {
         status: ContributionStatus.CONFIRMED,
+      })
+      .andWhere('contribution.channel = :channel', {
+        channel: ContributionChannel.MPESA,
+      })
+      .andWhere('contribution.sourceType IN (:...sourceTypes)', {
+        sourceTypes: this.getDirectMpesaSourceTypes(),
       })
       .groupBy('contribution.churchId')
       .getRawMany();
@@ -199,8 +221,25 @@ export class PlatformService {
     const totalsByChurchId = new Map(
       confirmedTotals.map((item) => [
         item.churchId,
-        { total: Number(item.total || 0), count: Number(item.count || 0) },
+        {
+          total: Number(item.total || 0),
+          revenue: Number(item.revenue || 0),
+          count: Number(item.count || 0),
+        },
       ]),
+    );
+
+    const smsUsage = await this.smsOutboxRepo
+      .createQueryBuilder('message')
+      .select('message.churchId', 'churchId')
+      .addSelect('SUM(message.estimatedUnits)', 'units')
+      .where('message.sendStatus = :sendStatus', {
+        sendStatus: SmsSendStatus.ACCEPTED,
+      })
+      .groupBy('message.churchId')
+      .getRawMany();
+    const smsUsageByChurchId = new Map(
+      smsUsage.map((item) => [item.churchId, Number(item.units || 0)]),
     );
 
     return churches.map((church) => ({
@@ -218,10 +257,13 @@ export class PlatformService {
       userCount: church.users?.length || 0,
       subscription: subscriptionByChurchId.get(church.id) || null,
       integrations: buildChurchIntegrationSummary(church),
-      contributionTotals: totalsByChurchId.get(church.id) || {
-        total: 0,
-        count: 0,
-      },
+      commissionRatePct: Number(church.commissionRatePct || 0),
+      enabledFeatures: normalizeFeatureList(church.enabledFeatures),
+      contributionTotals: this.decorateRevenueTotals(
+        totalsByChurchId.get(church.id),
+        church,
+      ),
+      smsUnitsConsumed: smsUsageByChurchId.get(church.id) || 0,
     }));
   }
 
@@ -251,6 +293,8 @@ export class PlatformService {
       mpesaPasskey: church.mpesaPasskey,
       mpesaShortcode: church.mpesaShortcode,
       mpesaCallbackUrl: church.mpesaCallbackUrl,
+      commissionRatePct: Number(church.commissionRatePct || 0),
+      enabledFeatures: normalizeFeatureList(church.enabledFeatures),
       integrations: buildChurchIntegrationSummary(church),
     };
   }
@@ -343,6 +387,16 @@ export class PlatformService {
         body.mpesaCallbackUrl,
       );
     }
+    if (body.commissionRatePct !== undefined) {
+      church.commissionRatePct = this.normalizeCommissionRate(
+        body.commissionRatePct,
+      );
+    }
+    if (body.enabledFeatures !== undefined) {
+      church.enabledFeatures = this.normalizeChurchFeatures(
+        body.enabledFeatures,
+      );
+    }
 
     const saved = await this.churchRepo.save(church);
     return {
@@ -359,6 +413,12 @@ export class PlatformService {
       .where('contribution.status = :status', {
         status: ContributionStatus.CONFIRMED,
       })
+      .andWhere('contribution.channel = :channel', {
+        channel: ContributionChannel.MPESA,
+      })
+      .andWhere('contribution.sourceType IN (:...sourceTypes)', {
+        sourceTypes: this.getDirectMpesaSourceTypes(),
+      })
       .getRawOne();
 
     const last30Days = new Date();
@@ -368,6 +428,12 @@ export class PlatformService {
       .select('SUM(contribution.amount)', 'total')
       .where('contribution.status = :status', {
         status: ContributionStatus.CONFIRMED,
+      })
+      .andWhere('contribution.channel = :channel', {
+        channel: ContributionChannel.MPESA,
+      })
+      .andWhere('contribution.sourceType IN (:...sourceTypes)', {
+        sourceTypes: this.getDirectMpesaSourceTypes(),
       })
       .andWhere('contribution.receivedAt >= :from', { from: last30Days })
       .getRawOne();
@@ -461,6 +527,98 @@ export class PlatformService {
     );
   }
 
+  async getPlatformCollections(query: any = {}) {
+    const qb = this.contributionRepo
+      .createQueryBuilder('contribution')
+      .leftJoinAndSelect('contribution.church', 'church')
+      .leftJoinAndSelect('contribution.contributor', 'contributor')
+      .where('contribution.status = :status', {
+        status: ContributionStatus.CONFIRMED,
+      })
+      .andWhere('contribution.channel = :channel', {
+        channel: ContributionChannel.MPESA,
+      })
+      .andWhere('contribution.sourceType IN (:...sourceTypes)', {
+        sourceTypes: this.getDirectMpesaSourceTypes(),
+      })
+      .orderBy('contribution.receivedAt', 'DESC')
+      .addOrderBy('contribution.createdAt', 'DESC');
+
+    if (query.churchId) {
+      qb.andWhere('contribution.churchId = :churchId', {
+        churchId: query.churchId,
+      });
+    }
+    if (query.from) {
+      qb.andWhere('contribution.receivedAt >= :from', {
+        from: new Date(query.from),
+      });
+    }
+    if (query.to) {
+      qb.andWhere('contribution.receivedAt <= :to', {
+        to: new Date(query.to),
+      });
+    }
+
+    const contributions = await qb.getMany();
+    const totalAmount = contributions.reduce(
+      (sum, item) => sum + Number(item.amount || 0),
+      0,
+    );
+    const revenueAmount = contributions.reduce(
+      (sum, item) =>
+        sum +
+        Number(
+          item.commissionAmount ??
+            (Number(item.amount || 0) *
+              Number(item.church?.commissionRatePct || 0)) /
+              100,
+        ),
+      0,
+    );
+
+    return {
+      totals: {
+        contributionCount: contributions.length,
+        totalAmount,
+        revenueAmount: Number(revenueAmount.toFixed(2)),
+      },
+      contributions,
+    };
+  }
+
+  async getPlatformSmsUsage(query: any = {}) {
+    const qb = this.smsOutboxRepo
+      .createQueryBuilder('message')
+      .leftJoinAndSelect('message.church', 'church')
+      .where('message.sendStatus = :sendStatus', {
+        sendStatus: SmsSendStatus.ACCEPTED,
+      })
+      .orderBy('message.createdAt', 'DESC');
+
+    if (query.churchId) {
+      qb.andWhere('message.churchId = :churchId', { churchId: query.churchId });
+    }
+    if (query.from) {
+      qb.andWhere('message.createdAt >= :from', { from: new Date(query.from) });
+    }
+    if (query.to) {
+      qb.andWhere('message.createdAt <= :to', { to: new Date(query.to) });
+    }
+
+    const messages = await qb.getMany();
+    return {
+      totals: {
+        messageCount: messages.length,
+        units: messages.reduce(
+          (sum, item) => sum + Number(item.estimatedUnits || 0),
+          0,
+        ),
+      },
+      messages,
+    };
+  }
+
   private async seedDefaultFundAccounts(churchId: string) {
     const templates = [
       {
@@ -504,7 +662,7 @@ export class PlatformService {
           displayOrder: index + 1,
           isActive: true,
           receiptTemplate:
-            'Dear {name}, we confirm receipt of KES {amount} towards {account} on {date}. Ref: {reference}. Thank you for supporting the ministry.',
+            'Dear {name}, receipt confirmed: KES {amount} for {account}. Ref {reference}. Thank you.',
         }),
       );
     }
@@ -556,7 +714,50 @@ export class PlatformService {
       status: church.status,
       createdAt: church.createdAt,
       updatedAt: church.updatedAt,
+      commissionRatePct: Number(church.commissionRatePct || 0),
+      enabledFeatures: normalizeFeatureList(church.enabledFeatures),
     };
+  }
+
+  private getDirectMpesaSourceTypes() {
+    return [
+      ContributionSourceType.MPESA_C2B,
+      ContributionSourceType.MPESA_WEBHOOK,
+    ];
+  }
+
+  private decorateRevenueTotals(
+    totals: { total: number; revenue: number; count: number } | undefined,
+    church: Church,
+  ) {
+    const base = totals || { total: 0, revenue: 0, count: 0 };
+    const fallbackRevenue =
+      base.revenue || (base.total * Number(church.commissionRatePct || 0)) / 100;
+
+    return {
+      total: base.total,
+      count: base.count,
+      revenue: Number(fallbackRevenue.toFixed(2)),
+    };
+  }
+
+  private normalizeCommissionRate(value: unknown) {
+    if (value === undefined || value === null || value === '') {
+      return 0;
+    }
+
+    const rate = Number(value);
+    if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+      throw new BadRequestException('Commission rate must be between 0 and 100');
+    }
+    return Number(rate.toFixed(2));
+  }
+
+  private normalizeChurchFeatures(value: unknown) {
+    if (!Array.isArray(value)) {
+      return DEFAULT_CHURCH_FEATURES;
+    }
+    return normalizeFeatureList(value);
   }
 
   private normalizeOptionalText(value: unknown) {

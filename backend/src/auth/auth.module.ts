@@ -10,6 +10,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { ChurchAccessGuard } from './church-access.guard';
 import { JwtStrategy } from './jwt.strategy';
+import { PermissionsGuard } from './permissions.guard';
 import { RolesGuard } from './roles.guard';
 
 @Module({
@@ -25,8 +26,14 @@ import { RolesGuard } from './roles.guard';
     }),
     ChurchSubscriptionsModule,
   ],
-  providers: [AuthService, JwtStrategy, ChurchAccessGuard, RolesGuard],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    ChurchAccessGuard,
+    RolesGuard,
+    PermissionsGuard,
+  ],
   controllers: [AuthController],
-  exports: [AuthService, ChurchAccessGuard, RolesGuard],
+  exports: [AuthService, ChurchAccessGuard, RolesGuard, PermissionsGuard],
 })
 export class AuthModule {}

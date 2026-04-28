@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
@@ -28,6 +29,16 @@ export class PlatformController {
   @Get('churches')
   listChurches() {
     return this.platformService.listChurches();
+  }
+
+  @Get('collections')
+  getPlatformCollections(@Query() query: any) {
+    return this.platformService.getPlatformCollections(query);
+  }
+
+  @Get('sms-usage')
+  getPlatformSmsUsage(@Query() query: any) {
+    return this.platformService.getPlatformSmsUsage(query);
   }
 
   @Get('churches/:churchId')

@@ -11,8 +11,11 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { ChurchPermission } from '../common/access-control';
 import { ChurchAccessGuard } from '../auth/church-access.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Permissions } from '../auth/permissions.decorator';
+import { PermissionsGuard } from '../auth/permissions.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { ContributionsService } from '../contributions/contributions.service';
@@ -20,7 +23,7 @@ import { ChurchUserRole } from '../entities/church-user.entity';
 import { ChurchService } from './church.service';
 
 @Controller('church')
-@UseGuards(JwtAuthGuard, ChurchAccessGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, ChurchAccessGuard, RolesGuard, PermissionsGuard)
 export class ChurchController {
   constructor(
     private readonly churchService: ChurchService,
@@ -28,43 +31,48 @@ export class ChurchController {
   ) {}
 
   @Get('dashboard')
+  @Permissions(ChurchPermission.DASHBOARD_VIEW)
   @Roles(
-    ChurchUserRole.CHURCH_ADMIN,
     ChurchUserRole.PRIEST,
-    ChurchUserRole.CASHIER,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
   )
   getDashboard(@Request() req: any, @Query() query: any) {
     return this.churchService.getDashboard(req.user.churchId, query);
   }
 
   @Get('subscription/status')
+  @Permissions(ChurchPermission.DASHBOARD_VIEW)
   @Roles(
-    ChurchUserRole.CHURCH_ADMIN,
     ChurchUserRole.PRIEST,
-    ChurchUserRole.CASHIER,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
   )
   getSubscriptionStatus(@Request() req: any) {
     return this.churchService.getSubscriptionStatus(req.user.churchId);
   }
 
   @Get('fund-accounts')
+  @Permissions(ChurchPermission.FUND_ACCOUNTS_VIEW)
   @Roles(
-    ChurchUserRole.CHURCH_ADMIN,
     ChurchUserRole.PRIEST,
-    ChurchUserRole.CASHIER,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
   )
   listFundAccounts(@Request() req: any) {
     return this.churchService.listFundAccounts(req.user.churchId);
   }
 
   @Post('fund-accounts')
-  @Roles(ChurchUserRole.CHURCH_ADMIN)
+  @Permissions(ChurchPermission.FUND_ACCOUNTS_MANAGE)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.SECRETARY)
   createFundAccount(@Request() req: any, @Body() body: any) {
     return this.churchService.createFundAccount(req.user.churchId, body);
   }
 
   @Patch('fund-accounts/:fundAccountId')
-  @Roles(ChurchUserRole.CHURCH_ADMIN)
+  @Permissions(ChurchPermission.FUND_ACCOUNTS_MANAGE)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.SECRETARY)
   updateFundAccount(
     @Request() req: any,
     @Param('fundAccountId') fundAccountId: string,
@@ -78,19 +86,22 @@ export class ChurchController {
   }
 
   @Get('users')
-  @Roles(ChurchUserRole.CHURCH_ADMIN)
+  @Permissions(ChurchPermission.USERS_VIEW)
+  @Roles(ChurchUserRole.PRIEST)
   listUsers(@Request() req: any) {
     return this.churchService.listChurchUsers(req.user.churchId);
   }
 
   @Post('users')
-  @Roles(ChurchUserRole.CHURCH_ADMIN)
+  @Permissions(ChurchPermission.USERS_MANAGE)
+  @Roles(ChurchUserRole.PRIEST)
   createUser(@Request() req: any, @Body() body: any) {
     return this.churchService.createChurchUser(req.user.churchId, body);
   }
 
   @Patch('users/:userId')
-  @Roles(ChurchUserRole.CHURCH_ADMIN)
+  @Permissions(ChurchPermission.USERS_MANAGE)
+  @Roles(ChurchUserRole.PRIEST)
   updateUser(
     @Request() req: any,
     @Param('userId') userId: string,
@@ -100,17 +111,49 @@ export class ChurchController {
   }
 
   @Get('contributions')
+  @Permissions(ChurchPermission.CONTRIBUTIONS_VIEW)
   @Roles(
-    ChurchUserRole.CHURCH_ADMIN,
     ChurchUserRole.PRIEST,
-    ChurchUserRole.CASHIER,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
   )
   listContributions(@Request() req: any, @Query() query: any) {
     return this.churchService.listContributions(req.user.churchId, query);
   }
 
+  @Get('contributors')
+  @Permissions(ChurchPermission.CONTRIBUTORS_VIEW)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+  )
+  listContributors(@Request() req: any, @Query() query: any) {
+    return this.churchService.listContributors(req.user.churchId, query);
+  }
+
+  @Patch('contributors/:contributorId')
+  @Permissions(ChurchPermission.CONTRIBUTORS_TAG)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+  )
+  updateContributor(
+    @Request() req: any,
+    @Param('contributorId') contributorId: string,
+    @Body() body: any,
+  ) {
+    return this.churchService.updateContributor(
+      req.user.churchId,
+      contributorId,
+      body,
+    );
+  }
+
   @Post('contributions/manual')
-  @Roles(ChurchUserRole.CHURCH_ADMIN, ChurchUserRole.CASHIER)
+  @Permissions(ChurchPermission.CONTRIBUTIONS_RECORD)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.TREASURER)
   createManualContribution(@Request() req: any, @Body() body: any) {
     return this.churchService.createManualContribution(
       req.user.churchId,
@@ -120,20 +163,55 @@ export class ChurchController {
   }
 
   @Get('reports/summary')
+  @Permissions(ChurchPermission.REPORTS_VIEW)
   @Roles(
-    ChurchUserRole.CHURCH_ADMIN,
     ChurchUserRole.PRIEST,
-    ChurchUserRole.CASHIER,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
   )
   getReportsSummary(@Request() req: any, @Query() query: any) {
     return this.churchService.getReportSummary(req.user.churchId, query);
   }
 
-  @Get('reports/export')
+  @Post('messaging/bulk')
+  @Permissions(ChurchPermission.MESSAGING_SEND)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.SECRETARY)
+  sendBulkMessage(@Request() req: any, @Body() body: any) {
+    return this.churchService.sendBulkMessage(
+      req.user.churchId,
+      req.user.id,
+      body,
+    );
+  }
+
+  @Get('messaging/outbox')
+  @Permissions(ChurchPermission.OUTBOX_VIEW)
   @Roles(
-    ChurchUserRole.CHURCH_ADMIN,
     ChurchUserRole.PRIEST,
-    ChurchUserRole.CASHIER,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+  )
+  listSmsOutbox(@Request() req: any, @Query() query: any) {
+    return this.churchService.listSmsOutbox(req.user.churchId, query);
+  }
+
+  @Get('messaging/usage')
+  @Permissions(ChurchPermission.OUTBOX_VIEW)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+  )
+  getSmsUsage(@Request() req: any, @Query() query: any) {
+    return this.churchService.getSmsUsage(req.user.churchId, query);
+  }
+
+  @Get('reports/export')
+  @Permissions(ChurchPermission.REPORTS_EXPORT)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
   )
   async exportReport(
     @Request() req: any,

@@ -23,6 +23,13 @@ export enum ContributionStatus {
   FAILED = 'failed',
 }
 
+export enum ContributionSourceType {
+  MANUAL_ENTRY = 'manual_entry',
+  PUBLIC_MPESA = 'public_mpesa',
+  MPESA_WEBHOOK = 'mpesa_webhook',
+  MPESA_C2B = 'mpesa_c2b',
+}
+
 @Entity('contributions')
 export class Contribution {
   @PrimaryGeneratedColumn('uuid')
@@ -82,6 +89,19 @@ export class Contribution {
     default: ContributionStatus.PENDING,
   })
   status: ContributionStatus;
+
+  @Column({
+    type: 'varchar',
+    length: 40,
+    default: ContributionSourceType.MANUAL_ENTRY,
+  })
+  sourceType: ContributionSourceType;
+
+  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true })
+  commissionRatePctApplied: number | null;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  commissionAmount: number | null;
 
   @Column({ type: 'varchar', length: 120, nullable: true })
   providerRequestId: string | null;

@@ -12,6 +12,11 @@ import {
 import { Church } from './church.entity';
 import { Contribution } from './contribution.entity';
 
+export enum ContributorGender {
+  MALE = 'male',
+  FEMALE = 'female',
+}
+
 @Entity('contributors')
 @Index(['churchId', 'phone'])
 export class Contributor {
@@ -35,6 +40,9 @@ export class Contributor {
 
   @Column({ type: 'varchar', length: 60, nullable: true })
   memberNumber: string | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  gender: ContributorGender | null;
 
   @OneToMany(() => Contribution, (contribution) => contribution.contributor)
   contributions: Contribution[];

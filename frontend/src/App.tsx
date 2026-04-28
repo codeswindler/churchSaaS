@@ -5,9 +5,11 @@ import Login from './pages/auth/Login';
 import ChurchContributions from './pages/church/Contributions';
 import ChurchDashboard from './pages/church/Dashboard';
 import ChurchFundAccounts from './pages/church/FundAccounts';
+import ChurchMessaging from './pages/church/Messaging';
 import ChurchReports from './pages/church/Reports';
 import ChurchUsers from './pages/church/Users';
 import PlatformChurches from './pages/platform/Churches';
+import PlatformCollections from './pages/platform/Collections';
 import PlatformDashboard from './pages/platform/Dashboard';
 import PlatformEnquiries from './pages/platform/Enquiries';
 import PlatformUsers from './pages/platform/Users';
@@ -41,6 +43,7 @@ export default function App() {
       >
         <Route path="dashboard" element={<PlatformDashboard />} />
         <Route path="churches" element={<PlatformChurches />} />
+        <Route path="collections" element={<PlatformCollections />} />
         <Route path="enquiries" element={<PlatformEnquiries />} />
         <Route path="users" element={<PlatformUsers />} />
         <Route index element={<Navigate to="/platform/dashboard" replace />} />
@@ -57,6 +60,7 @@ export default function App() {
         <Route path="dashboard" element={<ChurchDashboard />} />
         <Route path="fund-accounts" element={<ChurchFundAccounts />} />
         <Route path="contributions" element={<ChurchContributions />} />
+        <Route path="messaging" element={<ChurchMessaging />} />
         <Route path="users" element={<ChurchUsers />} />
         <Route path="reports" element={<ChurchReports />} />
         <Route index element={<Navigate to="/church/dashboard" replace />} />

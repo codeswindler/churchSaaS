@@ -16,10 +16,12 @@ import { ChurchUser } from '../entities/church-user.entity';
 import {
   Contribution,
   ContributionChannel,
+  ContributionSourceType,
   ContributionStatus,
 } from '../entities/contribution.entity';
 import { Contributor } from '../entities/contributor.entity';
 import { FundAccount } from '../entities/fund-account.entity';
+import { SmsMessageType } from '../entities/sms-outbox.entity';
 import { SmsService } from '../sms/sms.service';
 import { ChurchSubscriptionsService } from '../subscriptions/church-subscriptions.service';
 
@@ -69,6 +71,9 @@ export class ContributionsService {
       amount: Number(body.amount),
       channel,
       status: ContributionStatus.CONFIRMED,
+      sourceType: ContributionSourceType.MANUAL_ENTRY,
+      commissionRatePctApplied: null,
+      commissionAmount: null,
       paymentReference,
       notes: body.notes || null,
       receivedAt: body.receivedAt ? new Date(body.receivedAt) : new Date(),
@@ -117,6 +122,9 @@ export class ContributionsService {
         amount,
         channel: ContributionChannel.MPESA,
         status: ContributionStatus.CONFIRMED,
+        sourceType: ContributionSourceType.PUBLIC_MPESA,
+        commissionRatePctApplied: null,
+        commissionAmount: null,
         paymentReference,
         notes: body.notes || null,
         receivedAt: new Date(),
@@ -178,6 +186,7 @@ export class ContributionsService {
       }
 
       contribution.status = ContributionStatus.CONFIRMED;
+      contribution.sourceType = ContributionSourceType.MPESA_WEBHOOK;
       contribution.paymentReference = receipt || contribution.providerRequestId;
       contribution.receivedAt = new Date();
       if (amount) {
@@ -190,6 +199,7 @@ export class ContributionsService {
         });
       }
 
+      this.applyCommissionFields(contribution, contribution.church);
       await this.contributionRepo.save(contribution);
       this.logger.log(
         `Contribution ${contribution.id} confirmed from webhook. receipt=${contribution.paymentReference || 'n/a'}`,
@@ -301,6 +311,8 @@ export class ContributionsService {
         amount: payload.amount,
         channel: ContributionChannel.MPESA,
         status: ContributionStatus.CONFIRMED,
+        sourceType: ContributionSourceType.MPESA_C2B,
+        ...this.calculateCommissionFields(church, payload.amount),
         providerRequestId: payload.phoneForContributor ? null : payload.phone,
         paymentReference: payload.transId,
         notes: this.buildMpesaC2BNote(
@@ -626,7 +638,7 @@ export class ContributionsService {
         displayOrder: 999,
         isActive: true,
         receiptTemplate:
-          'Dear {name}, we confirm receipt of KES {amount} for {account} on {date}. Ref: {reference}. Thank you.',
+          'Dear {name}, receipt confirmed: KES {amount} for {account}. Ref {reference}. Thank you.',
       }),
     );
   }
@@ -717,19 +729,7 @@ export class ContributionsService {
     if (!value) {
       return null;
     }
-
-    const digits = value.replace(/\D/g, '');
-    if (digits.length === 10 && digits.startsWith('0')) {
-      return `254${digits.slice(1)}`;
-    }
-    if (digits.length === 12 && digits.startsWith('254')) {
-      return digits;
-    }
-    if (digits.length === 9 && /^[17]\d{8}$/.test(digits)) {
-      return `254${digits}`;
-    }
-
-    return null;
+    return this.smsService.normalizeKenyanPhone(value);
   }
 
   private normalizeComparisonText(value: string) {
@@ -749,7 +749,14 @@ export class ContributionsService {
       return null;
     }
 
-    const phone = body.phone ? this.smsService.formatPhone(body.phone) : null;
+    const phone = body.phone
+      ? this.smsService.normalizeKenyanPhone(body.phone)
+      : null;
+    if (body.phone && !phone) {
+      throw new BadRequestException(
+        'Phone must start with 01, 07, 2541, 2547, 1, or 7.',
+      );
+    }
     let contributor = phone
       ? await this.contributorRepo.findOne({ where: { churchId, phone } })
       : null;
@@ -764,6 +771,10 @@ export class ContributionsService {
     } else {
       contributor.name = body.name || contributor.name;
       contributor.memberNumber = body.memberNumber || contributor.memberNumber;
+    }
+
+    if (body.gender === 'male' || body.gender === 'female') {
+      contributor.gender = body.gender;
     }
 
     return this.contributorRepo.save(contributor);
@@ -792,12 +803,24 @@ export class ContributionsService {
           contribution.contributor.phone,
           message,
           churchSmsConfig,
+          {
+            messageType: SmsMessageType.RECEIPT,
+            contributorId: contribution.contributorId,
+            createdByUserId: contribution.enteredByUserId,
+            recipientName: contribution.contributor?.name,
+          },
         )
       : hashedSafaricomMobile
         ? await this.smsService.sendSmsToHashedSafaricomNumber(
             hashedSafaricomMobile,
             message,
             churchSmsConfig,
+            {
+              messageType: SmsMessageType.RECEIPT,
+              contributorId: contribution.contributorId,
+              createdByUserId: contribution.enteredByUserId,
+              recipientName: contribution.contributor?.name,
+            },
           )
         : false;
 
@@ -827,10 +850,34 @@ export class ContributionsService {
     return value.length >= 32 ? value : null;
   }
 
+  private calculateCommissionFields(church: Church | null, amount: number) {
+    const rate = Number(church?.commissionRatePct || 0);
+    if (!rate || rate < 0) {
+      return {
+        commissionRatePctApplied: 0,
+        commissionAmount: 0,
+      };
+    }
+
+    return {
+      commissionRatePctApplied: rate,
+      commissionAmount: Number(((Number(amount || 0) * rate) / 100).toFixed(2)),
+    };
+  }
+
+  private applyCommissionFields(contribution: Contribution, church: Church | null) {
+    const fields = this.calculateCommissionFields(
+      church,
+      Number(contribution.amount || 0),
+    );
+    contribution.commissionRatePctApplied = fields.commissionRatePctApplied;
+    contribution.commissionAmount = fields.commissionAmount;
+  }
+
   private renderReceiptMessage(contribution: Contribution) {
     const template =
       contribution.fundAccount?.receiptTemplate ||
-      'Dear {name}, we have received KES {amount} for {account}. Ref: {reference}. Thank you.';
+      'Dear {name}, receipt confirmed: KES {amount} for {account}. Ref {reference}. Thank you.';
 
     const values: Record<string, string> = {
       name: contribution.contributor?.name || 'Friend',
@@ -907,6 +954,7 @@ export class ContributionsService {
 
   private getChurchSmsConfig(church: Church | null): ChurchSmsConfig {
     return {
+      churchId: church?.id,
       smsPartnerId: church?.smsPartnerId,
       smsApiKey: church?.smsApiKey,
       smsShortcode: church?.smsShortcode,

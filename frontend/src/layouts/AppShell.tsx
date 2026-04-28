@@ -10,10 +10,12 @@ import {
   MessageSquareText,
   Moon,
   Palette,
+  Send,
   ShieldCheck,
   Sun,
   UserCircle2,
   Users,
+  WalletCards,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
@@ -36,16 +38,48 @@ const COLOR_MODE_STORAGE_KEY = 'church_saas_color_mode';
 const platformLinks = [
   { to: '/platform/dashboard', label: 'Overview', icon: Landmark },
   { to: '/platform/churches', label: 'Churches', icon: Building2 },
+  { to: '/platform/collections', label: 'Collections', icon: WalletCards },
   { to: '/platform/enquiries', label: 'Enquiries', icon: MessageSquareText },
   { to: '/platform/users', label: 'Platform Users', icon: Users },
 ];
 
 const churchLinks = [
-  { to: '/church/dashboard', label: 'Overview', icon: ChartColumn },
-  { to: '/church/fund-accounts', label: 'Fund Accounts', icon: Coins },
-  { to: '/church/contributions', label: 'Contributions', icon: Clock4 },
-  { to: '/church/users', label: 'Staff Users', icon: Users },
-  { to: '/church/reports', label: 'Reports', icon: ShieldCheck },
+  {
+    to: '/church/dashboard',
+    label: 'Overview',
+    icon: ChartColumn,
+    permission: 'dashboard.view',
+  },
+  {
+    to: '/church/fund-accounts',
+    label: 'Fund Accounts',
+    icon: Coins,
+    permission: 'fundAccounts.view',
+  },
+  {
+    to: '/church/contributions',
+    label: 'Contributions',
+    icon: Clock4,
+    permission: 'contributions.view',
+  },
+  {
+    to: '/church/messaging',
+    label: 'Messaging',
+    icon: Send,
+    permission: 'messaging.view',
+  },
+  {
+    to: '/church/users',
+    label: 'Staff Users',
+    icon: Users,
+    permission: 'users.view',
+  },
+  {
+    to: '/church/reports',
+    label: 'Reports',
+    icon: ShieldCheck,
+    permission: 'reports.view',
+  },
 ];
 
 const themeOptions = [
@@ -63,6 +97,11 @@ const pageMeta = {
       variant: 'hero',
     },
     { prefix: '/platform/churches', title: 'Churches', variant: 'compact' },
+    {
+      prefix: '/platform/collections',
+      title: 'Collections',
+      variant: 'compact',
+    },
     {
       prefix: '/platform/enquiries',
       title: 'Enquiries',
@@ -89,6 +128,11 @@ const pageMeta = {
     {
       prefix: '/church/contributions',
       title: 'Contributions',
+      variant: 'compact',
+    },
+    {
+      prefix: '/church/messaging',
+      title: 'Messaging',
       variant: 'compact',
     },
     { prefix: '/church/users', title: 'Staff users', variant: 'compact' },
@@ -118,7 +162,6 @@ export function AppShell({ userType }: AppShellProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const links = userType === 'platform' ? platformLinks : churchLinks;
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem(THEME_STORAGE_KEY) || 'forest';
   });
@@ -149,6 +192,18 @@ export function AppShell({ userType }: AppShellProps) {
   });
 
   const currentUser = profile || session?.user;
+  const permissionSet = new Set<string>(
+    currentUser?.permissions || session?.user?.permissions || [],
+  );
+  const links =
+    userType === 'platform'
+      ? platformLinks
+      : churchLinks.filter(
+          (link) =>
+            permissionSet.size === 0 ||
+            !link.permission ||
+            permissionSet.has(link.permission),
+        );
   const organizationName =
     userType === 'platform'
       ? 'Choice Networks Church SaaS'

@@ -1,4 +1,5 @@
 export interface ChurchSmsConfig {
+  churchId?: string | null;
   smsPartnerId?: string | null;
   smsApiKey?: string | null;
   smsShortcode?: string | null;

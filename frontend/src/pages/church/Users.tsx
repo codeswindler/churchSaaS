@@ -10,9 +10,45 @@ const initialForm = {
   username: '',
   phone: '',
   password: '',
-  role: 'cashier',
+  role: 'treasurer',
+  permissionOverrides: [] as string[],
   isActive: true,
 };
+
+const roleOptions = [
+  {
+    value: 'priest',
+    label: 'Priest',
+    description: 'Full administrative access across enabled church modules.',
+  },
+  {
+    value: 'treasurer',
+    label: 'Treasurer',
+    description: 'Receiving and managing contributions, reports, and ledger.',
+  },
+  {
+    value: 'secretary',
+    label: 'Secretary',
+    description: 'Bulk messaging, contributors, and fund account setup.',
+  },
+];
+
+const permissionOptions = [
+  ['dashboard.view', 'Dashboard'],
+  ['contributions.view', 'View contributions'],
+  ['contributions.record', 'Record contributions'],
+  ['reports.view', 'View reports'],
+  ['reports.export', 'Export reports'],
+  ['fundAccounts.view', 'View fund accounts'],
+  ['fundAccounts.manage', 'Manage fund accounts'],
+  ['contributors.view', 'View contributors'],
+  ['contributors.tag', 'Tag contributor gender'],
+  ['messaging.view', 'View messaging'],
+  ['messaging.send', 'Send bulk messages'],
+  ['outbox.view', 'View outbox'],
+  ['users.view', 'View staff users'],
+  ['users.manage', 'Manage staff users'],
+] as const;
 
 export default function ChurchUsers() {
   const queryClient = useQueryClient();
@@ -84,6 +120,18 @@ export default function ChurchUsers() {
     setIsEditorOpen(true);
   };
 
+  const togglePermission = (permission: string) => {
+    setForm((current: any) => {
+      const permissions = new Set(current.permissionOverrides || []);
+      if (permissions.has(permission)) {
+        permissions.delete(permission);
+      } else {
+        permissions.add(permission);
+      }
+      return { ...current, permissionOverrides: Array.from(permissions) };
+    });
+  };
+
   const closeEditor = () => {
     if (saveMutation.isPending) {
       return;
@@ -105,8 +153,9 @@ export default function ChurchUsers() {
                 Internal user list
               </h3>
               <p className="mt-2 max-w-2xl text-sm text-stone-300">
-                Keep church administrators, priests, and cashiers organized from one
-                staff workspace.
+                Keep the three church staff categories organized: Priest,
+                Treasurer, and Secretary. Add permission overrides only where a
+                user needs access beyond their role preset.
               </p>
             </div>
 
@@ -140,7 +189,9 @@ export default function ChurchUsers() {
                       </div>
                     </td>
                     <td>{user.email}</td>
-                    <td>{user.role}</td>
+                    <td className="capitalize">
+                      {`${user.role || ''}`.replace(/_/g, ' ')}
+                    </td>
                     <td>{user.isActive ? 'Active' : 'Inactive'}</td>
                     <td>
                       <button
@@ -155,6 +206,7 @@ export default function ChurchUsers() {
                             phone: user.phone || '',
                             password: '',
                             role: user.role,
+                            permissionOverrides: user.permissionOverrides || [],
                             isActive: user.isActive,
                           });
                           setIsEditorOpen(true);
@@ -238,11 +290,44 @@ export default function ChurchUsers() {
                       }))
                     }
                   >
-                    <option value="church_admin">Church admin</option>
-                    <option value="priest">Priest</option>
-                    <option value="cashier">Cashier</option>
+                    {roleOptions.map((role) => (
+                      <option key={role.value} value={role.value}>
+                        {role.label}
+                      </option>
+                    ))}
                   </select>
+                  <p className="mt-2 text-xs text-stone-400">
+                    {roleOptions.find((role) => role.value === form.role)
+                      ?.description || ''}
+                  </p>
                 </div>
+
+                <section className="rounded-3xl border border-white/10 bg-black/10 p-5">
+                  <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                    Permission Overrides
+                  </p>
+                  <p className="mt-2 text-sm text-stone-300">
+                    These add access on top of the selected role. Church modules
+                    disabled by platform admin still remain hidden.
+                  </p>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                    {permissionOptions.map(([value, label]) => (
+                      <label
+                        key={value}
+                        className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-stone-100"
+                      >
+                        <input
+                          checked={(form.permissionOverrides || []).includes(
+                            value,
+                          )}
+                          type="checkbox"
+                          onChange={() => togglePermission(value)}
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                </section>
 
                 <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-sm text-stone-100">
                   <input

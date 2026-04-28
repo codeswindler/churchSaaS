@@ -7,6 +7,7 @@ import { ClientEnquiry } from '../entities/client-enquiry.entity';
 import { Contribution } from '../entities/contribution.entity';
 import { FundAccount } from '../entities/fund-account.entity';
 import { PlatformUser } from '../entities/platform-user.entity';
+import { SmsOutbox } from '../entities/sms-outbox.entity';
 import { ChurchSubscriptionsModule } from '../subscriptions/church-subscriptions.module';
 import { PlatformController } from './platform.controller';
 import { PlatformService } from './platform.service';
@@ -20,6 +21,7 @@ import { PlatformService } from './platform.service';
       Contribution,
       FundAccount,
       ClientEnquiry,
+      SmsOutbox,
     ]),
     ChurchSubscriptionsModule,
     ContributionsModule,

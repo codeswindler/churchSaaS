@@ -10,9 +10,9 @@ import {
 import { Church } from './church.entity';
 
 export enum ChurchUserRole {
-  CHURCH_ADMIN = 'church_admin',
   PRIEST = 'priest',
-  CASHIER = 'cashier',
+  TREASURER = 'treasurer',
+  SECRETARY = 'secretary',
 }
 
 @Entity('church_users')
@@ -43,11 +43,14 @@ export class ChurchUser {
   passwordHash: string;
 
   @Column({
-    type: 'enum',
-    enum: ChurchUserRole,
-    default: ChurchUserRole.CASHIER,
+    type: 'varchar',
+    length: 40,
+    default: ChurchUserRole.TREASURER,
   })
   role: ChurchUserRole;
+
+  @Column({ type: 'simple-json', nullable: true })
+  permissionOverrides: string[] | null;
 
   @Column({ default: true })
   isActive: boolean;

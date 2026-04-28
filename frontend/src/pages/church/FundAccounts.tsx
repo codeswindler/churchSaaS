@@ -10,8 +10,10 @@ const initialForm = {
   displayOrder: 0,
   isActive: true,
   receiptTemplate:
-    'Dear {name}, we confirm receipt of KES {amount} towards {account} on {date}. Ref: {reference}. Thank you for supporting the ministry.',
+    'Dear {name}, receipt confirmed: KES {amount} for {account}. Ref {reference}. Thank you.',
 };
+
+const RECEIPT_TEMPLATE_LIMIT = 160;
 
 export default function ChurchFundAccounts() {
   const queryClient = useQueryClient();
@@ -46,6 +48,8 @@ export default function ChurchFundAccounts() {
   });
 
   const accounts = useMemo(() => data || [], [data]);
+  const templateLength = `${form.receiptTemplate || ''}`.length;
+  const templateRemaining = RECEIPT_TEMPLATE_LIMIT - templateLength;
 
   return (
     <div className="page-grid">
@@ -110,6 +114,7 @@ export default function ChurchFundAccounts() {
             </p>
             <textarea
               className="input mt-4 min-h-44"
+              maxLength={RECEIPT_TEMPLATE_LIMIT}
               value={form.receiptTemplate}
               onChange={(event) =>
                 setForm((current: any) => ({
@@ -118,6 +123,19 @@ export default function ChurchFundAccounts() {
                 }))
               }
             />
+            <div className="mt-3 flex flex-col gap-2 text-xs text-stone-400 sm:flex-row sm:items-center sm:justify-between">
+              <span>
+                GSM-7 receipt template limit: {RECEIPT_TEMPLATE_LIMIT}{' '}
+                characters for one SMS page.
+              </span>
+              <span
+                className={
+                  templateRemaining < 20 ? 'text-amber-200' : 'text-stone-300'
+                }
+              >
+                {templateRemaining} characters remaining
+              </span>
+            </div>
           </section>
 
           <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-sm text-stone-100">

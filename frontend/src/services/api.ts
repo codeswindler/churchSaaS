@@ -13,6 +13,9 @@ export interface StoredSession {
     role: string;
     userType: 'platform' | 'church';
     churchId?: string;
+    enabledFeatures?: string[];
+    permissionOverrides?: string[];
+    permissions?: string[];
   };
   church?: any;
   subscription?: any;
@@ -101,6 +104,10 @@ export function updateSessionProfile(profile: any) {
       phone: profile.phone ?? null,
       role: profile.role || session.user.role,
       userType: profile.userType || session.user.userType,
+      enabledFeatures: profile.enabledFeatures || session.user.enabledFeatures,
+      permissionOverrides:
+        profile.permissionOverrides || session.user.permissionOverrides,
+      permissions: profile.permissions || session.user.permissions,
       ...(profile.churchId ? { churchId: profile.churchId } : {}),
     },
     church: profile.church || session.church,

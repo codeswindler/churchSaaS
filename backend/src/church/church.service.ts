@@ -6,15 +6,24 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
 import { Repository } from 'typeorm';
+import {
+  ChurchPermission,
+  normalizeChurchRole,
+} from '../common/access-control';
 import { sanitizeChurchForTenant } from '../common/church.utils';
 import { ContributionsService } from '../contributions/contributions.service';
 import { Church } from '../entities/church.entity';
 import { ChurchUser, ChurchUserRole } from '../entities/church-user.entity';
+import { Contributor } from '../entities/contributor.entity';
 import { FundAccount } from '../entities/fund-account.entity';
+import { SmsBatchAudience } from '../entities/sms-batch.entity';
+import { SmsService } from '../sms/sms.service';
 import { ChurchSubscriptionsService } from '../subscriptions/church-subscriptions.service';
 
 @Injectable()
 export class ChurchService {
+  private readonly receiptTemplateLimit = 160;
+
   constructor(
     @InjectRepository(Church)
     private readonly churchRepo: Repository<Church>,
@@ -22,8 +31,11 @@ export class ChurchService {
     private readonly churchUserRepo: Repository<ChurchUser>,
     @InjectRepository(FundAccount)
     private readonly fundAccountRepo: Repository<FundAccount>,
+    @InjectRepository(Contributor)
+    private readonly contributorRepo: Repository<Contributor>,
     private readonly churchSubscriptionsService: ChurchSubscriptionsService,
     private readonly contributionsService: ContributionsService,
+    private readonly smsService: SmsService,
   ) {}
 
   async getDashboard(churchId: string, query: any = {}) {
@@ -119,8 +131,8 @@ export class ChurchService {
       isActive: body.isActive ?? true,
       displayOrder: Number(body.displayOrder || 0),
       receiptTemplate:
-        body.receiptTemplate ||
-        'Dear {name}, we confirm receipt of KES {amount} towards {account} on {date}. Ref: {reference}. Thank you for supporting the ministry.',
+        this.normalizeReceiptTemplate(body.receiptTemplate) ||
+        'Dear {name}, receipt confirmed: KES {amount} for {account}. Ref {reference}. Thank you.',
     });
 
     return this.fundAccountRepo.save(fundAccount);
@@ -152,7 +164,10 @@ export class ChurchService {
       body.displayOrder ?? fundAccount.displayOrder,
     );
     fundAccount.receiptTemplate =
-      body.receiptTemplate ?? fundAccount.receiptTemplate;
+      body.receiptTemplate !== undefined
+        ? this.normalizeReceiptTemplate(body.receiptTemplate) ||
+          fundAccount.receiptTemplate
+        : fundAccount.receiptTemplate;
 
     return this.fundAccountRepo.save(fundAccount);
   }
@@ -190,7 +205,10 @@ export class ChurchService {
       username: body.username || null,
       phone: body.phone || null,
       passwordHash: await bcrypt.hash(body.password, 10),
-      role: body.role as ChurchUserRole,
+      role: normalizeChurchRole(body.role) as ChurchUserRole,
+      permissionOverrides: this.normalizePermissionOverrides(
+        body.permissionOverrides,
+      ),
       isActive: body.isActive ?? true,
     });
 
@@ -242,7 +260,15 @@ export class ChurchService {
     }
 
     user.name = body.name ?? user.name;
-    user.role = body.role ?? user.role;
+    user.role =
+      body.role !== undefined
+        ? (normalizeChurchRole(body.role) as ChurchUserRole)
+        : user.role;
+    if (body.permissionOverrides !== undefined) {
+      user.permissionOverrides = this.normalizePermissionOverrides(
+        body.permissionOverrides,
+      );
+    }
     user.isActive = body.isActive ?? user.isActive;
 
     if (body.password) {
@@ -270,6 +296,82 @@ export class ChurchService {
     return this.contributionsService.getChurchReportSummary(churchId, query);
   }
 
+  async listContributors(churchId: string, query: any = {}) {
+    const qb = this.contributorRepo
+      .createQueryBuilder('contributor')
+      .where('contributor.churchId = :churchId', { churchId })
+      .orderBy('contributor.updatedAt', 'DESC');
+
+    if (query.gender === 'male' || query.gender === 'female') {
+      qb.andWhere('contributor.gender = :gender', { gender: query.gender });
+    }
+    if (query.search) {
+      qb.andWhere(
+        '(contributor.name LIKE :search OR contributor.phone LIKE :search)',
+        { search: `%${query.search}%` },
+      );
+    }
+
+    return qb.getMany();
+  }
+
+  async updateContributor(churchId: string, contributorId: string, body: any) {
+    const contributor = await this.contributorRepo.findOne({
+      where: { id: contributorId, churchId },
+    });
+    if (!contributor) {
+      throw new NotFoundException('Contributor not found');
+    }
+
+    if (body.gender !== undefined) {
+      contributor.gender =
+        body.gender === 'male' || body.gender === 'female'
+          ? body.gender
+          : null;
+    }
+    if (body.name !== undefined) {
+      contributor.name = body.name || contributor.name;
+    }
+    if (body.phone !== undefined) {
+      const phone = this.smsService.normalizeKenyanPhone(body.phone || '');
+      if (body.phone && !phone) {
+        throw new BadRequestException(
+          'Phone must start with 01, 07, 2541, 2547, 1, or 7.',
+        );
+      }
+      contributor.phone = phone;
+    }
+
+    return this.contributorRepo.save(contributor);
+  }
+
+  async sendBulkMessage(churchId: string, userId: string, body: any) {
+    const audience = Object.values(SmsBatchAudience).includes(body.audience)
+      ? body.audience
+      : SmsBatchAudience.ALL_CONTRIBUTORS;
+
+    return this.smsService.sendBulkMessages(churchId, userId, {
+      audience,
+      message: body.message,
+      pastedContacts: body.pastedContacts,
+    });
+  }
+
+  async listSmsOutbox(churchId: string, query: any = {}) {
+    return this.smsService.listOutbox(churchId, query);
+  }
+
+  async getSmsUsage(churchId: string, query: any = {}) {
+    const rows = await this.smsService.getSmsUsageSummary(churchId, query);
+    return (
+      rows[0] || {
+        churchId,
+        messageCount: 0,
+        units: 0,
+      }
+    );
+  }
+
   private async ensureGeneralFundAccount(churchId: string) {
     const existing = await this.fundAccountRepo.findOne({
       where: { churchId, code: 'general' },
@@ -289,9 +391,23 @@ export class ChurchService {
         isActive: true,
         displayOrder: 999,
         receiptTemplate:
-          'Dear {name}, we confirm receipt of KES {amount} for {account} on {date}. Ref: {reference}. Thank you.',
+          'Dear {name}, receipt confirmed: KES {amount} for {account}. Ref {reference}. Thank you.',
       }),
     );
+  }
+
+  private normalizeReceiptTemplate(value: unknown) {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+
+    const template = `${value}`.trim();
+    if (template.length > this.receiptTemplateLimit) {
+      throw new BadRequestException(
+        `Receipt template must be ${this.receiptTemplateLimit} characters or less.`,
+      );
+    }
+    return template;
   }
 
   private slugify(value: string) {
@@ -300,5 +416,16 @@ export class ChurchService {
       .trim()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '');
+  }
+
+  private normalizePermissionOverrides(value: unknown) {
+    if (!Array.isArray(value)) {
+      return null;
+    }
+
+    const valid = new Set(Object.values(ChurchPermission));
+    return value.filter((permission) =>
+      valid.has(permission as ChurchPermission),
+    ) as ChurchPermission[];
   }
 }
