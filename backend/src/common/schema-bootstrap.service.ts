@@ -346,6 +346,7 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
             \`firstName\` varchar(120) NULL,
             \`lastName\` varchar(120) NULL,
             \`displayName\` varchar(180) NULL,
+            \`gender\` varchar(20) NULL,
             \`normalizedPhone\` varchar(40) NOT NULL,
             \`sourceLabel\` varchar(80) NULL,
             \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
@@ -357,6 +358,11 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `);
         this.logger.log('Created SMS address book contacts table.');
+      } else if (!addressBookContacts.findColumnByName('gender')) {
+        await queryRunner.query(
+          'ALTER TABLE `sms_address_book_contacts` ADD COLUMN `gender` varchar(20) NULL AFTER `displayName`',
+        );
+        this.logger.log('Added gender column to SMS address book contacts.');
       }
 
       const outbox = await queryRunner.getTable('sms_outbox');

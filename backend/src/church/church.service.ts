@@ -352,12 +352,26 @@ export class ChurchService {
   }
 
   async sendBulkMessage(churchId: string, userId: string, body: any) {
-    const audience = Object.values(SmsBatchAudience).includes(body.audience)
-      ? body.audience
-      : SmsBatchAudience.ALL_CONTRIBUTORS;
+    const rawAudiences = Array.isArray(body.audiences)
+      ? body.audiences
+      : body.audience
+        ? [body.audience]
+        : [];
+    const audiences = Array.from(
+      new Set(
+        rawAudiences.filter((audience: string) =>
+          [
+            SmsBatchAudience.ALL_CONTRIBUTORS,
+            SmsBatchAudience.MALE_CONTRIBUTORS,
+            SmsBatchAudience.FEMALE_CONTRIBUTORS,
+          ].includes(audience as SmsBatchAudience),
+        ),
+      ),
+    ) as SmsBatchAudience[];
 
     return this.smsService.sendBulkMessages(churchId, userId, {
-      audience,
+      audiences,
+      genderFilter: this.smsService.normalizeGender(body.genderFilter || ''),
       message: body.message,
       pastedContacts: body.pastedContacts,
       addressBookIds: Array.isArray(body.addressBookIds)
@@ -521,6 +535,7 @@ export class ChurchService {
       firstName: nameParts[0] || null,
       lastName: nameParts.length > 1 ? nameParts.slice(1).join(' ') : null,
       displayName,
+      gender: this.smsService.normalizeGender(body.gender || ''),
       normalizedPhone,
       sourceLabel: 'manual',
     };
@@ -555,6 +570,9 @@ export class ChurchService {
     const lines = `${body.contactsText || ''}`
       .split(/\r?\n/)
       .map((line) => line.trim())
+      .filter(
+        (line) => !/^first\s*name\s*,\s*last\s*name\s*,\s*phone/i.test(line),
+      )
       .filter(Boolean);
     if (lines.length === 0) {
       throw new BadRequestException('Paste at least one contact');
@@ -566,6 +584,7 @@ export class ChurchService {
         firstName: string | null;
         lastName: string | null;
         displayName: string | null;
+        gender: ReturnType<SmsService['normalizeGender']>;
         normalizedPhone: string;
       }
     >();
@@ -587,6 +606,7 @@ export class ChurchService {
         firstName: parsed.firstName || nameParts[0] || null,
         lastName: nameParts.length > 1 ? nameParts.slice(1).join(' ') : null,
         displayName: parsed.name || parsed.firstName || null,
+        gender: this.smsService.normalizeGender(parsed.gender || ''),
         normalizedPhone,
       });
     }
@@ -606,6 +626,7 @@ export class ChurchService {
         existing.firstName = contact.firstName;
         existing.lastName = contact.lastName;
         existing.displayName = contact.displayName;
+        existing.gender = contact.gender;
         await this.addressBookContactRepo.save(existing);
         updated += 1;
         continue;

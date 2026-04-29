@@ -370,7 +370,9 @@ export class SmsService {
     churchId: string,
     createdByUserId: string,
     body: {
-      audience: SmsBatchAudience;
+      audience?: SmsBatchAudience;
+      audiences?: SmsBatchAudience[];
+      genderFilter?: ContributorGender | null;
       message: string;
       pastedContacts?: string;
       addressBookIds?: string[];
@@ -409,7 +411,7 @@ export class SmsService {
       this.smsBatchRepo.create({
         churchId,
         createdByUserId,
-        audience: body.audience,
+        audience: this.resolveBatchAudienceLabel(body) as SmsBatchAudience,
         messageBody,
         recipientCount: preparedRecipients.length,
         totalUnits,
@@ -821,15 +823,25 @@ export class SmsService {
   private async resolveBulkRecipients(
     churchId: string,
     body: {
-      audience: SmsBatchAudience;
+      audience?: SmsBatchAudience;
+      audiences?: SmsBatchAudience[];
+      genderFilter?: ContributorGender | null;
       pastedContacts?: string;
       addressBookIds?: string[];
     },
   ): Promise<BulkRecipient[]> {
     const recipients: BulkRecipient[] = [];
+    const audiences = this.resolveBulkAudiences(body);
+    const genderFilter = this.normalizeGender(body.genderFilter || '');
 
-    if (body.audience !== SmsBatchAudience.PASTED_CONTACTS) {
-      recipients.push(...(await this.resolveContributorRecipients(churchId, body.audience)));
+    for (const audience of audiences) {
+      recipients.push(
+        ...(await this.resolveContributorRecipients(
+          churchId,
+          audience,
+          genderFilter,
+        )),
+      );
     }
 
     const addressBookIds = Array.isArray(body.addressBookIds)
@@ -837,7 +849,11 @@ export class SmsService {
       : [];
     if (addressBookIds.length > 0) {
       recipients.push(
-        ...(await this.resolveAddressBookRecipients(churchId, addressBookIds)),
+        ...(await this.resolveAddressBookRecipients(
+          churchId,
+          addressBookIds,
+          genderFilter,
+        )),
       );
     }
 
@@ -851,6 +867,7 @@ export class SmsService {
   private async resolveContributorRecipients(
     churchId: string,
     audience: SmsBatchAudience,
+    genderFilter: ContributorGender | null = null,
   ): Promise<BulkRecipient[]> {
     if (audience === SmsBatchAudience.ADDRESS_BOOKS) {
       return [];
@@ -862,6 +879,9 @@ export class SmsService {
     }
     if (audience === SmsBatchAudience.FEMALE_CONTRIBUTORS) {
       where.gender = ContributorGender.FEMALE;
+    }
+    if (audience === SmsBatchAudience.ALL_CONTRIBUTORS && genderFilter) {
+      where.gender = genderFilter;
     }
 
     const contributors = await this.contributorRepo.find({ where });
@@ -908,20 +928,28 @@ export class SmsService {
   private async resolveAddressBookRecipients(
     churchId: string,
     addressBookIds: string[],
+    genderFilter: ContributorGender | null = null,
   ): Promise<BulkRecipient[]> {
     if (addressBookIds.length === 0) {
       return [];
     }
 
-    const contacts = await this.addressBookContactRepo
+    const contactsQb = this.addressBookContactRepo
       .createQueryBuilder('contact')
       .innerJoin('contact.addressBook', 'addressBook')
       .where('contact.churchId = :churchId', { churchId })
       .andWhere('contact.addressBookId IN (:...addressBookIds)', {
         addressBookIds,
       })
-      .andWhere('addressBook.isActive = :isActive', { isActive: true })
-      .getMany();
+      .andWhere('addressBook.isActive = :isActive', { isActive: true });
+
+    if (genderFilter) {
+      contactsQb.andWhere('contact.gender = :genderFilter', {
+        genderFilter,
+      });
+    }
+
+    const contacts = await contactsQb.getMany();
 
     return contacts
       .map((contact) => ({
@@ -969,12 +997,21 @@ export class SmsService {
       );
       if (phoneIndex >= 0) {
         const phone = commaParts[phoneIndex];
-        const nameParts = commaParts.filter((_, index) => index !== phoneIndex);
+        const genderIndex = commaParts.findIndex((part, index) => {
+          return index !== phoneIndex && Boolean(this.normalizeGender(part));
+        });
+        const nameParts = commaParts.filter(
+          (_, index) => index !== phoneIndex && index !== genderIndex,
+        );
         const name = nameParts.join(' ').trim() || null;
         return {
           name,
           firstName: this.extractFirstName(name || ''),
           phone,
+          gender:
+            genderIndex >= 0
+              ? this.normalizeGender(commaParts[genderIndex])
+              : null,
         };
       }
     }
@@ -985,12 +1022,19 @@ export class SmsService {
     );
 
     if (phoneIndex >= 0) {
+      const genderIndex = tokens.findIndex((token, index) => {
+        return index !== phoneIndex && Boolean(this.normalizeGender(token));
+      });
       const phone = tokens[phoneIndex];
-      const name = tokens.filter((_, index) => index !== phoneIndex).join(' ');
+      const name = tokens
+        .filter((_, index) => index !== phoneIndex && index !== genderIndex)
+        .join(' ');
       return {
         name: name || null,
         firstName: this.extractFirstName(name),
         phone,
+        gender:
+          genderIndex >= 0 ? this.normalizeGender(tokens[genderIndex]) : null,
       };
     }
 
@@ -998,6 +1042,7 @@ export class SmsService {
       name: null,
       firstName: null,
       phone: value,
+      gender: null,
     };
   }
 
@@ -1015,14 +1060,72 @@ export class SmsService {
     });
   }
 
+  private resolveBulkAudiences(body: {
+    audience?: SmsBatchAudience;
+    audiences?: SmsBatchAudience[];
+  }) {
+    const rawAudiences = Array.isArray(body.audiences)
+      ? body.audiences
+      : body.audience
+        ? [body.audience]
+        : [];
+    const allowed = new Set([
+      SmsBatchAudience.ALL_CONTRIBUTORS,
+      SmsBatchAudience.MALE_CONTRIBUTORS,
+      SmsBatchAudience.FEMALE_CONTRIBUTORS,
+    ]);
+    const unique = new Set<SmsBatchAudience>();
+    rawAudiences.forEach((audience) => {
+      if (allowed.has(audience)) {
+        unique.add(audience);
+      }
+    });
+    return Array.from(unique);
+  }
+
+  private resolveBatchAudienceLabel(body: {
+    audience?: SmsBatchAudience;
+    audiences?: SmsBatchAudience[];
+    addressBookIds?: string[];
+    pastedContacts?: string;
+  }) {
+    const audiences = this.resolveBulkAudiences(body);
+    if (audiences.length === 1) {
+      return audiences[0];
+    }
+    if (audiences.length > 1) {
+      return 'multiple';
+    }
+    if (body.addressBookIds?.length) {
+      return SmsBatchAudience.ADDRESS_BOOKS;
+    }
+    if (body.pastedContacts?.trim()) {
+      return SmsBatchAudience.PASTED_CONTACTS;
+    }
+    return SmsBatchAudience.ALL_CONTRIBUTORS;
+  }
+
   private renderBulkMessage(template: string, recipient: BulkRecipient) {
     const firstName =
       recipient.firstName || this.extractFirstName(recipient.name || '') || '';
+    const recipientName = recipient.name || firstName || 'Friend';
     return this.sanitizeGsm7(
       template
         .replace(/\{firstName\}/gi, firstName)
-        .replace(/\{name\}/gi, recipient.name || firstName || 'Friend'),
+        .replace(/\{name\}/gi, recipientName)
+        .replace(/\bname\b/gi, recipientName),
     );
+  }
+
+  public normalizeGender(value: string | null | undefined) {
+    const normalized = `${value || ''}`.trim().toLowerCase();
+    if (['male', 'm'].includes(normalized)) {
+      return ContributorGender.MALE;
+    }
+    if (['female', 'f'].includes(normalized)) {
+      return ContributorGender.FEMALE;
+    }
+    return null;
   }
 
   private extractFirstName(value: string | null | undefined) {

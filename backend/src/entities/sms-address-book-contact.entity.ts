@@ -9,6 +9,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Church } from './church.entity';
+import { ContributorGender } from './contributor.entity';
 import { SmsAddressBook } from './sms-address-book.entity';
 
 @Entity('sms_address_book_contacts')
@@ -42,6 +43,9 @@ export class SmsAddressBookContact {
 
   @Column({ type: 'varchar', length: 180, nullable: true })
   displayName: string | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  gender: ContributorGender | null;
 
   @Column({ type: 'varchar', length: 40 })
   normalizedPhone: string;

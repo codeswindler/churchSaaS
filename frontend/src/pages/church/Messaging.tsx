@@ -14,7 +14,8 @@ import toast from 'react-hot-toast';
 import api from '../../services/api';
 
 const initialMessageForm = {
-  audience: 'all_contributors',
+  audiences: ['all_contributors'] as string[],
+  genderFilter: '',
   message: '',
   pastedContacts: '',
   addressBookIds: [] as string[],
@@ -28,6 +29,7 @@ const initialGroupForm = {
 const initialContactForm = {
   name: '',
   phone: '',
+  gender: '',
 };
 
 const initialUploadForm = {
@@ -44,6 +46,42 @@ const initialOutboxFilters = {
 };
 
 type Workspace = 'compose' | 'addressBooks' | 'upload' | 'outbox';
+
+const contributorAudienceOptions = [
+  {
+    id: 'all_contributors',
+    title: 'All contributors',
+    description: 'Every contributor saved from payment records.',
+  },
+  {
+    id: 'male_contributors',
+    title: 'Male contributors',
+    description: 'Only contributors tagged as male.',
+  },
+  {
+    id: 'female_contributors',
+    title: 'Female contributors',
+    description: 'Only contributors tagged as female.',
+  },
+] as const;
+
+const genderFilterOptions = [
+  {
+    id: '',
+    title: 'All genders',
+    description: 'Send to every selected recipient.',
+  },
+  {
+    id: 'male',
+    title: 'Male only',
+    description: 'Only contacts tagged male.',
+  },
+  {
+    id: 'female',
+    title: 'Female only',
+    description: 'Only contacts tagged female.',
+  },
+] as const;
 
 function toQueryString(filters: Record<string, string>) {
   const params = new URLSearchParams();
@@ -161,11 +199,14 @@ export default function ChurchMessaging() {
 
   const sendMutation = useMutation({
     mutationFn: async () => {
-      if (
-        form.audience === 'address_books' &&
-        form.addressBookIds.length === 0
-      ) {
-        throw new Error('Select at least one address book group');
+      const hasAudience =
+        form.audiences.length > 0 ||
+        form.addressBookIds.length > 0 ||
+        form.pastedContacts.trim().length > 0;
+      if (!hasAudience) {
+        throw new Error(
+          'Select at least one audience, address book, or pasted contact',
+        );
       }
       const response = await api.post('/church/messaging/bulk', form);
       return response.data;
@@ -321,6 +362,25 @@ export default function ChurchMessaging() {
     });
   };
 
+  const toggleContributorAudience = (audienceId: string) => {
+    setForm((current) => {
+      const selected = new Set(current.audiences);
+      if (selected.has(audienceId)) {
+        selected.delete(audienceId);
+      } else {
+        selected.add(audienceId);
+      }
+      return { ...current, audiences: Array.from(selected) };
+    });
+  };
+
+  const setGenderFilter = (gender: string) => {
+    setForm((current) => ({
+      ...current,
+      genderFilter: gender,
+    }));
+  };
+
   const loadUploadFile = (file?: File) => {
     if (!file) return;
     if (!/\.(csv|txt)$/i.test(file.name)) {
@@ -340,7 +400,7 @@ export default function ChurchMessaging() {
   const downloadAddressBookTemplate = () => {
     downloadTextFile(
       'address-book-template.csv',
-      'firstName,lastName,phone\nJane,Otieno,0712345678\nPeter,Mwangi,254712345678\n',
+      'firstName,lastName,phone,gender\nJane,Otieno,0712345678,female\nPeter,Mwangi,254712345678,male\n',
     );
   };
 
@@ -445,24 +505,60 @@ export default function ChurchMessaging() {
             </h3>
 
             <div className="mt-6 grid gap-4 lg:grid-cols-2">
-              <div>
+              <div className="lg:col-span-2">
                 <label className="label">Audience</label>
-                <select
-                  className="input"
-                  value={form.audience}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      audience: event.target.value,
-                    }))
-                  }
-                >
-                  <option value="all_contributors">All contributors</option>
-                  <option value="male_contributors">Male contributors</option>
-                  <option value="female_contributors">Female contributors</option>
-                  <option value="address_books">Selected address books</option>
-                  <option value="pasted_contacts">Pasted contacts</option>
-                </select>
+                <div className="grid gap-2 md:grid-cols-3">
+                  {contributorAudienceOptions.map((audience) => {
+                    const isSelected = form.audiences.includes(audience.id);
+                    return (
+                      <button
+                        key={audience.id}
+                        className={`rounded-2xl border px-4 py-3 text-left transition ${
+                          isSelected
+                            ? 'border-amber-200/50 bg-amber-200/15 text-white'
+                            : 'border-white/10 bg-black/10 text-stone-300 hover:bg-white/5 hover:text-white'
+                        }`}
+                        type="button"
+                        onClick={() => toggleContributorAudience(audience.id)}
+                      >
+                        <span className="block font-semibold">
+                          {audience.title}
+                        </span>
+                        <span className="text-xs text-stone-400">
+                          {audience.description}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="lg:col-span-2">
+                <label className="label">Optional gender filter</label>
+                <div className="grid gap-2 md:grid-cols-3">
+                  {genderFilterOptions.map((option) => {
+                    const isSelected = form.genderFilter === option.id;
+                    return (
+                      <button
+                        key={option.title}
+                        className={`rounded-2xl border px-4 py-3 text-left transition ${
+                          isSelected
+                            ? 'border-emerald-300/50 bg-emerald-300/15 text-white'
+                            : 'border-white/10 bg-black/10 text-stone-300 hover:bg-white/5 hover:text-white'
+                        }`}
+                        type="button"
+                        onClick={() => setGenderFilter(option.id)}
+                      >
+                        <span className="block font-semibold">
+                          {option.title}
+                        </span>
+                        <span className="text-xs text-stone-400">
+                          {option.description}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div>
@@ -537,33 +633,33 @@ export default function ChurchMessaging() {
               </div>
 
               <div className="lg:col-span-2">
+                <div className="mb-3 rounded-2xl border border-white/10 bg-black/10 p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400">
+                    Personalization placeholder
+                  </p>
+                  <button
+                    className="mt-2 inline-flex items-center gap-2 rounded-full border border-amber-200/40 bg-amber-200/10 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-200 hover:text-stone-950"
+                    type="button"
+                    onClick={() => insertMessagePlaceholder('{name}')}
+                  >
+                    Recipient name
+                    <span className="rounded-full bg-black/20 px-2 py-0.5 font-mono text-xs">
+                      {'{name}'}
+                    </span>
+                  </button>
+                </div>
                 <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
                   <label className="label mb-0">Message</label>
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <select
-                      className="input-compact min-w-[220px]"
-                      defaultValue=""
-                      onChange={(event) => {
-                        if (event.target.value) {
-                          insertMessagePlaceholder(event.target.value);
-                          event.target.value = '';
-                        }
-                      }}
-                    >
-                      <option value="">Insert placeholder</option>
-                      <option value="{name}">Recipient name {'{name}'}</option>
-                    </select>
-                    <span className="text-xs text-stone-400">
-                      {form.message.length} chars | {smsUnits(form.message)}{' '}
-                      unit{smsUnits(form.message) === 1 ? '' : 's'} |{' '}
-                      {remainingCharacters} left on current page
-                    </span>
-                  </div>
+                  <span className="text-xs text-stone-400">
+                    {form.message.length} chars | {smsUnits(form.message)} unit
+                    {smsUnits(form.message) === 1 ? '' : 's'} |{' '}
+                    {remainingCharacters} left on current page
+                  </span>
                 </div>
                 <textarea
                   ref={messageTextareaRef}
                   className="input mt-2 min-h-44 resize-y"
-                  placeholder="Select Recipient name to insert {name}. It works for contributors, address-book groups, and pasted contacts."
+                  placeholder="Use {name} to personalize each message. Example: Dear {name}, our meeting starts at 5 PM."
                   value={form.message}
                   onChange={(event) =>
                     setForm((current) => ({
@@ -706,7 +802,7 @@ export default function ChurchMessaging() {
             </div>
 
             <form
-              className="mt-6 grid gap-4 lg:grid-cols-[1fr_0.8fr_auto]"
+              className="mt-6 grid gap-4 xl:grid-cols-[1fr_0.75fr_0.65fr_auto]"
               onSubmit={(event) => {
                 event.preventDefault();
                 addContactMutation.mutate();
@@ -740,6 +836,23 @@ export default function ChurchMessaging() {
                   }
                 />
               </div>
+              <div>
+                <label className="label">Gender</label>
+                <select
+                  className="input"
+                  value={contactForm.gender}
+                  onChange={(event) =>
+                    setContactForm((current) => ({
+                      ...current,
+                      gender: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="">Not tagged</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                </select>
+              </div>
               <div className="flex items-end">
                 <button
                   className="btn-primary w-full justify-center lg:w-auto"
@@ -762,6 +875,7 @@ export default function ChurchMessaging() {
                       <tr>
                         <th className="px-4 py-3">Name</th>
                         <th className="px-4 py-3">Phone</th>
+                        <th className="px-4 py-3">Gender</th>
                         <th className="px-4 py-3">Source</th>
                         <th className="px-4 py-3">Added</th>
                       </tr>
@@ -776,6 +890,9 @@ export default function ChurchMessaging() {
                             {contact.displayName || contact.firstName || '-'}
                           </td>
                           <td className="px-4 py-3">{contact.normalizedPhone}</td>
+                          <td className="px-4 py-3 capitalize">
+                            {contact.gender || '-'}
+                          </td>
                           <td className="px-4 py-3">
                             {contact.sourceLabel || 'manual'}
                           </td>
@@ -874,7 +991,7 @@ export default function ChurchMessaging() {
               <label className="label">Upload preview</label>
               <textarea
                 className="input min-h-[320px] resize-y font-mono text-sm"
-                placeholder="firstName,lastName,phone&#10;Jane,Otieno,0712345678"
+                placeholder="firstName,lastName,phone,gender&#10;Jane,Otieno,0712345678,female"
                 value={uploadForm.contactsText}
                 onChange={(event) =>
                   setUploadForm((current) => ({
