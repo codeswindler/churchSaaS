@@ -315,6 +315,50 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
         this.logger.log('Created SMS batches table.');
       }
 
+      const addressBooks = await queryRunner.getTable('sms_address_books');
+      if (!addressBooks) {
+        await queryRunner.query(`
+          CREATE TABLE \`sms_address_books\` (
+            \`id\` varchar(36) NOT NULL,
+            \`churchId\` varchar(36) NOT NULL,
+            \`createdByUserId\` varchar(36) NULL,
+            \`name\` varchar(160) NOT NULL,
+            \`description\` text NULL,
+            \`isActive\` tinyint NOT NULL DEFAULT 1,
+            \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            \`updatedAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+            PRIMARY KEY (\`id\`),
+            INDEX \`IDX_sms_address_books_church_name\` (\`churchId\`, \`name\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        this.logger.log('Created SMS address books table.');
+      }
+
+      const addressBookContacts = await queryRunner.getTable(
+        'sms_address_book_contacts',
+      );
+      if (!addressBookContacts) {
+        await queryRunner.query(`
+          CREATE TABLE \`sms_address_book_contacts\` (
+            \`id\` varchar(36) NOT NULL,
+            \`churchId\` varchar(36) NOT NULL,
+            \`addressBookId\` varchar(36) NOT NULL,
+            \`firstName\` varchar(120) NULL,
+            \`lastName\` varchar(120) NULL,
+            \`displayName\` varchar(180) NULL,
+            \`normalizedPhone\` varchar(40) NOT NULL,
+            \`sourceLabel\` varchar(80) NULL,
+            \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            \`updatedAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+            PRIMARY KEY (\`id\`),
+            UNIQUE KEY \`UQ_sms_address_book_contact_phone\` (\`addressBookId\`, \`normalizedPhone\`),
+            INDEX \`IDX_sms_address_book_contacts_church_phone\` (\`churchId\`, \`normalizedPhone\`),
+            INDEX \`IDX_sms_address_book_contacts_book_phone\` (\`addressBookId\`, \`normalizedPhone\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        this.logger.log('Created SMS address book contacts table.');
+      }
+
       const outbox = await queryRunner.getTable('sms_outbox');
       if (!outbox) {
         await queryRunner.query(`

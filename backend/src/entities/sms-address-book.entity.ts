@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   OneToMany,
@@ -10,18 +11,11 @@ import {
 } from 'typeorm';
 import { Church } from './church.entity';
 import { ChurchUser } from './church-user.entity';
-import { SmsOutbox } from './sms-outbox.entity';
+import { SmsAddressBookContact } from './sms-address-book-contact.entity';
 
-export enum SmsBatchAudience {
-  ALL_CONTRIBUTORS = 'all_contributors',
-  MALE_CONTRIBUTORS = 'male_contributors',
-  FEMALE_CONTRIBUTORS = 'female_contributors',
-  ADDRESS_BOOKS = 'address_books',
-  PASTED_CONTACTS = 'pasted_contacts',
-}
-
-@Entity('sms_batches')
-export class SmsBatch {
+@Entity('sms_address_books')
+@Index(['churchId', 'name'])
+export class SmsAddressBook {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -39,23 +33,17 @@ export class SmsBatch {
   @Column({ type: 'varchar', length: 36, nullable: true })
   createdByUserId: string | null;
 
-  @Column({ type: 'varchar', length: 40 })
-  audience: SmsBatchAudience;
+  @Column({ type: 'varchar', length: 160 })
+  name: string;
 
-  @Column({ type: 'text' })
-  messageBody: string;
+  @Column({ type: 'text', nullable: true })
+  description: string | null;
 
-  @Column({ type: 'int', default: 0 })
-  recipientCount: number;
+  @Column({ type: 'boolean', default: true })
+  isActive: boolean;
 
-  @Column({ type: 'int', default: 0 })
-  totalUnits: number;
-
-  @Column({ type: 'varchar', length: 40, default: 'queued' })
-  status: string;
-
-  @OneToMany(() => SmsOutbox, (outbox) => outbox.batch)
-  messages: SmsOutbox[];
+  @OneToMany(() => SmsAddressBookContact, (contact) => contact.addressBook)
+  contacts: SmsAddressBookContact[];
 
   @CreateDateColumn()
   createdAt: Date;

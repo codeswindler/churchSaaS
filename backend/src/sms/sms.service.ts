@@ -11,6 +11,7 @@ import {
   ContributionStatus,
 } from '../entities/contribution.entity';
 import { Contributor, ContributorGender } from '../entities/contributor.entity';
+import { SmsAddressBookContact } from '../entities/sms-address-book-contact.entity';
 import { SmsBatch, SmsBatchAudience } from '../entities/sms-batch.entity';
 import {
   SmsDeliveryStatus,
@@ -29,8 +30,15 @@ type ResolvedSmsConfig = {
 type BulkRecipient = {
   contributorId: string | null;
   name: string | null;
+  firstName: string | null;
   mobile: string;
   isHashedRecipient: boolean;
+  dedupeKey?: string;
+};
+
+type PreparedBulkRecipient = BulkRecipient & {
+  messageBody: string;
+  estimatedUnits: number;
 };
 
 @Injectable()
@@ -49,6 +57,8 @@ export class SmsService {
     private readonly contributorRepo: Repository<Contributor>,
     @InjectRepository(Contribution)
     private readonly contributionRepo: Repository<Contribution>,
+    @InjectRepository(SmsAddressBookContact)
+    private readonly addressBookContactRepo: Repository<SmsAddressBookContact>,
     @InjectRepository(SmsBatch)
     private readonly smsBatchRepo: Repository<SmsBatch>,
     @InjectRepository(SmsOutbox)
@@ -363,6 +373,7 @@ export class SmsService {
       audience: SmsBatchAudience;
       message: string;
       pastedContacts?: string;
+      addressBookIds?: string[];
       smsShortcode?: string;
     },
   ) {
@@ -381,7 +392,18 @@ export class SmsService {
     if (uniqueRecipients.length === 0) {
       throw new BadRequestException('No valid SMS recipients were found');
     }
-    const unitsPerMessage = this.estimateGsm7Units(messageBody);
+    const preparedRecipients = uniqueRecipients.map((recipient) => {
+      const renderedMessage = this.renderBulkMessage(messageBody, recipient);
+      return {
+        ...recipient,
+        messageBody: renderedMessage,
+        estimatedUnits: this.estimateGsm7Units(renderedMessage),
+      };
+    });
+    const totalUnits = preparedRecipients.reduce(
+      (sum, recipient) => sum + recipient.estimatedUnits,
+      0,
+    );
 
     const batch = await this.smsBatchRepo.save(
       this.smsBatchRepo.create({
@@ -389,8 +411,8 @@ export class SmsService {
         createdByUserId,
         audience: body.audience,
         messageBody,
-        recipientCount: uniqueRecipients.length,
-        totalUnits: uniqueRecipients.length * unitsPerMessage,
+        recipientCount: preparedRecipients.length,
+        totalUnits,
         status: 'sending',
       }),
     );
@@ -398,10 +420,10 @@ export class SmsService {
     const config = this.getConfigFromChurch(church, body.smsShortcode);
     const resolved = this.resolveConfig(config);
     const url = `${resolved.baseUrl}/api/services/sendbulk`;
-    const plainRecipients = uniqueRecipients.filter(
+    const plainRecipients = preparedRecipients.filter(
       (recipient) => !recipient.isHashedRecipient,
     );
-    const hashedRecipients = uniqueRecipients.filter(
+    const hashedRecipients = preparedRecipients.filter(
       (recipient) => recipient.isHashedRecipient,
     );
 
@@ -418,8 +440,8 @@ export class SmsService {
             recipientMobile: recipient.mobile,
             isHashedRecipient: recipient.isHashedRecipient,
             messageType: SmsMessageType.BULK,
-            messageBody,
-            estimatedUnits: unitsPerMessage,
+            messageBody: recipient.messageBody,
+            estimatedUnits: recipient.estimatedUnits,
             sendStatus: SmsSendStatus.PENDING,
             deliveryStatus: SmsDeliveryStatus.PENDING,
           }),
@@ -437,7 +459,7 @@ export class SmsService {
           pass_type: 'plain',
           clientsmsid: Number(clientsmsid),
           mobile: row.recipientMobile,
-          message: messageBody,
+          message: row.messageBody,
           shortcode: resolved.shortCode,
         };
       });
@@ -483,8 +505,8 @@ export class SmsService {
             recipientMobile: recipient.mobile,
             isHashedRecipient: true,
             messageType: SmsMessageType.BULK,
-            messageBody,
-            estimatedUnits: unitsPerMessage,
+            messageBody: recipient.messageBody,
+            estimatedUnits: recipient.estimatedUnits,
             sendStatus: SmsSendStatus.PENDING,
             deliveryStatus: SmsDeliveryStatus.PENDING,
           }),
@@ -801,17 +823,44 @@ export class SmsService {
     body: {
       audience: SmsBatchAudience;
       pastedContacts?: string;
+      addressBookIds?: string[];
     },
   ): Promise<BulkRecipient[]> {
-    if (body.audience === SmsBatchAudience.PASTED_CONTACTS) {
-      return this.parsePastedContacts(body.pastedContacts || '');
+    const recipients: BulkRecipient[] = [];
+
+    if (body.audience !== SmsBatchAudience.PASTED_CONTACTS) {
+      recipients.push(...(await this.resolveContributorRecipients(churchId, body.audience)));
+    }
+
+    const addressBookIds = Array.isArray(body.addressBookIds)
+      ? body.addressBookIds.filter(Boolean)
+      : [];
+    if (addressBookIds.length > 0) {
+      recipients.push(
+        ...(await this.resolveAddressBookRecipients(churchId, addressBookIds)),
+      );
+    }
+
+    if (body.pastedContacts) {
+      recipients.push(...this.parsePastedContacts(body.pastedContacts));
+    }
+
+    return recipients;
+  }
+
+  private async resolveContributorRecipients(
+    churchId: string,
+    audience: SmsBatchAudience,
+  ): Promise<BulkRecipient[]> {
+    if (audience === SmsBatchAudience.ADDRESS_BOOKS) {
+      return [];
     }
 
     const where: any = { churchId };
-    if (body.audience === SmsBatchAudience.MALE_CONTRIBUTORS) {
+    if (audience === SmsBatchAudience.MALE_CONTRIBUTORS) {
       where.gender = ContributorGender.MALE;
     }
-    if (body.audience === SmsBatchAudience.FEMALE_CONTRIBUTORS) {
+    if (audience === SmsBatchAudience.FEMALE_CONTRIBUTORS) {
       where.gender = ContributorGender.FEMALE;
     }
 
@@ -826,11 +875,16 @@ export class SmsService {
       .map((contributor) => {
         const hashedMobile = hashedByContributorId.get(contributor.id);
         if (hashedMobile) {
+          const normalizedContributorPhone = this.normalizeKenyanPhone(
+            contributor.phone || '',
+          );
           return {
             contributorId: contributor.id,
             name: contributor.name,
+            firstName: this.extractFirstName(contributor.name),
             mobile: hashedMobile,
             isHashedRecipient: true,
+            dedupeKey: normalizedContributorPhone || `hashed:${hashedMobile}`,
           };
         }
 
@@ -842,11 +896,45 @@ export class SmsService {
         return {
           contributorId: contributor.id,
           name: contributor.name,
+          firstName: this.extractFirstName(contributor.name),
           mobile,
           isHashedRecipient: false,
+          dedupeKey: mobile,
         };
       })
       .filter(Boolean) as BulkRecipient[];
+  }
+
+  private async resolveAddressBookRecipients(
+    churchId: string,
+    addressBookIds: string[],
+  ): Promise<BulkRecipient[]> {
+    if (addressBookIds.length === 0) {
+      return [];
+    }
+
+    const contacts = await this.addressBookContactRepo
+      .createQueryBuilder('contact')
+      .innerJoin('contact.addressBook', 'addressBook')
+      .where('contact.churchId = :churchId', { churchId })
+      .andWhere('contact.addressBookId IN (:...addressBookIds)', {
+        addressBookIds,
+      })
+      .andWhere('addressBook.isActive = :isActive', { isActive: true })
+      .getMany();
+
+    return contacts
+      .map((contact) => ({
+        contributorId: null,
+        name: contact.displayName,
+        firstName:
+          contact.firstName ||
+          this.extractFirstName(contact.displayName || ''),
+        mobile: contact.normalizedPhone,
+        isHashedRecipient: false,
+        dedupeKey: contact.normalizedPhone,
+      }))
+      .filter((recipient) => this.isValidKenyanMobile(recipient.mobile));
   }
 
   private parsePastedContacts(value: string): BulkRecipient[] {
@@ -855,28 +943,90 @@ export class SmsService {
       .map((line) => line.trim())
       .filter(Boolean)
       .map((line) => {
-        const parts = line.split(',').map((part) => part.trim());
-        const rawMobile = parts.length > 1 ? parts[1] : parts[0];
+        const parsed = this.parseContactLine(line);
         return {
           contributorId: null,
-          name: parts.length > 1 ? parts[0] : null,
-          mobile: this.formatPhone(rawMobile),
+          name: parsed.name,
+          firstName: parsed.firstName,
+          mobile: this.formatPhone(parsed.phone),
           isHashedRecipient: false,
+          dedupeKey: this.formatPhone(parsed.phone),
         };
       })
       .filter((recipient) => this.isValidKenyanMobile(recipient.mobile));
   }
 
+  public parseContactLine(line: string) {
+    const value = `${line || ''}`.trim();
+    const commaParts = value
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    if (commaParts.length > 1) {
+      const phoneIndex = commaParts.findIndex((part) =>
+        Boolean(this.normalizeKenyanPhone(part)),
+      );
+      if (phoneIndex >= 0) {
+        const phone = commaParts[phoneIndex];
+        const nameParts = commaParts.filter((_, index) => index !== phoneIndex);
+        const name = nameParts.join(' ').trim() || null;
+        return {
+          name,
+          firstName: this.extractFirstName(name || ''),
+          phone,
+        };
+      }
+    }
+
+    const tokens = value.split(/\s+/).filter(Boolean);
+    const phoneIndex = tokens.findIndex((token) =>
+      Boolean(this.normalizeKenyanPhone(token)),
+    );
+
+    if (phoneIndex >= 0) {
+      const phone = tokens[phoneIndex];
+      const name = tokens.filter((_, index) => index !== phoneIndex).join(' ');
+      return {
+        name: name || null,
+        firstName: this.extractFirstName(name),
+        phone,
+      };
+    }
+
+    return {
+      name: null,
+      firstName: null,
+      phone: value,
+    };
+  }
+
   private dedupeRecipients(recipients: BulkRecipient[]) {
     const seen = new Set<string>();
     return recipients.filter((recipient) => {
-      const key = `${recipient.isHashedRecipient ? 'hashed' : 'plain'}:${recipient.mobile}`;
+      const key =
+        recipient.dedupeKey ||
+        `${recipient.isHashedRecipient ? 'hashed' : 'plain'}:${recipient.mobile}`;
       if (seen.has(key)) {
         return false;
       }
       seen.add(key);
       return true;
     });
+  }
+
+  private renderBulkMessage(template: string, recipient: BulkRecipient) {
+    const firstName =
+      recipient.firstName || this.extractFirstName(recipient.name || '') || '';
+    return this.sanitizeGsm7(
+      template
+        .replace(/\{firstName\}/gi, firstName)
+        .replace(/\{name\}/gi, recipient.name || firstName || 'Friend'),
+    );
+  }
+
+  private extractFirstName(value: string | null | undefined) {
+    return `${value || ''}`.trim().split(/\s+/).filter(Boolean)[0] || null;
   }
 
   private async getLatestHashedMobileByContributor(

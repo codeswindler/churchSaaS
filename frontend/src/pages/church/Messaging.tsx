@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Inbox, Send, SlidersHorizontal } from 'lucide-react';
+import { Download, Inbox, Send, SlidersHorizontal, Upload } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -8,7 +8,13 @@ const initialMessageForm = {
   audience: 'all_contributors',
   message: '',
   pastedContacts: '',
+  addressBookIds: [] as string[],
   smsShortcode: '',
+};
+
+const initialAddressBookForm = {
+  name: '',
+  contactsText: '',
 };
 
 const initialOutboxFilters = {
@@ -37,6 +43,9 @@ export default function ChurchMessaging() {
     'compose',
   );
   const [form, setForm] = useState(initialMessageForm);
+  const [addressBookForm, setAddressBookForm] = useState(
+    initialAddressBookForm,
+  );
   const [filters, setFilters] = useState(initialOutboxFilters);
   const queryString = useMemo(() => toQueryString(filters), [filters]);
   const currentPageUsage = form.message.length % 160;
@@ -53,6 +62,14 @@ export default function ChurchMessaging() {
     queryKey: ['church-sms-usage'],
     queryFn: () =>
       api.get('/church/messaging/usage').then((response) => response.data),
+  });
+
+  const { data: addressBooks } = useQuery({
+    queryKey: ['church-address-books'],
+    queryFn: () =>
+      api
+        .get('/church/messaging/address-books')
+        .then((response) => response.data),
   });
 
   const { data: outbox, isLoading } = useQuery({
@@ -98,7 +115,79 @@ export default function ChurchMessaging() {
     },
   });
 
+  const createAddressBookMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/church/messaging/address-books', {
+        name: addressBookForm.name,
+        contactsText: addressBookForm.contactsText,
+      });
+      return response.data;
+    },
+    onSuccess: (data) => {
+      toast.success('Address book saved');
+      setAddressBookForm(initialAddressBookForm);
+      queryClient.invalidateQueries({ queryKey: ['church-address-books'] });
+      if (data?.id) {
+        setForm((current) => ({
+          ...current,
+          addressBookIds: Array.from(
+            new Set([...current.addressBookIds, data.id]),
+          ),
+        }));
+      }
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message || 'Unable to save address book',
+      );
+    },
+  });
+
   const outboxRows = outbox || [];
+  const books = addressBooks || [];
+
+  const toggleAddressBook = (bookId: string) => {
+    setForm((current) => {
+      const selected = new Set(current.addressBookIds);
+      if (selected.has(bookId)) {
+        selected.delete(bookId);
+      } else {
+        selected.add(bookId);
+      }
+      return { ...current, addressBookIds: Array.from(selected) };
+    });
+  };
+
+  const loadAddressBookFile = (file?: File) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAddressBookForm((current) => ({
+        ...current,
+        contactsText: `${current.contactsText ? `${current.contactsText}\n` : ''}${reader.result || ''}`,
+      }));
+    };
+    reader.readAsText(file);
+  };
+
+  const downloadOutbox = async () => {
+    try {
+      const response = await api.get(
+        `/church/messaging/outbox/export${queryString ? `?${queryString}` : ''}`,
+        { responseType: 'blob' },
+      );
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'sms-outbox.csv';
+      link.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error: any) {
+      toast.error(
+        error?.response?.data?.message || 'Unable to download SMS outbox',
+      );
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -143,7 +232,7 @@ export default function ChurchMessaging() {
       </section>
 
       {activeWorkspace === 'compose' ? (
-        <section>
+        <section className="grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(360px,0.8fr)]">
           <form
             className="panel p-5 sm:p-6"
             onSubmit={(event) => {
@@ -174,6 +263,7 @@ export default function ChurchMessaging() {
                   <option value="all_contributors">All contributors</option>
                   <option value="male_contributors">Male contributors</option>
                   <option value="female_contributors">Female contributors</option>
+                  <option value="address_books">Selected address books</option>
                   <option value="pasted_contacts">Pasted contacts</option>
                 </select>
               </div>
@@ -202,22 +292,20 @@ export default function ChurchMessaging() {
                 </select>
               </div>
 
-              {form.audience === 'pasted_contacts' ? (
-                <div className="lg:col-span-2">
-                  <label className="label">Pasted contacts</label>
-                  <textarea
-                    className="input min-h-32 resize-y"
-                    placeholder="One per line. Use 2547..., 07..., or Name, 07..."
-                    value={form.pastedContacts}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        pastedContacts: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-              ) : null}
+              <div className="lg:col-span-2">
+                <label className="label">Pasted contacts</label>
+                <textarea
+                  className="input min-h-28 resize-y"
+                  placeholder="Optional. One per line: First name, 07... or Jane Doe 2547..."
+                  value={form.pastedContacts}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      pastedContacts: event.target.value,
+                    }))
+                  }
+                />
+              </div>
 
               <div className="lg:col-span-2">
                 <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
@@ -230,6 +318,7 @@ export default function ChurchMessaging() {
                 </div>
                 <textarea
                   className="input mt-2 min-h-44 resize-y"
+                  placeholder="Use {firstName} or {name} to personalize each message."
                   value={form.message}
                   onChange={(event) =>
                     setForm((current) => ({
@@ -250,6 +339,112 @@ export default function ChurchMessaging() {
               </button>
             </div>
           </form>
+
+          <section className="panel p-5 sm:p-6">
+            <div className="flex items-start gap-3">
+              <Upload className="mt-1 text-amber-200" size={18} />
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+                  Address Books
+                </p>
+                <h3 className="mt-2 text-2xl font-semibold text-white">
+                  Saved contact groups
+                </h3>
+              </div>
+            </div>
+
+            <form
+              className="mt-5 space-y-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                createAddressBookMutation.mutate();
+              }}
+            >
+              <div>
+                <label className="label">Book name</label>
+                <input
+                  className="input"
+                  placeholder="Women group, Youth leaders..."
+                  value={addressBookForm.name}
+                  onChange={(event) =>
+                    setAddressBookForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+
+              <div>
+                <label className="label">Contacts</label>
+                <input
+                  accept=".csv,.txt"
+                  className="input mb-3"
+                  type="file"
+                  onChange={(event) => {
+                    loadAddressBookFile(event.target.files?.[0]);
+                    event.target.value = '';
+                  }}
+                />
+                <textarea
+                  className="input min-h-36 resize-y"
+                  placeholder="One per line: Jane, 0712345678 or Peter Otieno 2547..."
+                  value={addressBookForm.contactsText}
+                  onChange={(event) =>
+                    setAddressBookForm((current) => ({
+                      ...current,
+                      contactsText: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+
+              <button
+                className="btn-secondary w-full justify-center"
+                disabled={createAddressBookMutation.isPending}
+                type="submit"
+              >
+                <Upload size={16} />
+                {createAddressBookMutation.isPending
+                  ? 'Saving...'
+                  : 'Save address book'}
+              </button>
+            </form>
+
+            <div className="mt-6 space-y-2">
+              {books.map((book: any) => {
+                const isSelected = form.addressBookIds.includes(book.id);
+                return (
+                  <button
+                    key={book.id}
+                    className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition ${
+                      isSelected
+                        ? 'border-amber-200/50 bg-amber-200/15 text-white'
+                        : 'border-white/10 bg-black/10 text-stone-300 hover:bg-white/5 hover:text-white'
+                    }`}
+                    type="button"
+                    onClick={() => toggleAddressBook(book.id)}
+                  >
+                    <span>
+                      <span className="block font-semibold">{book.name}</span>
+                      <span className="text-xs text-stone-400">
+                        {Number(book.contactCount || 0).toLocaleString()}{' '}
+                        contacts
+                      </span>
+                    </span>
+                    <span className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]">
+                      {isSelected ? 'Selected' : 'Select'}
+                    </span>
+                  </button>
+                );
+              })}
+              {books.length === 0 ? (
+                <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-4 text-sm text-stone-400">
+                  Save your first contact group, then select it for a bulk send.
+                </div>
+              ) : null}
+            </div>
+          </section>
         </section>
       ) : (
         <section className="space-y-5">
@@ -353,13 +548,23 @@ export default function ChurchMessaging() {
           </section>
 
           <section className="table-shell">
-            <div className="border-b border-white/10 px-6 py-5">
-              <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-                SMS Outbox
-              </p>
-              <h3 className="mt-2 text-2xl font-semibold text-white">
-                Provider and delivery status
-              </h3>
+            <div className="flex flex-col gap-4 border-b border-white/10 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+                  SMS Outbox
+                </p>
+                <h3 className="mt-2 text-2xl font-semibold text-white">
+                  Provider and delivery status
+                </h3>
+              </div>
+              <button
+                className="btn-secondary justify-center"
+                type="button"
+                onClick={downloadOutbox}
+              >
+                <Download size={16} />
+                Download CSV
+              </button>
             </div>
 
             {isLoading ? (

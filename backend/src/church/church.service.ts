@@ -16,6 +16,8 @@ import { Church } from '../entities/church.entity';
 import { ChurchUser, ChurchUserRole } from '../entities/church-user.entity';
 import { Contributor } from '../entities/contributor.entity';
 import { FundAccount } from '../entities/fund-account.entity';
+import { SmsAddressBookContact } from '../entities/sms-address-book-contact.entity';
+import { SmsAddressBook } from '../entities/sms-address-book.entity';
 import { SmsBatchAudience } from '../entities/sms-batch.entity';
 import { SmsService } from '../sms/sms.service';
 import { ChurchSubscriptionsService } from '../subscriptions/church-subscriptions.service';
@@ -33,6 +35,10 @@ export class ChurchService {
     private readonly fundAccountRepo: Repository<FundAccount>,
     @InjectRepository(Contributor)
     private readonly contributorRepo: Repository<Contributor>,
+    @InjectRepository(SmsAddressBook)
+    private readonly addressBookRepo: Repository<SmsAddressBook>,
+    @InjectRepository(SmsAddressBookContact)
+    private readonly addressBookContactRepo: Repository<SmsAddressBookContact>,
     private readonly churchSubscriptionsService: ChurchSubscriptionsService,
     private readonly contributionsService: ContributionsService,
     private readonly smsService: SmsService,
@@ -354,6 +360,9 @@ export class ChurchService {
       audience,
       message: body.message,
       pastedContacts: body.pastedContacts,
+      addressBookIds: Array.isArray(body.addressBookIds)
+        ? body.addressBookIds
+        : [],
       smsShortcode: body.smsShortcode,
     });
   }
@@ -374,6 +383,36 @@ export class ChurchService {
     return this.smsService.listOutbox(churchId, query);
   }
 
+  async exportSmsOutboxCsv(churchId: string, query: any = {}) {
+    const rows = await this.smsService.listOutbox(churchId, query);
+    const header = [
+      'Date',
+      'Recipient',
+      'Mobile',
+      'Type',
+      'Units',
+      'Provider Status',
+      'Delivery Status',
+      'Provider Message ID',
+      'Message',
+    ];
+    const csvRows = rows.map((item: any) =>
+      [
+        item.createdAt ? new Date(item.createdAt).toISOString() : '',
+        item.recipientName || item.contributor?.name || '',
+        item.isHashedRecipient ? 'Hashed Safaricom recipient' : item.recipientMobile,
+        item.messageType,
+        item.estimatedUnits,
+        item.providerDescription || item.sendStatus,
+        item.deliveryDescription || item.deliveryStatus,
+        item.providerMessageId || '',
+        item.messageBody || '',
+      ].map((value) => this.csvEscape(value)),
+    );
+
+    return [header, ...csvRows].map((row) => row.join(',')).join('\n');
+  }
+
   async getSmsUsage(churchId: string, query: any = {}) {
     const rows = await this.smsService.getSmsUsageSummary(churchId, query);
     return (
@@ -383,6 +422,172 @@ export class ChurchService {
         units: 0,
       }
     );
+  }
+
+  async listAddressBooks(churchId: string) {
+    const rows = await this.addressBookRepo
+      .createQueryBuilder('book')
+      .loadRelationCountAndMap('book.contactCount', 'book.contacts')
+      .where('book.churchId = :churchId', { churchId })
+      .orderBy('book.createdAt', 'DESC')
+      .getMany();
+
+    return rows;
+  }
+
+  async createAddressBook(churchId: string, userId: string, body: any) {
+    const name = `${body.name || ''}`.trim();
+    if (!name) {
+      throw new BadRequestException('Address book name is required');
+    }
+
+    const book = await this.addressBookRepo.save(
+      this.addressBookRepo.create({
+        churchId,
+        createdByUserId: userId,
+        name,
+        description: body.description || null,
+        isActive: body.isActive ?? true,
+      }),
+    );
+
+    if (body.contactsText) {
+      const importResult = await this.importAddressBookContacts(
+        churchId,
+        book.id,
+        { contactsText: body.contactsText },
+      );
+      return { ...book, contactCount: importResult.imported };
+    }
+
+    return { ...book, contactCount: 0 };
+  }
+
+  async updateAddressBook(churchId: string, addressBookId: string, body: any) {
+    const book = await this.addressBookRepo.findOne({
+      where: { id: addressBookId, churchId },
+    });
+    if (!book) {
+      throw new NotFoundException('Address book not found');
+    }
+
+    if (body.name !== undefined) {
+      const name = `${body.name || ''}`.trim();
+      if (!name) {
+        throw new BadRequestException('Address book name is required');
+      }
+      book.name = name;
+    }
+    if (body.description !== undefined) {
+      book.description = body.description || null;
+    }
+    if (body.isActive !== undefined) {
+      book.isActive = Boolean(body.isActive);
+    }
+
+    return this.addressBookRepo.save(book);
+  }
+
+  async listAddressBookContacts(churchId: string, addressBookId: string) {
+    await this.ensureAddressBook(churchId, addressBookId);
+    return this.addressBookContactRepo.find({
+      where: { churchId, addressBookId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async importAddressBookContacts(
+    churchId: string,
+    addressBookId: string,
+    body: any,
+  ) {
+    await this.ensureAddressBook(churchId, addressBookId);
+    const lines = `${body.contactsText || ''}`
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (lines.length === 0) {
+      throw new BadRequestException('Paste at least one contact');
+    }
+
+    const unique = new Map<
+      string,
+      {
+        firstName: string | null;
+        lastName: string | null;
+        displayName: string | null;
+        normalizedPhone: string;
+      }
+    >();
+    let invalid = 0;
+
+    for (const line of lines) {
+      const parsed = this.smsService.parseContactLine(line);
+      const normalizedPhone = this.smsService.normalizeKenyanPhone(parsed.phone);
+      if (!normalizedPhone) {
+        invalid += 1;
+        continue;
+      }
+
+      const nameParts = `${parsed.name || ''}`
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+      unique.set(normalizedPhone, {
+        firstName: parsed.firstName || nameParts[0] || null,
+        lastName: nameParts.length > 1 ? nameParts.slice(1).join(' ') : null,
+        displayName: parsed.name || parsed.firstName || null,
+        normalizedPhone,
+      });
+    }
+
+    let imported = 0;
+    let updated = 0;
+    for (const contact of unique.values()) {
+      const existing = await this.addressBookContactRepo.findOne({
+        where: {
+          churchId,
+          addressBookId,
+          normalizedPhone: contact.normalizedPhone,
+        },
+      });
+
+      if (existing) {
+        existing.firstName = contact.firstName;
+        existing.lastName = contact.lastName;
+        existing.displayName = contact.displayName;
+        await this.addressBookContactRepo.save(existing);
+        updated += 1;
+        continue;
+      }
+
+      await this.addressBookContactRepo.save(
+        this.addressBookContactRepo.create({
+          churchId,
+          addressBookId,
+          ...contact,
+          sourceLabel: 'upload',
+        }),
+      );
+      imported += 1;
+    }
+
+    return {
+      imported,
+      updated,
+      invalid,
+      duplicatesDropped: Math.max(0, lines.length - invalid - unique.size),
+    };
+  }
+
+  private async ensureAddressBook(churchId: string, addressBookId: string) {
+    const book = await this.addressBookRepo.findOne({
+      where: { id: addressBookId, churchId },
+    });
+    if (!book) {
+      throw new NotFoundException('Address book not found');
+    }
+    return book;
   }
 
   private async ensureGeneralFundAccount(churchId: string) {
@@ -440,5 +645,10 @@ export class ChurchService {
     return value.filter((permission) =>
       valid.has(permission as ChurchPermission),
     ) as ChurchPermission[];
+  }
+
+  private csvEscape(value: unknown) {
+    const text = `${value ?? ''}`;
+    return `"${text.replace(/"/g, '""')}"`;
   }
 }

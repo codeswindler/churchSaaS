@@ -202,6 +202,30 @@ export class ChurchController {
     return this.churchService.listSmsOutbox(req.user.churchId, query);
   }
 
+  @Get('messaging/outbox/export')
+  @Permissions(ChurchPermission.OUTBOX_VIEW)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+  )
+  async exportSmsOutbox(
+    @Request() req: any,
+    @Query() query: any,
+    @Res() response: Response,
+  ) {
+    const csv = await this.churchService.exportSmsOutboxCsv(
+      req.user.churchId,
+      query,
+    );
+    response.setHeader('Content-Type', 'text/csv');
+    response.setHeader(
+      'Content-Disposition',
+      'attachment; filename="sms-outbox.csv"',
+    );
+    response.send(csv);
+  }
+
   @Get('messaging/usage')
   @Permissions(ChurchPermission.OUTBOX_VIEW)
   @Roles(
@@ -211,6 +235,67 @@ export class ChurchController {
   )
   getSmsUsage(@Request() req: any, @Query() query: any) {
     return this.churchService.getSmsUsage(req.user.churchId, query);
+  }
+
+  @Get('messaging/address-books')
+  @Permissions(ChurchPermission.MESSAGING_VIEW)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.SECRETARY)
+  listAddressBooks(@Request() req: any) {
+    return this.churchService.listAddressBooks(req.user.churchId);
+  }
+
+  @Post('messaging/address-books')
+  @Permissions(ChurchPermission.MESSAGING_SEND)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.SECRETARY)
+  createAddressBook(@Request() req: any, @Body() body: any) {
+    return this.churchService.createAddressBook(
+      req.user.churchId,
+      req.user.id,
+      body,
+    );
+  }
+
+  @Patch('messaging/address-books/:addressBookId')
+  @Permissions(ChurchPermission.MESSAGING_SEND)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.SECRETARY)
+  updateAddressBook(
+    @Request() req: any,
+    @Param('addressBookId') addressBookId: string,
+    @Body() body: any,
+  ) {
+    return this.churchService.updateAddressBook(
+      req.user.churchId,
+      addressBookId,
+      body,
+    );
+  }
+
+  @Get('messaging/address-books/:addressBookId/contacts')
+  @Permissions(ChurchPermission.MESSAGING_VIEW)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.SECRETARY)
+  listAddressBookContacts(
+    @Request() req: any,
+    @Param('addressBookId') addressBookId: string,
+  ) {
+    return this.churchService.listAddressBookContacts(
+      req.user.churchId,
+      addressBookId,
+    );
+  }
+
+  @Post('messaging/address-books/:addressBookId/contacts/import')
+  @Permissions(ChurchPermission.MESSAGING_SEND)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.SECRETARY)
+  importAddressBookContacts(
+    @Request() req: any,
+    @Param('addressBookId') addressBookId: string,
+    @Body() body: any,
+  ) {
+    return this.churchService.importAddressBookContacts(
+      req.user.churchId,
+      addressBookId,
+      body,
+    );
   }
 
   @Get('reports/export')
