@@ -3,8 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import axios from 'axios';
 import { Repository } from 'typeorm';
-import { ChurchSmsConfig } from '../common/church.utils';
+import { ChurchSmsConfig, getChurchSmsShortcodes } from '../common/church.utils';
 import { Church } from '../entities/church.entity';
+import {
+  Contribution,
+  ContributionChannel,
+  ContributionStatus,
+} from '../entities/contribution.entity';
 import { Contributor, ContributorGender } from '../entities/contributor.entity';
 import { SmsBatch, SmsBatchAudience } from '../entities/sms-batch.entity';
 import {
@@ -21,6 +26,13 @@ type ResolvedSmsConfig = {
   baseUrl: string;
 };
 
+type BulkRecipient = {
+  contributorId: string | null;
+  name: string | null;
+  mobile: string;
+  isHashedRecipient: boolean;
+};
+
 @Injectable()
 export class SmsService {
   private readonly logger = new Logger(SmsService.name);
@@ -35,6 +47,8 @@ export class SmsService {
     private readonly churchRepo: Repository<Church>,
     @InjectRepository(Contributor)
     private readonly contributorRepo: Repository<Contributor>,
+    @InjectRepository(Contribution)
+    private readonly contributionRepo: Repository<Contribution>,
     @InjectRepository(SmsBatch)
     private readonly smsBatchRepo: Repository<SmsBatch>,
     @InjectRepository(SmsOutbox)
@@ -122,6 +136,7 @@ export class SmsService {
       contributorId?: string | null;
       createdByUserId?: string | null;
       recipientName?: string | null;
+      batchId?: string | null;
     } = {},
   ): Promise<boolean> {
     const resolved = this.resolveConfig(config);
@@ -149,6 +164,7 @@ export class SmsService {
       if (success) {
         await this.recordOutboxMessage({
           churchId: config.churchId || null,
+          batchId: options.batchId || null,
           contributorId: options.contributorId || null,
           createdByUserId: options.createdByUserId || null,
           recipientName: options.recipientName || null,
@@ -168,6 +184,7 @@ export class SmsService {
 
       await this.recordOutboxMessage({
         churchId: config.churchId || null,
+        batchId: options.batchId || null,
         contributorId: options.contributorId || null,
         createdByUserId: options.createdByUserId || null,
         recipientName: options.recipientName || null,
@@ -186,6 +203,7 @@ export class SmsService {
     } catch (e) {
       await this.recordOutboxMessage({
         churchId: config.churchId || null,
+        batchId: options.batchId || null,
         contributorId: options.contributorId || null,
         createdByUserId: options.createdByUserId || null,
         recipientName: options.recipientName || null,
@@ -219,6 +237,7 @@ export class SmsService {
       contributorId?: string | null;
       createdByUserId?: string | null;
       recipientName?: string | null;
+      batchId?: string | null;
     } = {},
   ): Promise<boolean> {
     const resolved = this.resolveConfig(config);
@@ -246,6 +265,7 @@ export class SmsService {
       if (success) {
         await this.recordOutboxMessage({
           churchId: config.churchId || null,
+          batchId: options.batchId || null,
           contributorId: options.contributorId || null,
           createdByUserId: options.createdByUserId || null,
           recipientName: options.recipientName || null,
@@ -265,6 +285,7 @@ export class SmsService {
 
       await this.recordOutboxMessage({
         churchId: config.churchId || null,
+        batchId: options.batchId || null,
         contributorId: options.contributorId || null,
         createdByUserId: options.createdByUserId || null,
         recipientName: options.recipientName || null,
@@ -283,6 +304,7 @@ export class SmsService {
     } catch (e) {
       await this.recordOutboxMessage({
         churchId: config.churchId || null,
+        batchId: options.batchId || null,
         contributorId: options.contributorId || null,
         createdByUserId: options.createdByUserId || null,
         recipientName: options.recipientName || null,
@@ -341,6 +363,7 @@ export class SmsService {
       audience: SmsBatchAudience;
       message: string;
       pastedContacts?: string;
+      smsShortcode?: string;
     },
   ) {
     const church = await this.churchRepo.findOne({ where: { id: churchId } });
@@ -372,12 +395,18 @@ export class SmsService {
       }),
     );
 
-    const config = this.getConfigFromChurch(church);
+    const config = this.getConfigFromChurch(church, body.smsShortcode);
     const resolved = this.resolveConfig(config);
     const url = `${resolved.baseUrl}/api/services/sendbulk`;
+    const plainRecipients = uniqueRecipients.filter(
+      (recipient) => !recipient.isHashedRecipient,
+    );
+    const hashedRecipients = uniqueRecipients.filter(
+      (recipient) => recipient.isHashedRecipient,
+    );
 
-    for (let index = 0; index < uniqueRecipients.length; index += 1000) {
-      const chunk = uniqueRecipients.slice(index, index + 1000);
+    for (let index = 0; index < plainRecipients.length; index += 1000) {
+      const chunk = plainRecipients.slice(index, index + 1000);
       const outboxRows = await this.smsOutboxRepo.save(
         chunk.map((recipient) =>
           this.smsOutboxRepo.create({
@@ -387,7 +416,7 @@ export class SmsService {
             createdByUserId,
             recipientName: recipient.name || null,
             recipientMobile: recipient.mobile,
-            isHashedRecipient: false,
+            isHashedRecipient: recipient.isHashedRecipient,
             messageType: SmsMessageType.BULK,
             messageBody,
             estimatedUnits: unitsPerMessage,
@@ -438,6 +467,32 @@ export class SmsService {
               : null,
           })),
         );
+      }
+    }
+
+    for (let index = 0; index < hashedRecipients.length; index += 100) {
+      const chunk = hashedRecipients.slice(index, index + 100);
+      const outboxRows = await this.smsOutboxRepo.save(
+        chunk.map((recipient) =>
+          this.smsOutboxRepo.create({
+            churchId,
+            batchId: batch.id,
+            contributorId: recipient.contributorId,
+            createdByUserId,
+            recipientName: recipient.name || null,
+            recipientMobile: recipient.mobile,
+            isHashedRecipient: true,
+            messageType: SmsMessageType.BULK,
+            messageBody,
+            estimatedUnits: unitsPerMessage,
+            sendStatus: SmsSendStatus.PENDING,
+            deliveryStatus: SmsDeliveryStatus.PENDING,
+          }),
+        ),
+      );
+
+      for (const row of outboxRows) {
+        await this.sendHashedOutboxRow(row, resolved);
       }
     }
 
@@ -605,6 +660,7 @@ export class SmsService {
 
   private async recordOutboxMessage(input: {
     churchId: string | null;
+    batchId?: string | null;
     contributorId?: string | null;
     createdByUserId?: string | null;
     recipientName?: string | null;
@@ -626,6 +682,7 @@ export class SmsService {
     return this.smsOutboxRepo.save(
       this.smsOutboxRepo.create({
         churchId: input.churchId,
+        batchId: input.batchId || null,
         contributorId: input.contributorId || null,
         createdByUserId: input.createdByUserId || null,
         recipientName: input.recipientName || null,
@@ -695,13 +752,57 @@ export class SmsService {
     );
   }
 
+  private async sendHashedOutboxRow(row: SmsOutbox, resolved: ResolvedSmsConfig) {
+    const url = `${resolved.baseUrl}/api/services/sendotp`;
+    const data = {
+      apikey: resolved.apiKey,
+      partnerID: resolved.partnerId,
+      mobile: row.recipientMobile,
+      message: row.messageBody,
+      shortcode: resolved.shortCode,
+      hashed: true,
+    };
+
+    try {
+      const response = await axios.post(url, data, { timeout: 10000 });
+      const provider = this.extractProviderResult(response.data);
+      const success = Number(provider.code || 0) === 200;
+
+      await this.smsOutboxRepo.save({
+        ...row,
+        sendStatus: success ? SmsSendStatus.ACCEPTED : SmsSendStatus.FAILED,
+        deliveryStatus: success
+          ? SmsDeliveryStatus.PENDING
+          : SmsDeliveryStatus.UNKNOWN,
+        providerMessageId: provider.messageId,
+        providerCode: provider.code,
+        providerDescription: provider.description,
+        providerRawResponse: response.data,
+        sentAt: success ? new Date() : null,
+      });
+    } catch (error) {
+      await this.smsOutboxRepo.save({
+        ...row,
+        sendStatus: SmsSendStatus.FAILED,
+        deliveryStatus: SmsDeliveryStatus.UNKNOWN,
+        providerCode: axios.isAxiosError(error)
+          ? `${error.response?.status || 'error'}`
+          : 'error',
+        providerDescription: error?.message || 'Hashed bulk SMS request failed',
+        providerRawResponse: axios.isAxiosError(error)
+          ? (error.response?.data as any)
+          : null,
+      });
+    }
+  }
+
   private async resolveBulkRecipients(
     churchId: string,
     body: {
       audience: SmsBatchAudience;
       pastedContacts?: string;
     },
-  ) {
+  ): Promise<BulkRecipient[]> {
     if (body.audience === SmsBatchAudience.PASTED_CONTACTS) {
       return this.parsePastedContacts(body.pastedContacts || '');
     }
@@ -715,17 +816,40 @@ export class SmsService {
     }
 
     const contributors = await this.contributorRepo.find({ where });
+    const hashedByContributorId =
+      await this.getLatestHashedMobileByContributor(
+        churchId,
+        contributors.map((contributor) => contributor.id),
+      );
+
     return contributors
-      .filter((contributor) => Boolean(contributor.phone))
-      .map((contributor) => ({
-        contributorId: contributor.id,
-        name: contributor.name,
-        mobile: this.formatPhone(contributor.phone || ''),
-      }))
-      .filter((recipient) => this.isValidKenyanMobile(recipient.mobile));
+      .map((contributor) => {
+        const hashedMobile = hashedByContributorId.get(contributor.id);
+        if (hashedMobile) {
+          return {
+            contributorId: contributor.id,
+            name: contributor.name,
+            mobile: hashedMobile,
+            isHashedRecipient: true,
+          };
+        }
+
+        const mobile = this.formatPhone(contributor.phone || '');
+        if (!this.isValidKenyanMobile(mobile)) {
+          return null;
+        }
+
+        return {
+          contributorId: contributor.id,
+          name: contributor.name,
+          mobile,
+          isHashedRecipient: false,
+        };
+      })
+      .filter(Boolean) as BulkRecipient[];
   }
 
-  private parsePastedContacts(value: string) {
+  private parsePastedContacts(value: string): BulkRecipient[] {
     return value
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -737,40 +861,106 @@ export class SmsService {
           contributorId: null,
           name: parts.length > 1 ? parts[0] : null,
           mobile: this.formatPhone(rawMobile),
+          isHashedRecipient: false,
         };
       })
       .filter((recipient) => this.isValidKenyanMobile(recipient.mobile));
   }
 
-  private dedupeRecipients(
-    recipients: Array<{
-      contributorId: string | null;
-      name: string | null;
-      mobile: string;
-    }>,
-  ) {
+  private dedupeRecipients(recipients: BulkRecipient[]) {
     const seen = new Set<string>();
     return recipients.filter((recipient) => {
-      if (seen.has(recipient.mobile)) {
+      const key = `${recipient.isHashedRecipient ? 'hashed' : 'plain'}:${recipient.mobile}`;
+      if (seen.has(key)) {
         return false;
       }
-      seen.add(recipient.mobile);
+      seen.add(key);
       return true;
     });
+  }
+
+  private async getLatestHashedMobileByContributor(
+    churchId: string,
+    contributorIds: string[],
+  ) {
+    const hashedByContributorId = new Map<string, string>();
+    if (contributorIds.length === 0) {
+      return hashedByContributorId;
+    }
+
+    const contributions = await this.contributionRepo
+      .createQueryBuilder('contribution')
+      .where('contribution.churchId = :churchId', { churchId })
+      .andWhere('contribution.contributorId IN (:...contributorIds)', {
+        contributorIds,
+      })
+      .andWhere('contribution.channel = :channel', {
+        channel: ContributionChannel.MPESA,
+      })
+      .andWhere('contribution.status = :status', {
+        status: ContributionStatus.CONFIRMED,
+      })
+      .andWhere('contribution.providerRequestId IS NOT NULL')
+      .orderBy('contribution.receivedAt', 'DESC')
+      .addOrderBy('contribution.createdAt', 'DESC')
+      .getMany();
+
+    for (const contribution of contributions) {
+      if (!contribution.contributorId || hashedByContributorId.has(contribution.contributorId)) {
+        continue;
+      }
+
+      const candidate = `${contribution.providerRequestId || ''}`.trim();
+      if (this.isLikelyHashedSafaricomMobile(candidate)) {
+        hashedByContributorId.set(contribution.contributorId, candidate);
+      }
+    }
+
+    return hashedByContributorId;
   }
 
   private isValidKenyanMobile(phone: string) {
     return /^254[17]\d{8}$/.test(phone);
   }
 
-  private getConfigFromChurch(church: Church): ChurchSmsConfig {
+  private isLikelyHashedSafaricomMobile(value: string) {
+    return (
+      value.length >= 32 &&
+      /^[a-zA-Z0-9]+$/.test(value) &&
+      !this.isValidKenyanMobile(this.formatPhone(value))
+    );
+  }
+
+  private getConfigFromChurch(
+    church: Church,
+    requestedShortcode?: string | null,
+  ): ChurchSmsConfig {
+    const shortcode = this.resolveChurchSmsShortcode(church, requestedShortcode);
     return {
       churchId: church.id,
       smsPartnerId: church.smsPartnerId,
       smsApiKey: church.smsApiKey,
-      smsShortcode: church.smsShortcode,
+      smsShortcode: shortcode,
+      smsShortcodes: church.smsShortcodes,
       smsBaseUrl: church.smsBaseUrl,
     };
+  }
+
+  public getAvailableSmsShortcodes(church: Church) {
+    return getChurchSmsShortcodes(church);
+  }
+
+  private resolveChurchSmsShortcode(
+    church: Church,
+    requestedShortcode?: string | null,
+  ) {
+    const requested = `${requestedShortcode || ''}`.trim();
+    const available = getChurchSmsShortcodes(church);
+    if (requested && available.includes(requested)) {
+      return requested;
+    }
+
+    return church.smsShortcode || available[0] || null;
   }
 
   private mapDeliveryStatus(description?: string | null) {

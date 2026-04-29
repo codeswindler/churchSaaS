@@ -159,6 +159,24 @@ html {
   scroll-behavior: smooth;
 }
 
+@media (min-width: 1024px) {
+  html {
+    font-size: 90%;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1023px) {
+  html {
+    font-size: 94%;
+  }
+}
+
+@media (max-width: 640px) {
+  html {
+    font-size: 96%;
+  }
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -202,6 +220,42 @@ textarea {
 :root[data-color-mode='light'] .text-amber-100,
 :root[data-color-mode='light'] .text-amber-200 {
   color: #8e6614 !important;
+}
+
+:root[data-color-mode='light'] .text-emerald-50,
+:root[data-color-mode='light'] .text-emerald-100,
+:root[data-color-mode='light'] .text-green-50,
+:root[data-color-mode='light'] .text-green-100,
+:root[data-color-mode='light'] .text-lime-50,
+:root[data-color-mode='light'] .text-lime-100 {
+  color: #047857 !important;
+}
+
+:root[data-color-mode='light'] .text-yellow-50,
+:root[data-color-mode='light'] .text-yellow-100,
+:root[data-color-mode='light'] .text-orange-50,
+:root[data-color-mode='light'] .text-orange-100 {
+  color: #9a5b05 !important;
+}
+
+:root[data-color-mode='light'] .text-rose-50,
+:root[data-color-mode='light'] .text-rose-100,
+:root[data-color-mode='light'] .text-red-50,
+:root[data-color-mode='light'] .text-red-100 {
+  color: #9f1239 !important;
+}
+
+:root[data-color-mode='light'] .text-sky-50,
+:root[data-color-mode='light'] .text-sky-100,
+:root[data-color-mode='light'] .text-cyan-50,
+:root[data-color-mode='light'] .text-cyan-100 {
+  color: #0369a1 !important;
+}
+
+:root[data-color-mode='light'] .text-white\/60,
+:root[data-color-mode='light'] .text-white\/70,
+:root[data-color-mode='light'] .text-white\/80 {
+  color: rgba(24, 49, 38, 0.72) !important;
 }
 
 :root[data-color-mode='light'] .border-white\/10 {
@@ -288,6 +342,7 @@ textarea {
   @apply w-full rounded-2xl px-4 py-3 text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-2;
   border: 1px solid var(--input-border);
   background: var(--input-bg);
+  color: #f8f5ef;
 }
 
 .input:focus {
@@ -399,25 +454,74 @@ textarea {
 }
 
 .modal-shell {
-  @apply flex min-h-screen w-full items-start justify-center p-4 sm:p-6 lg:p-8;
+  @apply flex min-h-screen w-full items-center justify-center p-3 sm:p-4 lg:p-5;
+  min-height: 100dvh;
 }
 
 .modal-card {
-  @apply my-4 w-full max-w-4xl;
-  max-height: calc(100vh - 2rem);
+  @apply my-0 w-full max-w-4xl;
+  max-height: calc(100dvh - 1rem);
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+.church-modal-card {
+  max-width: min(1180px, calc(100vw - 1rem));
 }
 
 .input-compact {
   @apply w-full rounded-xl px-3.5 py-2.5 text-sm text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-2;
   border: 1px solid var(--input-border);
   background: var(--input-bg);
+  color: #f8f5ef;
 }
 
 .input-compact:focus {
   border-color: var(--input-focus-border);
   --tw-ring-color: var(--focus-ring);
+}
+
+select.input,
+select.input-compact {
+  color: #f8f5ef;
+}
+
+select option {
+  background: #f8faf6;
+  color: #13251d;
+}
+
+select.input option,
+select.input-compact option {
+  background: #f8faf6;
+  color: #13251d;
+}
+
+select.input option:checked,
+select.input-compact option:checked {
+  background: #d9efe5;
+  color: #0f2a20;
+}
+
+:root[data-color-mode='light'] .input,
+:root[data-color-mode='light'] .input-compact {
+  color: #183126 !important;
+}
+
+:root[data-color-mode='light'] .input::placeholder,
+:root[data-color-mode='light'] .input-compact::placeholder {
+  color: rgba(24, 49, 38, 0.48) !important;
+}
+
+:root[data-color-mode='light'] select.input,
+:root[data-color-mode='light'] select.input-compact {
+  color: #183126 !important;
+}
+
+:root[data-color-mode='light'] select.input option,
+:root[data-color-mode='light'] select.input-compact option {
+  background: #ffffff;
+  color: #183126;
 }
 
 .app-shell-background {

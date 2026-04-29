@@ -410,8 +410,8 @@ export function AppShell({ userType }: AppShellProps) {
 
   return (
     <div className="app-shell-background min-h-screen text-stone-50">
-      <div className="mx-auto grid min-h-screen max-w-[1960px] gap-7 px-4 py-4 lg:grid-cols-[276px_minmax(0,1fr)] xl:px-8 2xl:px-10">
-        <aside className="panel hidden flex-col gap-5 p-6 lg:flex">
+      <div className="mx-auto grid min-h-screen max-w-none gap-5 px-3 py-3 lg:grid-cols-[250px_minmax(0,1fr)] xl:px-5 2xl:px-7">
+        <aside className="panel hidden flex-col gap-5 p-5 lg:flex">
           {sidebarIntro}
           {sidebarProfileButton}
           {sidebarNavigation}

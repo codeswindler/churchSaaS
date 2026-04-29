@@ -131,6 +131,7 @@ export class PlatformService {
         smsPartnerId: this.normalizeOptionalText(body.smsPartnerId),
         smsApiKey: this.normalizeOptionalText(body.smsApiKey),
         smsShortcode: this.normalizeOptionalText(body.smsShortcode),
+        smsShortcodes: this.normalizeSmsShortcodes(body.smsShortcodes),
         smsBaseUrl: this.normalizeOptionalText(body.smsBaseUrl),
         mpesaEnvironment:
           this.normalizeOptionalText(body.mpesaEnvironment) || 'sandbox',
@@ -286,6 +287,7 @@ export class PlatformService {
       smsPartnerId: church.smsPartnerId,
       smsApiKey: church.smsApiKey,
       smsShortcode: church.smsShortcode,
+      smsShortcodes: church.smsShortcodes || [],
       smsBaseUrl: church.smsBaseUrl,
       mpesaEnvironment: church.mpesaEnvironment || 'sandbox',
       mpesaConsumerKey: church.mpesaConsumerKey,
@@ -358,6 +360,9 @@ export class PlatformService {
     }
     if (body.smsShortcode !== undefined) {
       church.smsShortcode = this.normalizeOptionalText(body.smsShortcode);
+    }
+    if (body.smsShortcodes !== undefined) {
+      church.smsShortcodes = this.normalizeSmsShortcodes(body.smsShortcodes);
     }
     if (body.smsBaseUrl !== undefined) {
       church.smsBaseUrl = this.normalizeOptionalText(body.smsBaseUrl);
@@ -716,6 +721,7 @@ export class PlatformService {
       updatedAt: church.updatedAt,
       commissionRatePct: Number(church.commissionRatePct || 0),
       enabledFeatures: normalizeFeatureList(church.enabledFeatures),
+      smsShortcodes: church.smsShortcodes || [],
     };
   }
 
@@ -758,6 +764,20 @@ export class PlatformService {
       return DEFAULT_CHURCH_FEATURES;
     }
     return normalizeFeatureList(value);
+  }
+
+  private normalizeSmsShortcodes(value: unknown) {
+    const rawValues = Array.isArray(value)
+      ? value
+      : typeof value === 'string'
+        ? value.split(/[\n,]+/)
+        : [];
+
+    const normalized = rawValues
+      .map((item) => `${item || ''}`.trim())
+      .filter(Boolean);
+
+    return normalized.length > 0 ? Array.from(new Set(normalized)) : null;
   }
 
   private normalizeOptionalText(value: unknown) {

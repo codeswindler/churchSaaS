@@ -52,6 +52,7 @@ function createInitialForm() {
     smsPartnerId: '',
     smsApiKey: '',
     smsShortcode: '',
+    smsShortcodes: '',
     smsBaseUrl: 'https://quicksms.advantasms.com',
     mpesaEnvironment: 'sandbox',
     mpesaConsumerKey: '',
@@ -339,6 +340,9 @@ export default function PlatformChurches() {
         smsPartnerId: response.data.smsPartnerId || '',
         smsApiKey: response.data.smsApiKey || '',
         smsShortcode: response.data.smsShortcode || '',
+        smsShortcodes: (response.data.smsShortcodes || [])
+          .filter((shortcode: string) => shortcode !== response.data.smsShortcode)
+          .join('\n'),
         smsBaseUrl:
           response.data.smsBaseUrl || 'https://quicksms.advantasms.com',
         mpesaEnvironment: response.data.mpesaEnvironment || 'sandbox',
@@ -769,7 +773,7 @@ export default function PlatformChurches() {
             <section
               aria-labelledby="church-form-title"
               aria-modal="true"
-              className="panel modal-card p-6 sm:p-7"
+              className="panel modal-card church-modal-card p-4 sm:p-5"
               role="dialog"
               onClick={(event) => event.stopPropagation()}
             >
@@ -811,13 +815,13 @@ export default function PlatformChurches() {
                 </div>
               ) : (
                 <form
-                  className="mt-6 space-y-6"
+                  className="mt-4 space-y-4"
                   onSubmit={(event) => {
                     event.preventDefault();
                     saveMutation.mutate();
                   }}
                 >
-                  <section className="rounded-3xl border border-white/10 bg-black/10 p-5">
+                  <section className="rounded-3xl border border-white/10 bg-black/10 p-4">
                     <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
                       Church Profile
                     </p>
@@ -870,7 +874,7 @@ export default function PlatformChurches() {
                     </div>
                   </section>
 
-                  <section className="rounded-3xl border border-white/10 bg-black/10 p-5">
+                  <section className="rounded-3xl border border-white/10 bg-black/10 p-4">
                     <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
                       Revenue and feature access
                     </p>
@@ -931,7 +935,7 @@ export default function PlatformChurches() {
                   </section>
 
                   {formMode === 'create' ? (
-                    <section className="rounded-3xl border border-white/10 bg-black/10 p-5">
+                    <section className="rounded-3xl border border-white/10 bg-black/10 p-4">
                       <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
                         First Church Admin
                       </p>
@@ -987,7 +991,7 @@ export default function PlatformChurches() {
                     </section>
                   ) : null}
 
-                  <section className="rounded-3xl border border-white/10 bg-black/10 p-5">
+                  <section className="rounded-3xl border border-white/10 bg-black/10 p-4">
                     <div className="flex items-center gap-3">
                       <MessageSquareText size={16} className="text-amber-200" />
                       <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
@@ -997,7 +1001,7 @@ export default function PlatformChurches() {
                     <div className="mt-4 grid gap-4 md:grid-cols-2">
                       {[
                         ['smsPartnerId', 'Partner ID'],
-                        ['smsShortcode', 'Shortcode'],
+                        ['smsShortcode', 'Default shortcode'],
                         ['smsBaseUrl', 'Base URL'],
                       ].map(([key, label]) => (
                         <div key={key}>
@@ -1016,10 +1020,28 @@ export default function PlatformChurches() {
                         </div>
                       ))}
                       {renderSensitiveField('smsApiKey', 'API key')}
+                      <div className="md:col-span-2">
+                        <label className="label">
+                          Additional SMS shortcodes
+                        </label>
+                        <textarea
+                          className="input min-h-24 resize-y"
+                          placeholder="One shortcode per line. The default shortcode above is used for auto responses."
+                          value={form.smsShortcodes}
+                          onChange={(event) =>
+                            updateForm('smsShortcodes', event.target.value)
+                          }
+                        />
+                        <p className="mt-2 text-xs text-stone-400">
+                          Churches can choose any listed shortcode when sending
+                          bulk SMS. Receipt and automatic responses use the
+                          default shortcode unless changed here.
+                        </p>
+                      </div>
                     </div>
                   </section>
 
-                  <section className="rounded-3xl border border-white/10 bg-black/10 p-5">
+                  <section className="rounded-3xl border border-white/10 bg-black/10 p-4">
                     <div className="flex items-center gap-3">
                       <CreditCard size={16} className="text-amber-200" />
                       <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
@@ -1265,6 +1287,7 @@ function buildUpdatePayload(form: ChurchFormState) {
     smsPartnerId: form.smsPartnerId,
     smsApiKey: form.smsApiKey,
     smsShortcode: form.smsShortcode,
+    smsShortcodes: form.smsShortcodes,
     smsBaseUrl: form.smsBaseUrl,
     mpesaEnvironment: form.mpesaEnvironment,
     mpesaConsumerKey: form.mpesaConsumerKey,

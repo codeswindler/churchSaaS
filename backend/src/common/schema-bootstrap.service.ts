@@ -44,9 +44,14 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
           'ADD COLUMN `smsShortcode` varchar(80) NULL AFTER `smsApiKey`',
         );
       }
+      if (!table.findColumnByName('smsShortcodes')) {
+        statements.push(
+          'ADD COLUMN `smsShortcodes` text NULL AFTER `smsShortcode`',
+        );
+      }
       if (!table.findColumnByName('smsBaseUrl')) {
         statements.push(
-          'ADD COLUMN `smsBaseUrl` varchar(255) NULL AFTER `smsShortcode`',
+          'ADD COLUMN `smsBaseUrl` varchar(255) NULL AFTER `smsShortcodes`',
         );
       }
       if (!table.findColumnByName('mpesaEnvironment')) {

@@ -153,11 +153,38 @@ function FundSplitChart({
     );
   }
 
+  const actualPercentages = activeItems.map(
+    (item) => (Number(item.totalAmount || 0) / total) * 100,
+  );
+  const minVisibleSlice =
+    activeItems.length > 1
+      ? Math.max(1.5, Math.min(7, 92 / activeItems.length))
+      : 100;
+  const tinyIndexes = actualPercentages
+    .map((percentage, index) =>
+      percentage > 0 && percentage < minVisibleSlice ? index : -1,
+    )
+    .filter((index) => index >= 0);
+  const reservedForTinySlices = tinyIndexes.length * minVisibleSlice;
+  const largeTotal = actualPercentages.reduce(
+    (sum, percentage, index) =>
+      tinyIndexes.includes(index) ? sum : sum + percentage,
+    0,
+  );
+  const visualPercentages =
+    reservedForTinySlices < 100 && largeTotal > 0
+      ? actualPercentages.map((percentage, index) =>
+          tinyIndexes.includes(index)
+            ? minVisibleSlice
+            : (percentage / largeTotal) * (100 - reservedForTinySlices),
+        )
+      : actualPercentages;
+
   let cursor = 0;
   const segments = activeItems
     .map((item, index) => {
       const start = cursor;
-      const size = (Number(item.totalAmount || 0) / total) * 100;
+      const size = visualPercentages[index] || 0;
       cursor += size;
       return `${fundSplitPalette[index % fundSplitPalette.length]} ${start}% ${cursor}%`;
     })
@@ -173,7 +200,11 @@ function FundSplitChart({
       </div>
       <div className="space-y-3">
         {activeItems.map((item, index) => {
-          const percentage = (Number(item.totalAmount || 0) / total) * 100;
+          const percentage = actualPercentages[index] || 0;
+          const formattedPercentage =
+            percentage > 0 && percentage < 0.1
+              ? '<0.1'
+              : percentage.toFixed(1);
           return (
             <Link
               key={item.fundAccountId}
@@ -193,7 +224,7 @@ function FundSplitChart({
                     {item.fundAccountName}
                   </p>
                   <p className="text-xs text-stone-400">
-                    {percentage.toFixed(1)}% of filtered funds
+                    {formattedPercentage}% of filtered funds
                   </p>
                 </div>
               </div>

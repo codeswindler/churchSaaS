@@ -607,11 +607,8 @@ export default function Login() {
           role="presentation"
           onClick={() => setShowLoginSheet(false)}
         >
-          <div
-            className="flex min-h-screen w-full items-end justify-center p-4 sm:p-6"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <section className="panel reveal-block is-visible w-full max-w-3xl rounded-[30px] p-6 sm:p-7">
+          <div className="modal-shell" onClick={(event) => event.stopPropagation()}>
+            <section className="panel reveal-block is-visible w-full max-w-2xl rounded-[30px] p-5 sm:p-6">
               <div className="mx-auto mb-6 h-1.5 w-16 rounded-full bg-white/10" />
 
               <div>

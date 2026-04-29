@@ -354,7 +354,20 @@ export class ChurchService {
       audience,
       message: body.message,
       pastedContacts: body.pastedContacts,
+      smsShortcode: body.smsShortcode,
     });
+  }
+
+  async getMessagingConfig(churchId: string) {
+    const church = await this.churchRepo.findOne({ where: { id: churchId } });
+    if (!church) {
+      throw new NotFoundException('Church not found');
+    }
+
+    return {
+      defaultSmsShortcode: church.smsShortcode,
+      smsShortcodes: this.smsService.getAvailableSmsShortcodes(church),
+    };
   }
 
   async listSmsOutbox(churchId: string, query: any = {}) {

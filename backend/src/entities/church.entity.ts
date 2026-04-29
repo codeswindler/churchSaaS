@@ -52,6 +52,9 @@ export class Church {
   @Column({ type: 'varchar', length: 80, nullable: true })
   smsShortcode: string | null;
 
+  @Column({ type: 'simple-json', nullable: true })
+  smsShortcodes: string[] | null;
+
   @Column({ type: 'varchar', length: 255, nullable: true })
   smsBaseUrl: string | null;
 

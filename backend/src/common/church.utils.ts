@@ -3,6 +3,7 @@ export interface ChurchSmsConfig {
   smsPartnerId?: string | null;
   smsApiKey?: string | null;
   smsShortcode?: string | null;
+  smsShortcodes?: string[] | null;
   smsBaseUrl?: string | null;
 }
 
@@ -55,6 +56,18 @@ export function hasConfiguredSmsCredentials(church: ChurchSmsConfig | null) {
   );
 }
 
+export function getChurchSmsShortcodes(church: ChurchSmsConfig | null) {
+  const values = [
+    church?.smsShortcode,
+    ...(Array.isArray(church?.smsShortcodes) ? church?.smsShortcodes || [] : []),
+  ];
+  const normalized = values
+    .map((value) => `${value || ''}`.trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(normalized));
+}
+
 export function getConfiguredMpesaCallbackUrl(
   church: ChurchMpesaConfig | null,
 ) {
@@ -88,6 +101,7 @@ export function buildChurchIntegrationSummary(
   return {
     smsConfigured: hasConfiguredSmsCredentials(church),
     smsShortcode: church.smsShortcode ?? null,
+    smsShortcodes: getChurchSmsShortcodes(church),
     smsBaseUrl: church.smsBaseUrl ?? null,
     mpesaConfigured: mpesaC2bConfigured,
     mpesaC2bConfigured,

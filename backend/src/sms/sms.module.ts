@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { Church } from '../entities/church.entity';
+import { Contribution } from '../entities/contribution.entity';
 import { Contributor } from '../entities/contributor.entity';
 import { SmsBatch } from '../entities/sms-batch.entity';
 import { SmsOutbox } from '../entities/sms-outbox.entity';
@@ -12,7 +13,13 @@ import { SmsService } from './sms.service';
 @Module({
   imports: [
     ConfigModule,
-    TypeOrmModule.forFeature([Church, Contributor, SmsBatch, SmsOutbox]),
+    TypeOrmModule.forFeature([
+      Church,
+      Contribution,
+      Contributor,
+      SmsBatch,
+      SmsOutbox,
+    ]),
   ],
   providers: [SmsService],
   controllers: [SmsController, SmsDlrController],

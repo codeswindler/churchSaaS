@@ -184,6 +184,13 @@ export class ChurchController {
     );
   }
 
+  @Get('messaging/config')
+  @Permissions(ChurchPermission.MESSAGING_VIEW)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.SECRETARY)
+  getMessagingConfig(@Request() req: any) {
+    return this.churchService.getMessagingConfig(req.user.churchId);
+  }
+
   @Get('messaging/outbox')
   @Permissions(ChurchPermission.OUTBOX_VIEW)
   @Roles(
