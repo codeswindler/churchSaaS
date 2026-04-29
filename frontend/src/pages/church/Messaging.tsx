@@ -9,7 +9,7 @@ import {
   UserPlus,
   Users,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 
@@ -73,6 +73,7 @@ function formatCount(value: unknown) {
 
 export default function ChurchMessaging() {
   const queryClient = useQueryClient();
+  const messageTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [activeWorkspace, setActiveWorkspace] =
     useState<Workspace>('compose');
   const [form, setForm] = useState(initialMessageForm);
@@ -362,6 +363,31 @@ export default function ChurchMessaging() {
     }
   };
 
+  const insertMessagePlaceholder = (placeholder: string) => {
+    const textarea = messageTextareaRef.current;
+    if (!textarea) {
+      setForm((current) => ({
+        ...current,
+        message: `${current.message}${placeholder}`,
+      }));
+      return;
+    }
+
+    const start = textarea.selectionStart ?? form.message.length;
+    const end = textarea.selectionEnd ?? form.message.length;
+    const nextMessage = `${form.message.slice(0, start)}${placeholder}${form.message.slice(end)}`;
+    setForm((current) => ({
+      ...current,
+      message: nextMessage,
+    }));
+
+    requestAnimationFrame(() => {
+      textarea.focus();
+      const cursorPosition = start + placeholder.length;
+      textarea.setSelectionRange(cursorPosition, cursorPosition);
+    });
+  };
+
   const renderWorkspaceTab = (
     id: Workspace,
     label: string,
@@ -511,17 +537,33 @@ export default function ChurchMessaging() {
               </div>
 
               <div className="lg:col-span-2">
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
                   <label className="label mb-0">Message</label>
-                  <span className="text-xs text-stone-400">
-                    {form.message.length} chars | {smsUnits(form.message)} unit
-                    {smsUnits(form.message) === 1 ? '' : 's'} |{' '}
-                    {remainingCharacters} left on current page
-                  </span>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <select
+                      className="input-compact min-w-[220px]"
+                      defaultValue=""
+                      onChange={(event) => {
+                        if (event.target.value) {
+                          insertMessagePlaceholder(event.target.value);
+                          event.target.value = '';
+                        }
+                      }}
+                    >
+                      <option value="">Insert placeholder</option>
+                      <option value="{name}">Recipient name {'{name}'}</option>
+                    </select>
+                    <span className="text-xs text-stone-400">
+                      {form.message.length} chars | {smsUnits(form.message)}{' '}
+                      unit{smsUnits(form.message) === 1 ? '' : 's'} |{' '}
+                      {remainingCharacters} left on current page
+                    </span>
+                  </div>
                 </div>
                 <textarea
+                  ref={messageTextareaRef}
                   className="input mt-2 min-h-44 resize-y"
-                  placeholder="Use {firstName} or {name} to personalize each message."
+                  placeholder="Select Recipient name to insert {name}. It works for contributors, address-book groups, and pasted contacts."
                   value={form.message}
                   onChange={(event) =>
                     setForm((current) => ({
