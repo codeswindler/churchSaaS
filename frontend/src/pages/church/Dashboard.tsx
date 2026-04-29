@@ -261,6 +261,7 @@ export default function ChurchDashboard() {
   const totals = data?.reportSummary?.totals || {};
   const accountKpis = data?.reportSummary?.accountKpis || [];
   const trendByDate = data?.reportSummary?.trendByDate || [];
+  const financeEnabled = data?.financeEnabled !== false;
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
   const buildLedgerPath = (overrides: Partial<DashboardFilters> = {}) => {
     const params = new URLSearchParams({
@@ -307,6 +308,34 @@ export default function ChurchDashboard() {
       })}`,
     },
   ];
+
+  if (!financeEnabled) {
+    return (
+      <div className="space-y-6">
+        <CountdownBadge
+          status={data.subscription.status}
+          expiresAt={data.subscription.expiresAt}
+          graceEndsAt={data.subscription.graceEndsAt}
+          label={data.subscription.countdown?.label}
+          variant="card"
+        />
+
+        <section className="panel p-6">
+          <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+            Module Access
+          </p>
+          <h3 className="mt-2 text-2xl font-semibold text-white">
+            Finance module is not enabled
+          </h3>
+          <p className="mt-2 max-w-3xl text-sm text-stone-300">
+            Transaction KPIs, contribution trends, fund splits, and ledger
+            summaries are hidden for this workspace because financial access has
+            not been assigned by the platform admin.
+          </p>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

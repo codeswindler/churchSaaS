@@ -50,6 +50,30 @@ const permissionOptions = [
   ['users.manage', 'Manage staff users'],
 ] as const;
 
+const rolePermissionPresets: Record<string, string[]> = {
+  priest: permissionOptions.map(([value]) => value),
+  treasurer: [
+    'dashboard.view',
+    'contributions.view',
+    'contributions.record',
+    'reports.view',
+    'reports.export',
+    'contributors.view',
+    'contributors.tag',
+    'outbox.view',
+  ],
+  secretary: [
+    'dashboard.view',
+    'fundAccounts.view',
+    'fundAccounts.manage',
+    'contributors.view',
+    'contributors.tag',
+    'messaging.view',
+    'messaging.send',
+    'outbox.view',
+  ],
+};
+
 export default function ChurchUsers() {
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -122,6 +146,10 @@ export default function ChurchUsers() {
 
   const togglePermission = (permission: string) => {
     setForm((current: any) => {
+      if (rolePermissionPresets[current.role]?.includes(permission)) {
+        return current;
+      }
+
       const permissions = new Set(current.permissionOverrides || []);
       if (permissions.has(permission)) {
         permissions.delete(permission);
@@ -130,6 +158,17 @@ export default function ChurchUsers() {
       }
       return { ...current, permissionOverrides: Array.from(permissions) };
     });
+  };
+
+  const changeRole = (role: string) => {
+    const roleDefaults = rolePermissionPresets[role] || [];
+    setForm((current: any) => ({
+      ...current,
+      role,
+      permissionOverrides: (current.permissionOverrides || []).filter(
+        (permission: string) => !roleDefaults.includes(permission),
+      ),
+    }));
   };
 
   const closeEditor = () => {
@@ -283,12 +322,7 @@ export default function ChurchUsers() {
                   <select
                     className="input"
                     value={form.role}
-                    onChange={(event) =>
-                      setForm((current: any) => ({
-                        ...current,
-                        role: event.target.value,
-                      }))
-                    }
+                    onChange={(event) => changeRole(event.target.value)}
                   >
                     {roleOptions.map((role) => (
                       <option key={role.value} value={role.value}>
@@ -307,25 +341,42 @@ export default function ChurchUsers() {
                     Permission Overrides
                   </p>
                   <p className="mt-2 text-sm text-stone-300">
-                    These add access on top of the selected role. Church modules
-                    disabled by platform admin still remain hidden.
+                    Role permissions are preselected automatically. Tick extra
+                    permissions only when this user needs access beyond the
+                    selected role. Church modules disabled by platform admin
+                    still remain hidden.
                   </p>
                   <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                    {permissionOptions.map(([value, label]) => (
-                      <label
-                        key={value}
-                        className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-stone-100"
-                      >
-                        <input
-                          checked={(form.permissionOverrides || []).includes(
-                            value,
-                          )}
-                          type="checkbox"
-                          onChange={() => togglePermission(value)}
-                        />
-                        {label}
-                      </label>
-                    ))}
+                    {permissionOptions.map(([value, label]) => {
+                      const isRolePermission =
+                        rolePermissionPresets[form.role]?.includes(value);
+                      const isOverride = (
+                        form.permissionOverrides || []
+                      ).includes(value);
+                      return (
+                        <label
+                          key={value}
+                          className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm transition ${
+                            isRolePermission
+                              ? 'border-emerald-300/30 bg-emerald-300/10 text-stone-100'
+                              : 'border-white/10 bg-white/5 text-stone-100'
+                          }`}
+                        >
+                          <input
+                            checked={isRolePermission || isOverride}
+                            disabled={isRolePermission}
+                            type="checkbox"
+                            onChange={() => togglePermission(value)}
+                          />
+                          <span className="flex-1">{label}</span>
+                          {isRolePermission ? (
+                            <span className="rounded-full border border-emerald-300/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-100">
+                              Role
+                            </span>
+                          ) : null}
+                        </label>
+                      );
+                    })}
                   </div>
                 </section>
 

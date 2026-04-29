@@ -7,8 +7,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
 import { Repository } from 'typeorm';
 import {
+  ChurchFeature,
   ChurchPermission,
   normalizeChurchRole,
+  normalizeFeatureList,
 } from '../common/access-control';
 import { sanitizeChurchForTenant } from '../common/church.utils';
 import { ContributionsService } from '../contributions/contributions.service';
@@ -50,8 +52,31 @@ export class ChurchService {
       throw new NotFoundException('Church not found');
     }
 
-    const [subscription, reportSummary, fundAccounts] = await Promise.all([
-      this.churchSubscriptionsService.getChurchSubscriptionStatus(churchId),
+    const enabledFeatures = normalizeFeatureList(church.enabledFeatures);
+    const financeEnabled = enabledFeatures.includes(ChurchFeature.FINANCE);
+    const subscription =
+      await this.churchSubscriptionsService.getChurchSubscriptionStatus(
+        churchId,
+      );
+
+    if (!financeEnabled) {
+      return {
+        church: sanitizeChurchForTenant(church),
+        enabledFeatures,
+        financeEnabled: false,
+        subscription,
+        reportSummary: {
+          totals: {},
+          byFundAccount: [],
+          accountKpis: [],
+          trendByDate: [],
+          recentContributions: [],
+        },
+        activeFundAccounts: 0,
+      };
+    }
+
+    const [reportSummary, fundAccounts] = await Promise.all([
       this.contributionsService.getChurchReportSummary(churchId, query),
       this.listFundAccounts(churchId),
     ]);
@@ -93,6 +118,8 @@ export class ChurchService {
 
     return {
       church: sanitizeChurchForTenant(church),
+      enabledFeatures,
+      financeEnabled: true,
       subscription,
       reportSummary: {
         ...reportSummary,
