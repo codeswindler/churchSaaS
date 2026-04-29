@@ -496,6 +496,56 @@ export class ChurchService {
     });
   }
 
+  async addAddressBookContact(
+    churchId: string,
+    addressBookId: string,
+    body: any,
+  ) {
+    await this.ensureAddressBook(churchId, addressBookId);
+    const displayName = `${body.name || body.displayName || ''}`.trim();
+    const normalizedPhone = this.smsService.normalizeKenyanPhone(
+      `${body.phone || body.mobile || ''}`,
+    );
+
+    if (!displayName) {
+      throw new BadRequestException('Contact name is required');
+    }
+    if (!normalizedPhone) {
+      throw new BadRequestException(
+        'Enter a valid Kenyan phone number: 01, 07, 2541, 2547, 1, or 7 format',
+      );
+    }
+
+    const nameParts = displayName.split(/\s+/).filter(Boolean);
+    const contactPayload = {
+      firstName: nameParts[0] || null,
+      lastName: nameParts.length > 1 ? nameParts.slice(1).join(' ') : null,
+      displayName,
+      normalizedPhone,
+      sourceLabel: 'manual',
+    };
+
+    const existing = await this.addressBookContactRepo.findOne({
+      where: { churchId, addressBookId, normalizedPhone },
+    });
+
+    if (existing) {
+      Object.assign(existing, contactPayload);
+      const contact = await this.addressBookContactRepo.save(existing);
+      return { contact, created: false };
+    }
+
+    const contact = await this.addressBookContactRepo.save(
+      this.addressBookContactRepo.create({
+        churchId,
+        addressBookId,
+        ...contactPayload,
+      }),
+    );
+
+    return { contact, created: true };
+  }
+
   async importAddressBookContacts(
     churchId: string,
     addressBookId: string,

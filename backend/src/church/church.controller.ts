@@ -283,6 +283,21 @@ export class ChurchController {
     );
   }
 
+  @Post('messaging/address-books/:addressBookId/contacts')
+  @Permissions(ChurchPermission.MESSAGING_SEND)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.SECRETARY)
+  addAddressBookContact(
+    @Request() req: any,
+    @Param('addressBookId') addressBookId: string,
+    @Body() body: any,
+  ) {
+    return this.churchService.addAddressBookContact(
+      req.user.churchId,
+      addressBookId,
+      body,
+    );
+  }
+
   @Post('messaging/address-books/:addressBookId/contacts/import')
   @Permissions(ChurchPermission.MESSAGING_SEND)
   @Roles(ChurchUserRole.PRIEST, ChurchUserRole.SECRETARY)
