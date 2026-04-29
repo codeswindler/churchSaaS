@@ -67,6 +67,10 @@ function downloadTextFile(filename: string, content: string) {
   window.URL.revokeObjectURL(url);
 }
 
+function formatCount(value: unknown) {
+  return Number(value || 0).toLocaleString();
+}
+
 export default function ChurchMessaging() {
   const queryClient = useQueryClient();
   const [activeWorkspace, setActiveWorkspace] =
@@ -252,8 +256,42 @@ export default function ChurchMessaging() {
       return response.data;
     },
     onSuccess: (data) => {
-      toast.success(
-        `Imported ${Number(data.imported || 0).toLocaleString()} contact(s), updated ${Number(data.updated || 0).toLocaleString()}`,
+      toast.custom(
+        (toastInstance) => (
+          <div
+            className={`w-[min(92vw,420px)] rounded-3xl border border-white/10 bg-stone-950/95 p-4 text-stone-100 shadow-2xl backdrop-blur-xl transition ${
+              toastInstance.visible
+                ? 'translate-y-0 opacity-100'
+                : 'translate-y-2 opacity-0'
+            }`}
+          >
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-200">
+              Upload Summary
+            </p>
+            <h4 className="mt-2 text-lg font-semibold text-white">
+              Address book import complete
+            </h4>
+            <div className="mt-4 grid gap-2 text-sm">
+              <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+                <span>Imported contacts</span>
+                <strong>{formatCount(data.imported)}</strong>
+              </div>
+              <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+                <span>Updated existing contacts</span>
+                <strong>{formatCount(data.updated)}</strong>
+              </div>
+              <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+                <span>Duplicate rows dropped</span>
+                <strong>{formatCount(data.duplicatesDropped)}</strong>
+              </div>
+              <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+                <span>Invalid contacts skipped</span>
+                <strong>{formatCount(data.invalid)}</strong>
+              </div>
+            </div>
+          </div>
+        ),
+        { duration: 7000 },
       );
       setUploadForm((current) => ({ ...current, contactsText: '' }));
       queryClient.invalidateQueries({ queryKey: ['church-address-books'] });
