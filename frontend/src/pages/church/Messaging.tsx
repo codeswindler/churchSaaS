@@ -102,64 +102,48 @@ export default function ChurchMessaging() {
 
   return (
     <div className="space-y-5">
-      <section className="panel p-5 sm:p-6">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-              Bulk Communication
+      <section className="panel p-3 sm:p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.22em] text-stone-400">
+              SMS units used
             </p>
-            <h3 className="mt-2 text-2xl font-semibold text-white">
-              Contributor messaging workspace
-            </h3>
-            <p className="mt-2 max-w-3xl text-sm text-stone-300">
-              Compose contributor communication separately from outbox review.
-              Contributor audiences use hashed Safaricom messaging where the
-              payment callback supplied hashed numbers.
-            </p>
+            <div className="mt-1 text-xl font-semibold text-white">
+              {Number(usage?.units || 0).toLocaleString()}
+            </div>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
-              <p className="text-[11px] uppercase tracking-[0.22em] text-stone-400">
-                SMS units used
-              </p>
-              <div className="mt-1 text-2xl font-semibold text-white">
-                {Number(usage?.units || 0).toLocaleString()}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 rounded-2xl border border-white/10 bg-black/10 p-1">
-              <button
-                className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
-                  activeWorkspace === 'compose'
-                    ? 'bg-amber-200 text-stone-950'
-                    : 'text-stone-300 hover:bg-white/5 hover:text-white'
-                }`}
-                type="button"
-                onClick={() => setActiveWorkspace('compose')}
-              >
-                <Send size={16} />
-                Compose
-              </button>
-              <button
-                className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
-                  activeWorkspace === 'outbox'
-                    ? 'bg-amber-200 text-stone-950'
-                    : 'text-stone-300 hover:bg-white/5 hover:text-white'
-                }`}
-                type="button"
-                onClick={() => setActiveWorkspace('outbox')}
-              >
-                <Inbox size={16} />
-                Outbox
-              </button>
-            </div>
+          <div className="grid grid-cols-2 rounded-2xl border border-white/10 bg-black/10 p-1">
+            <button
+              className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+                activeWorkspace === 'compose'
+                  ? 'bg-amber-200 text-stone-950'
+                  : 'text-stone-300 hover:bg-white/5 hover:text-white'
+              }`}
+              type="button"
+              onClick={() => setActiveWorkspace('compose')}
+            >
+              <Send size={16} />
+              Compose
+            </button>
+            <button
+              className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+                activeWorkspace === 'outbox'
+                  ? 'bg-amber-200 text-stone-950'
+                  : 'text-stone-300 hover:bg-white/5 hover:text-white'
+              }`}
+              type="button"
+              onClick={() => setActiveWorkspace('outbox')}
+            >
+              <Inbox size={16} />
+              Outbox
+            </button>
           </div>
         </div>
       </section>
 
       {activeWorkspace === 'compose' ? (
-        <section className="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.55fr)]">
+        <section>
           <form
             className="panel p-5 sm:p-6"
             onSubmit={(event) => {
@@ -266,30 +250,6 @@ export default function ChurchMessaging() {
               </button>
             </div>
           </form>
-
-          <aside className="panel p-5 sm:p-6">
-            <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-              Sending rules
-            </p>
-            <h3 className="mt-2 text-xl font-semibold text-white">
-              Clean routing, clean records
-            </h3>
-            <div className="mt-5 space-y-3 text-sm leading-6 text-stone-300">
-              <p className="rounded-2xl border border-white/10 bg-black/10 p-4">
-                Contributor groups prefer hashed Safaricom identifiers from
-                M-Pesa C2B callbacks, then fall back to stored plain phone
-                numbers only where available.
-              </p>
-              <p className="rounded-2xl border border-white/10 bg-black/10 p-4">
-                Pasted contacts are treated as plain numbers and must use the
-                accepted Kenyan formats: 01, 07, 2541, 2547, 1, or 7.
-              </p>
-              <p className="rounded-2xl border border-white/10 bg-black/10 p-4">
-                Auto receipts continue using the church default shortcode. This
-                selector only changes this manual bulk send.
-              </p>
-            </div>
-          </aside>
         </section>
       ) : (
         <section className="space-y-5">

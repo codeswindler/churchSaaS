@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { MessageSquareText, WalletCards } from 'lucide-react';
+import { MessageSquareText, Percent, WalletCards } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
@@ -133,7 +133,7 @@ export default function PlatformCollections() {
         </div>
       </section>
 
-      <div className="overview-stat-grid">
+      <div className="grid gap-5 md:grid-cols-3">
         <div className="stat-card">
           <WalletCards className="text-emerald-300" size={20} />
           <p className="mt-4 text-xs uppercase tracking-[0.24em] text-stone-400">
@@ -144,7 +144,7 @@ export default function PlatformCollections() {
           </div>
         </div>
         <div className="stat-card">
-          <WalletCards className="text-amber-200" size={20} />
+          <Percent className="text-amber-200" size={20} />
           <p className="mt-4 text-xs uppercase tracking-[0.24em] text-stone-400">
             Commission Revenue
           </p>
@@ -159,15 +159,6 @@ export default function PlatformCollections() {
           </p>
           <div className="mt-4 text-3xl font-semibold text-white">
             {Number(smsUsage?.totals?.units || 0).toLocaleString()}
-          </div>
-        </div>
-        <div className="stat-card">
-          <MessageSquareText className="text-violet-300" size={20} />
-          <p className="mt-4 text-xs uppercase tracking-[0.24em] text-stone-400">
-            Messages Accepted
-          </p>
-          <div className="mt-4 text-3xl font-semibold text-white">
-            {Number(smsUsage?.totals?.messageCount || 0).toLocaleString()}
           </div>
         </div>
       </div>
