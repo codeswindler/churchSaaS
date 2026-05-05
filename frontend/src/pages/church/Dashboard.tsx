@@ -207,22 +207,17 @@ function TrendChart({
     amount: Number(item.totalAmount || 0),
     count: Number(item.count || 0),
   }));
-  const pointString = points.map((point) => `${point.x},${point.y}`).join(' ');
-  const areaPoints =
-    points.length === 1
-      ? `${Math.max(paddingLeft, points[0].x - pointGap / 2)},${baselineY} ${Math.max(
-          paddingLeft,
-          points[0].x - pointGap / 2,
-        )},${points[0].y} ${Math.min(
-          width - paddingRight,
-          points[0].x + pointGap / 2,
-        )},${points[0].y} ${Math.min(
-          width - paddingRight,
-          points[0].x + pointGap / 2,
-        )},${baselineY}`
-      : `${points[0].x},${baselineY} ${pointString} ${
-          points[points.length - 1].x
-        },${baselineY}`;
+  const plotStartX = paddingLeft;
+  const plotEndX = paddingLeft + plotWidth;
+  const linePoints = [
+    { x: plotStartX, y: baselineY },
+    ...points,
+    { x: plotEndX, y: baselineY },
+  ];
+  const linePointString = linePoints
+    .map((point) => `${point.x},${point.y}`)
+    .join(' ');
+  const areaPoints = `${plotStartX},${baselineY} ${linePointString} ${plotEndX},${baselineY}`;
   const safePinnedIndex =
     pinnedIndex === null
       ? points.length - 1
@@ -313,7 +308,7 @@ function TrendChart({
         <polyline
           fill="none"
           filter="url(#trendGlow)"
-          points={pointString}
+          points={linePointString}
           stroke={trendColor}
           strokeLinecap="round"
           strokeLinejoin="round"
