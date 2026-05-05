@@ -25,6 +25,16 @@ const fundSplitPalette = [
 ];
 
 type DashboardFilters = typeof initialDashboardFilters;
+type TrendGranularity = 'daily' | 'monthly' | 'yearly';
+
+const trendGranularityOptions: Array<{
+  value: TrendGranularity;
+  label: string;
+}> = [
+  { value: 'daily', label: 'Daily' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'yearly', label: 'Yearly' },
+];
 
 function toQueryString(filters: Record<string, string>) {
   const params = new URLSearchParams();
@@ -52,6 +62,16 @@ function formatLongDate(value: string) {
   });
 }
 
+function formatMonthLabel(value: string) {
+  return new Date(`${value.slice(0, 7)}-01T00:00:00`).toLocaleDateString(
+    'en-KE',
+    {
+      month: 'short',
+      year: 'numeric',
+    },
+  );
+}
+
 function formatMoney(value: number) {
   return `KES ${Number(value || 0).toLocaleString()}`;
 }
@@ -68,12 +88,80 @@ function formatCompactMoney(value: number) {
   return formatMoney(value);
 }
 
+function getMonthEnd(value: string) {
+  const [year, month] = value.split('-').map(Number);
+  const lastDay = new Date(year, month, 0).getDate();
+  return `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(
+    2,
+    '0',
+  )}`;
+}
+
+function getPeriodForDate(value: string, granularity: TrendGranularity) {
+  if (granularity === 'yearly') {
+    const year = value.slice(0, 4);
+    return {
+      key: year,
+      date: `${year}-01-01`,
+      ledgerFrom: `${year}-01-01`,
+      ledgerTo: `${year}-12-31`,
+      shortLabel: year,
+      selectedLabel: year,
+    };
+  }
+
+  if (granularity === 'monthly') {
+    const month = value.slice(0, 7);
+    const date = `${month}-01`;
+    const label = formatMonthLabel(date);
+    return {
+      key: month,
+      date,
+      ledgerFrom: date,
+      ledgerTo: getMonthEnd(date),
+      shortLabel: label,
+      selectedLabel: label,
+    };
+  }
+
+  return {
+    key: value,
+    date: value,
+    ledgerFrom: value,
+    ledgerTo: value,
+    shortLabel: formatShortDate(value),
+    selectedLabel: formatLongDate(value),
+  };
+}
+
+function aggregateTrendData(data: any[], granularity: TrendGranularity) {
+  const buckets = new Map<string, any>();
+
+  data.forEach((item) => {
+    if (!item?.date) return;
+    const period = getPeriodForDate(item.date, granularity);
+    const current = buckets.get(period.key) || {
+      ...period,
+      totalAmount: 0,
+      count: 0,
+    };
+
+    current.totalAmount += Number(item.totalAmount || 0);
+    current.count += Number(item.count || 0);
+    buckets.set(period.key, current);
+  });
+
+  return [...buckets.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
 function TrendChart({
   data,
   buildLedgerPath,
+  granularity,
 }: {
   data: any[];
   buildLedgerPath: (overrides?: Partial<DashboardFilters>) => string;
+  granularity: TrendGranularity;
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [pinnedIndex, setPinnedIndex] = useState<number | null>(null);
@@ -86,7 +174,14 @@ function TrendChart({
     );
   }
 
-  const width = 760;
+  const pointGap =
+    granularity === 'daily' ? 44 : granularity === 'monthly' ? 86 : 120;
+  const baseWidth =
+    granularity === 'daily' ? 760 : granularity === 'monthly' ? 520 : 360;
+  const width = Math.max(
+    baseWidth,
+    88 + Math.max(data.length - 1, 1) * pointGap,
+  );
   const height = 280;
   const paddingX = 44;
   const paddingTop = 28;
@@ -122,14 +217,13 @@ function TrendChart({
     pinnedIndex === null
       ? points.length - 1
       : Math.min(pinnedIndex, points.length - 1);
-  const activeIndex = hoveredIndex ?? safePinnedIndex;
+  const safeHoveredIndex =
+    hoveredIndex === null ? null : Math.min(hoveredIndex, points.length - 1);
+  const activeIndex = safeHoveredIndex ?? safePinnedIndex;
   const activePoint = points[activeIndex];
   const activeShare =
     totalAmount > 0 ? (activePoint.amount / totalAmount) * 100 : 0;
-  const hitWidth = Math.max(
-    18,
-    (width - paddingX * 2) / Math.max(points.length, 1),
-  );
+  const hitWidth = Math.max(24, pointGap);
   const tooltipWidth = 154;
   const tooltipX = Math.min(
     Math.max(activePoint.x - tooltipWidth / 2, paddingX),
@@ -143,18 +237,26 @@ function TrendChart({
       y: yFor(value),
     };
   });
+  const selectedKind =
+    granularity === 'daily'
+      ? 'day'
+      : granularity === 'monthly'
+        ? 'month'
+        : 'year';
 
   return (
     <div
       className="overflow-hidden rounded-3xl border border-white/10 bg-black/10 p-4"
       onMouseLeave={() => setHoveredIndex(null)}
     >
-      <svg
-        aria-label="Contribution trend chart"
-        className="h-[300px] w-full"
-        preserveAspectRatio="none"
-        viewBox={`0 0 ${width} ${height}`}
-      >
+      <div className="-mx-1 overflow-x-auto pb-2">
+        <svg
+          aria-label="Contribution trend chart"
+          className="h-[300px] max-w-none"
+          preserveAspectRatio="none"
+          style={{ width: `max(100%, ${width}px)` }}
+          viewBox={`0 0 ${width} ${height}`}
+        >
         <defs>
           <linearGradient id="trendFill" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor={trendColor} stopOpacity="0.36" />
@@ -227,7 +329,7 @@ function TrendChart({
             x={tooltipX + tooltipWidth / 2}
             y={tooltipY + 17}
           >
-            {formatShortDate(activePoint.date)}
+            {activePoint.shortLabel}
           </text>
           <text
             fill={trendColor}
@@ -242,7 +344,7 @@ function TrendChart({
         </g>
         {points.map((item, index) => (
           <circle
-            key={item.date}
+            key={item.key}
             cx={item.x}
             cy={item.y}
             fill={activeIndex === index ? trendColor : '#0f172a'}
@@ -253,8 +355,8 @@ function TrendChart({
         ))}
         {points.map((item, index) => (
           <rect
-            key={`hit-${item.date}`}
-            aria-label={`${formatLongDate(item.date)} ${formatMoney(item.amount)}`}
+            key={`hit-${item.key}`}
+            aria-label={`${item.selectedLabel} ${formatMoney(item.amount)}`}
             fill="transparent"
             height={height - paddingTop - paddingBottom}
             role="button"
@@ -273,32 +375,33 @@ function TrendChart({
             onMouseEnter={() => setHoveredIndex(index)}
           />
         ))}
-      </svg>
+        </svg>
+      </div>
       <div className="mt-4 grid gap-3 text-xs text-stone-400 md:grid-cols-[1fr_auto_1fr] md:items-center">
-        <span>{formatShortDate(data[0].date)}</span>
+        <span>{data[0].shortLabel}</span>
         <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-center text-stone-100">
           <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-200">
-            Selected day
+            Selected {selectedKind}
           </p>
           <p className="mt-1 text-sm font-semibold text-white">
-            {formatLongDate(activePoint.date)}
+            {activePoint.selectedLabel}
           </p>
           <p className="mt-1 text-emerald-100">
-            {formatMoney(activePoint.amount)} · {activePoint.count} txns ·{' '}
+            {formatMoney(activePoint.amount)} - {activePoint.count} txns -{' '}
             {activeShare.toFixed(1)}%
           </p>
           <Link
             className="mt-2 inline-flex text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-200 hover:text-amber-100"
             to={buildLedgerPath({
-              from: activePoint.date,
-              to: activePoint.date,
+              from: activePoint.ledgerFrom,
+              to: activePoint.ledgerTo,
             })}
           >
-            Open day ledger
+            Open {selectedKind} ledger
           </Link>
         </div>
         <span className="text-right">
-          {formatShortDate(data[data.length - 1].date)}
+          {data[data.length - 1].shortLabel}
         </span>
       </div>
     </div>
@@ -414,6 +517,8 @@ export default function ChurchDashboard() {
   const [filters, setFilters] = useState<DashboardFilters>(
     initialDashboardFilters,
   );
+  const [trendGranularity, setTrendGranularity] =
+    useState<TrendGranularity>('monthly');
   const queryString = useMemo(() => toQueryString(filters), [filters]);
 
   const { data, isLoading } = useQuery({
@@ -424,6 +529,11 @@ export default function ChurchDashboard() {
         .then((response) => response.data),
     refetchInterval: 15_000,
   });
+  const trendByDate = data?.reportSummary?.trendByDate || [];
+  const trendData = useMemo(
+    () => aggregateTrendData(trendByDate, trendGranularity),
+    [trendByDate, trendGranularity],
+  );
 
   if (isLoading) {
     return <div className="panel p-6 text-stone-300">Loading dashboard...</div>;
@@ -431,7 +541,6 @@ export default function ChurchDashboard() {
 
   const totals = data?.reportSummary?.totals || {};
   const accountKpis = data?.reportSummary?.accountKpis || [];
-  const trendByDate = data?.reportSummary?.trendByDate || [];
   const financeEnabled = data?.financeEnabled !== false;
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
   const buildLedgerPath = (overrides: Partial<DashboardFilters> = {}) => {
@@ -616,16 +725,38 @@ export default function ChurchDashboard() {
                 Contribution Trend
               </p>
               <h3 className="mt-2 text-2xl font-semibold text-white">
-                Daily collections over time
+                Collections over time
               </h3>
             </div>
-            <p className="max-w-xl text-sm text-stone-300">
-              Tracks confirmed contribution totals using the selected date and
-              account filters.
-            </p>
+            <div className="flex flex-col gap-3 lg:items-end">
+              <div className="inline-flex rounded-2xl border border-white/10 bg-black/10 p-1">
+                {trendGranularityOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    className={`rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] transition ${
+                      trendGranularity === option.value
+                        ? 'bg-emerald-400 text-stone-950'
+                        : 'text-stone-300 hover:bg-white/5 hover:text-white'
+                    }`}
+                    type="button"
+                    onClick={() => setTrendGranularity(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <p className="max-w-xl text-sm text-stone-300 lg:text-right">
+                Confirmed contribution totals grouped by the selected period,
+                date range, and account filters.
+              </p>
+            </div>
           </div>
           <div className="mt-5">
-            <TrendChart buildLedgerPath={buildLedgerPath} data={trendByDate} />
+            <TrendChart
+              buildLedgerPath={buildLedgerPath}
+              data={trendData}
+              granularity={trendGranularity}
+            />
           </div>
         </section>
 
