@@ -31,36 +31,36 @@ const emptyForm = {
 
 const defaultGalleryImages = [
   {
-    id: 'default-1',
-    title: 'Dove in light',
+    id: 'default_1',
+    title: 'default_1',
     imageUrl: '/congregation-defaults/default_1.jpg',
     isActive: true,
     isDefault: true,
   },
   {
-    id: 'default-2',
-    title: 'Mountain glory',
+    id: 'default_2',
+    title: 'default_2',
     imageUrl: '/congregation-defaults/default_2.jpg',
     isActive: true,
     isDefault: true,
   },
   {
-    id: 'default-3',
-    title: 'Sun rays through clouds',
+    id: 'default_3',
+    title: 'default_3',
     imageUrl: '/congregation-defaults/default_3.avif',
     isActive: true,
     isDefault: true,
   },
   {
-    id: 'default-4',
-    title: 'Dove over blue sky',
+    id: 'default_4',
+    title: 'default_4',
     imageUrl: '/congregation-defaults/default_4.jpg',
     isActive: true,
     isDefault: true,
   },
   {
-    id: 'default-5',
-    title: 'Shekinah glory',
+    id: 'default_5',
+    title: 'default_5',
     imageUrl: '/congregation-defaults/default_5.jpg',
     isActive: true,
     isDefault: true,
@@ -118,11 +118,31 @@ function createSermon() {
 function createGalleryImage(imageUrl = '', title = '', isDefault = false) {
   return {
     id: isDefault ? `gallery-${createId()}` : createId(),
-    title,
+    title: getGalleryImageTitle({ imageUrl, title, isDefault }),
     imageUrl,
     isActive: true,
     isDefault,
   };
+}
+
+function getDefaultImageName(imageUrl?: string | null) {
+  const filename = imageUrl?.split('/').pop() || '';
+  const name = filename.replace(/\.(avif|jpe?g|png|webp)$/i, '');
+  return /^default_\d+$/i.test(name) ? name : '';
+}
+
+function getGalleryImageTitle(item: {
+  imageUrl?: string | null;
+  title?: string | null;
+  isDefault?: boolean | null;
+}) {
+  return getDefaultImageName(item.imageUrl) || item.title || 'Uploaded photo';
+}
+
+function normalizeGalleryImageTitle(item: any) {
+  const defaultName = getDefaultImageName(item?.imageUrl);
+  if (!defaultName) return item;
+  return { ...item, title: defaultName, isDefault: true };
 }
 
 function normalizeForm(data: any) {
@@ -166,6 +186,7 @@ function buildSavePayload(form: typeof emptyForm) {
     isPublished: true,
     verseReference: firstVerse?.reference || form.verseReference,
     verseText: firstVerse?.text || form.verseText,
+    galleryImages: form.galleryImages.map(normalizeGalleryImageTitle),
   };
 }
 
@@ -1040,19 +1061,9 @@ export default function ChurchCongregation() {
                     ) : null}
                   </div>
                   <div className="mt-3 grid gap-2">
-                    <input
-                      className="input-compact"
-                      placeholder="Caption"
-                      value={item.title || ''}
-                      onChange={(event) =>
-                        updateListItem(
-                          'galleryImages',
-                          index,
-                          'title',
-                          event.target.value,
-                        )
-                      }
-                    />
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-semibold text-white">
+                      {getGalleryImageTitle(item)}
+                    </div>
                     <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
                       <button
                         className="btn-secondary justify-center px-3 py-2 text-xs"

@@ -38,41 +38,47 @@ import { ChurchSubscriptionsService } from '../subscriptions/church-subscription
 
 const DEFAULT_CONGREGATION_GALLERY_IMAGES: CongregationGalleryImage[] = [
   {
-    id: 'default-1',
-    title: 'Dove in light',
+    id: 'default_1',
+    title: 'default_1',
     imageUrl: '/congregation-defaults/default_1.jpg',
     isActive: true,
     isDefault: true,
   },
   {
-    id: 'default-2',
-    title: 'Mountain glory',
+    id: 'default_2',
+    title: 'default_2',
     imageUrl: '/congregation-defaults/default_2.jpg',
     isActive: true,
     isDefault: true,
   },
   {
-    id: 'default-3',
-    title: 'Sun rays through clouds',
+    id: 'default_3',
+    title: 'default_3',
     imageUrl: '/congregation-defaults/default_3.avif',
     isActive: true,
     isDefault: true,
   },
   {
-    id: 'default-4',
-    title: 'Dove over blue sky',
+    id: 'default_4',
+    title: 'default_4',
     imageUrl: '/congregation-defaults/default_4.jpg',
     isActive: true,
     isDefault: true,
   },
   {
-    id: 'default-5',
-    title: 'Shekinah glory',
+    id: 'default_5',
+    title: 'default_5',
     imageUrl: '/congregation-defaults/default_5.jpg',
     isActive: true,
     isDefault: true,
   },
 ];
+
+function getDefaultGalleryImageName(imageUrl?: string | null) {
+  const filename = imageUrl?.split('/').pop() || '';
+  const name = filename.replace(/\.(avif|jpe?g|png|webp)$/i, '');
+  return /^default_\d+$/i.test(name) ? name : '';
+}
 
 @Injectable()
 export class ChurchService {
@@ -951,13 +957,19 @@ export class ChurchService {
 
   private normalizeGalleryImages(value: unknown): CongregationGalleryImage[] {
     return this.normalizeJsonList(value, 16)
-      .map((item) => ({
-        id: this.normalizeOptionalText(item.id, 80) || randomUUID(),
-        title: this.normalizeOptionalText(item.title, 140),
-        imageUrl: this.normalizeOptionalText(item.imageUrl, 500),
-        isActive: item.isActive === false ? false : true,
-        isDefault: item.isDefault === true,
-      }))
+      .map((item) => {
+        const imageUrl = this.normalizeOptionalText(item.imageUrl, 500);
+        const defaultImageName = getDefaultGalleryImageName(imageUrl);
+
+        return {
+          id: this.normalizeOptionalText(item.id, 80) || randomUUID(),
+          title:
+            defaultImageName || this.normalizeOptionalText(item.title, 140),
+          imageUrl,
+          isActive: item.isActive === false ? false : true,
+          isDefault: item.isDefault === true || Boolean(defaultImageName),
+        };
+      })
       .filter((item) => item.imageUrl) as CongregationGalleryImage[];
   }
 
