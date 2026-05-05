@@ -182,17 +182,13 @@ function TrendChart({
     baseWidth,
     88 + Math.max(data.length - 1, 1) * pointGap,
   );
-  const height = 280;
+  const height = 320;
   const paddingX = 44;
-  const paddingTop = 28;
-  const paddingBottom = 44;
+  const paddingTop = 34;
+  const paddingBottom = 34;
   const maxAmount = Math.max(
     1,
     ...data.map((item) => Number(item.totalAmount || 0)),
-  );
-  const totalAmount = data.reduce(
-    (sum, item) => sum + Number(item.totalAmount || 0),
-    0,
   );
   const xFor = (index: number) =>
     data.length === 1
@@ -221,8 +217,6 @@ function TrendChart({
     hoveredIndex === null ? null : Math.min(hoveredIndex, points.length - 1);
   const activeIndex = safeHoveredIndex ?? safePinnedIndex;
   const activePoint = points[activeIndex];
-  const activeShare =
-    totalAmount > 0 ? (activePoint.amount / totalAmount) * 100 : 0;
   const hitWidth = Math.max(24, pointGap);
   const tooltipWidth = 154;
   const tooltipX = Math.min(
@@ -246,13 +240,23 @@ function TrendChart({
 
   return (
     <div
-      className="overflow-hidden rounded-3xl border border-white/10 bg-black/10 p-4"
+      className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/10 p-4"
       onMouseLeave={() => setHoveredIndex(null)}
     >
-      <div className="-mx-1 overflow-x-auto pb-2">
+      <Link
+        className="absolute right-5 top-5 z-10 rounded-full border border-amber-200/25 bg-stone-950/80 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 shadow-lg shadow-black/20 backdrop-blur hover:border-amber-100/40 hover:text-amber-100"
+        to={buildLedgerPath({
+          from: activePoint.ledgerFrom,
+          to: activePoint.ledgerTo,
+        })}
+      >
+        Open {selectedKind} ledger
+      </Link>
+
+      <div className="-mx-1 overflow-x-auto pb-1">
         <svg
           aria-label="Contribution trend chart"
-          className="h-[300px] max-w-none"
+          className="h-[340px] max-w-none"
           preserveAspectRatio="none"
           style={{ width: `max(100%, ${width}px)` }}
           viewBox={`0 0 ${width} ${height}`}
@@ -375,34 +379,25 @@ function TrendChart({
             onMouseEnter={() => setHoveredIndex(index)}
           />
         ))}
-        </svg>
-      </div>
-      <div className="mt-4 grid gap-3 text-xs text-stone-400 md:grid-cols-[1fr_auto_1fr] md:items-center">
-        <span>{data[0].shortLabel}</span>
-        <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-center text-stone-100">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-200">
-            Selected {selectedKind}
-          </p>
-          <p className="mt-1 text-sm font-semibold text-white">
-            {activePoint.selectedLabel}
-          </p>
-          <p className="mt-1 text-emerald-100">
-            {formatMoney(activePoint.amount)} - {activePoint.count} txns -{' '}
-            {activeShare.toFixed(1)}%
-          </p>
-          <Link
-            className="mt-2 inline-flex text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-200 hover:text-amber-100"
-            to={buildLedgerPath({
-              from: activePoint.ledgerFrom,
-              to: activePoint.ledgerTo,
-            })}
-          >
-            Open {selectedKind} ledger
-          </Link>
-        </div>
-        <span className="text-right">
+        <text
+          fill="rgba(231,229,228,0.56)"
+          fontSize="11"
+          textAnchor="start"
+          x={paddingX}
+          y={height - 7}
+        >
+          {data[0].shortLabel}
+        </text>
+        <text
+          fill="rgba(231,229,228,0.56)"
+          fontSize="11"
+          textAnchor="end"
+          x={width - paddingX}
+          y={height - 7}
+        >
           {data[data.length - 1].shortLabel}
-        </span>
+        </text>
+        </svg>
       </div>
     </div>
   );
