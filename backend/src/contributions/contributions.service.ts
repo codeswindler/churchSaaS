@@ -1003,15 +1003,21 @@ export class ContributionsService {
 
   private applyContributionFilters(qb: any, query: any) {
     if (query.from) {
-      qb.andWhere('contribution.receivedAt >= :from', {
-        from: new Date(query.from),
-      });
+      qb.andWhere(
+        'COALESCE(contribution.receivedAt, contribution.createdAt) >= :from',
+        {
+          from: this.parseDateFilterBoundary(query.from, 'start'),
+        },
+      );
     }
 
     if (query.to) {
-      qb.andWhere('contribution.receivedAt <= :to', {
-        to: new Date(query.to),
-      });
+      qb.andWhere(
+        'COALESCE(contribution.receivedAt, contribution.createdAt) <= :to',
+        {
+          to: this.parseDateFilterBoundary(query.to, 'end'),
+        },
+      );
     }
 
     if (query.fundAccountId) {
@@ -1053,6 +1059,27 @@ export class ContributionsService {
         },
       );
     }
+  }
+
+  private parseDateFilterBoundary(value: any, boundary: 'start' | 'end') {
+    const rawValue = `${value || ''}`.trim();
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(rawValue)) {
+      const [year, month, day] = rawValue.split('-').map(Number);
+      if (boundary === 'end') {
+        return new Date(year, month - 1, day, 23, 59, 59, 999);
+      }
+
+      return new Date(year, month - 1, day, 0, 0, 0, 0);
+    }
+
+    const parsed = new Date(rawValue);
+
+    if (Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException('Invalid date filter');
+    }
+
+    return parsed;
   }
 
   private getChurchSmsConfig(church: Church | null): ChurchSmsConfig {
