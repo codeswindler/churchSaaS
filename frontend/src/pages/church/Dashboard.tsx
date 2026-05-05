@@ -43,7 +43,41 @@ function formatShortDate(value: string) {
   });
 }
 
-function TrendChart({ data }: { data: any[] }) {
+function formatLongDate(value: string) {
+  return new Date(`${value}T00:00:00`).toLocaleDateString('en-KE', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function formatMoney(value: number) {
+  return `KES ${Number(value || 0).toLocaleString()}`;
+}
+
+function formatCompactMoney(value: number) {
+  if (value >= 1000000) {
+    return `KES ${(value / 1000000).toFixed(1)}M`;
+  }
+
+  if (value >= 1000) {
+    return `KES ${Math.round(value / 1000)}K`;
+  }
+
+  return formatMoney(value);
+}
+
+function TrendChart({
+  data,
+  buildLedgerPath,
+}: {
+  data: any[];
+  buildLedgerPath: (overrides?: Partial<DashboardFilters>) => string;
+}) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [pinnedIndex, setPinnedIndex] = useState<number | null>(null);
+
   if (!data.length) {
     return (
       <div className="flex min-h-[280px] items-center justify-center rounded-3xl border border-white/10 bg-black/10 p-6 text-center text-sm text-stone-300">
@@ -54,29 +88,70 @@ function TrendChart({ data }: { data: any[] }) {
 
   const width = 760;
   const height = 280;
-  const padding = 34;
+  const paddingX = 44;
+  const paddingTop = 28;
+  const paddingBottom = 44;
   const maxAmount = Math.max(
     1,
     ...data.map((item) => Number(item.totalAmount || 0)),
   );
+  const totalAmount = data.reduce(
+    (sum, item) => sum + Number(item.totalAmount || 0),
+    0,
+  );
   const xFor = (index: number) =>
     data.length === 1
       ? width / 2
-      : padding + (index / (data.length - 1)) * (width - padding * 2);
+      : paddingX + (index / (data.length - 1)) * (width - paddingX * 2);
   const yFor = (amount: number) =>
-    height - padding - (amount / maxAmount) * (height - padding * 2);
-  const points = data
-    .map((item, index) => `${xFor(index)},${yFor(Number(item.totalAmount || 0))}`)
-    .join(' ');
-  const areaPoints = `${padding},${height - padding} ${points} ${
-    width - padding
-  },${height - padding}`;
+    height -
+    paddingBottom -
+    (amount / maxAmount) * (height - paddingTop - paddingBottom);
+  const points = data.map((item, index) => ({
+    ...item,
+    x: xFor(index),
+    y: yFor(Number(item.totalAmount || 0)),
+    amount: Number(item.totalAmount || 0),
+    count: Number(item.count || 0),
+  }));
+  const pointString = points.map((point) => `${point.x},${point.y}`).join(' ');
+  const areaPoints = `${paddingX},${height - paddingBottom} ${pointString} ${
+    width - paddingX
+  },${height - paddingBottom}`;
+  const safePinnedIndex =
+    pinnedIndex === null
+      ? points.length - 1
+      : Math.min(pinnedIndex, points.length - 1);
+  const activeIndex = hoveredIndex ?? safePinnedIndex;
+  const activePoint = points[activeIndex];
+  const activeShare =
+    totalAmount > 0 ? (activePoint.amount / totalAmount) * 100 : 0;
+  const hitWidth = Math.max(
+    18,
+    (width - paddingX * 2) / Math.max(points.length, 1),
+  );
+  const tooltipWidth = 154;
+  const tooltipX = Math.min(
+    Math.max(activePoint.x - tooltipWidth / 2, paddingX),
+    width - paddingX - tooltipWidth,
+  );
+  const tooltipY = Math.max(activePoint.y - 58, paddingTop + 2);
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+    const value = maxAmount * ratio;
+    return {
+      label: formatCompactMoney(value),
+      y: yFor(value),
+    };
+  });
 
   return (
-    <div className="overflow-hidden rounded-3xl border border-white/10 bg-black/10 p-4">
+    <div
+      className="overflow-hidden rounded-3xl border border-white/10 bg-black/10 p-4"
+      onMouseLeave={() => setHoveredIndex(null)}
+    >
       <svg
         aria-label="Contribution trend chart"
-        className="h-[280px] w-full"
+        className="h-[300px] w-full"
         preserveAspectRatio="none"
         viewBox={`0 0 ${width} ${height}`}
       >
@@ -85,48 +160,146 @@ function TrendChart({ data }: { data: any[] }) {
             <stop offset="0%" stopColor={trendColor} stopOpacity="0.36" />
             <stop offset="100%" stopColor={trendColor} stopOpacity="0.03" />
           </linearGradient>
+          <filter id="trendGlow" height="180%" width="180%" x="-40%" y="-40%">
+            <feGaussianBlur result="blur" stdDeviation="4" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
         </defs>
-        {[0, 1, 2, 3].map((line) => {
-          const y = padding + (line / 3) * (height - padding * 2);
-          return (
+        {yTicks.map((tick) => (
+          <g key={tick.label}>
             <line
-              key={line}
               stroke="rgba(255,255,255,0.08)"
               strokeDasharray="5 8"
-              x1={padding}
-              x2={width - padding}
-              y1={y}
-              y2={y}
+              x1={paddingX}
+              x2={width - paddingX}
+              y1={tick.y}
+              y2={tick.y}
             />
-          );
-        })}
+            <text
+              fill="rgba(231,229,228,0.48)"
+              fontSize="10"
+              textAnchor="end"
+              x={paddingX - 8}
+              y={tick.y + 4}
+            >
+              {tick.label}
+            </text>
+          </g>
+        ))}
         <polygon fill="url(#trendFill)" points={areaPoints} />
         <polyline
           fill="none"
-          points={points}
+          filter="url(#trendGlow)"
+          points={pointString}
           stroke={trendColor}
           strokeLinecap="round"
           strokeLinejoin="round"
           strokeWidth="4"
         />
-        {data.map((item, index) => (
+        {activePoint ? (
+          <line
+            stroke="rgba(52,211,153,0.32)"
+            strokeDasharray="4 5"
+            strokeWidth="1.5"
+            x1={activePoint.x}
+            x2={activePoint.x}
+            y1={paddingTop}
+            y2={height - paddingBottom}
+          />
+        ) : null}
+        <g>
+          <rect
+            fill="rgba(19,31,27,0.94)"
+            height="48"
+            rx="10"
+            stroke="rgba(52,211,153,0.36)"
+            width={tooltipWidth}
+            x={tooltipX}
+            y={tooltipY}
+          />
+          <text
+            fill="rgba(231,229,228,0.66)"
+            fontSize="10"
+            textAnchor="middle"
+            x={tooltipX + tooltipWidth / 2}
+            y={tooltipY + 17}
+          >
+            {formatShortDate(activePoint.date)}
+          </text>
+          <text
+            fill={trendColor}
+            fontSize="13"
+            fontWeight="700"
+            textAnchor="middle"
+            x={tooltipX + tooltipWidth / 2}
+            y={tooltipY + 35}
+          >
+            {formatMoney(activePoint.amount)}
+          </text>
+        </g>
+        {points.map((item, index) => (
           <circle
             key={item.date}
-            cx={xFor(index)}
-            cy={yFor(Number(item.totalAmount || 0))}
-            fill="#0f172a"
-            r="6"
+            cx={item.x}
+            cy={item.y}
+            fill={activeIndex === index ? trendColor : '#0f172a'}
+            r={activeIndex === index ? '7' : '5'}
             stroke={trendColor}
             strokeWidth="3"
           />
         ))}
+        {points.map((item, index) => (
+          <rect
+            key={`hit-${item.date}`}
+            aria-label={`${formatLongDate(item.date)} ${formatMoney(item.amount)}`}
+            fill="transparent"
+            height={height - paddingTop - paddingBottom}
+            role="button"
+            tabIndex={0}
+            width={hitWidth}
+            x={item.x - hitWidth / 2}
+            y={paddingTop}
+            onClick={() => setPinnedIndex(index)}
+            onFocus={() => setHoveredIndex(index)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                setPinnedIndex(index);
+              }
+            }}
+            onMouseEnter={() => setHoveredIndex(index)}
+          />
+        ))}
       </svg>
-      <div className="mt-4 flex items-center justify-between gap-4 text-xs text-stone-400">
+      <div className="mt-4 grid gap-3 text-xs text-stone-400 md:grid-cols-[1fr_auto_1fr] md:items-center">
         <span>{formatShortDate(data[0].date)}</span>
-        <span className="text-stone-300">
-          Peak KES {Number(maxAmount || 0).toLocaleString()}
+        <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-center text-stone-100">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-200">
+            Selected day
+          </p>
+          <p className="mt-1 text-sm font-semibold text-white">
+            {formatLongDate(activePoint.date)}
+          </p>
+          <p className="mt-1 text-emerald-100">
+            {formatMoney(activePoint.amount)} · {activePoint.count} txns ·{' '}
+            {activeShare.toFixed(1)}%
+          </p>
+          <Link
+            className="mt-2 inline-flex text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-200 hover:text-amber-100"
+            to={buildLedgerPath({
+              from: activePoint.date,
+              to: activePoint.date,
+            })}
+          >
+            Open day ledger
+          </Link>
+        </div>
+        <span className="text-right">
+          {formatShortDate(data[data.length - 1].date)}
         </span>
-        <span>{formatShortDate(data[data.length - 1].date)}</span>
       </div>
     </div>
   );
@@ -202,9 +375,7 @@ function FundSplitChart({
         {activeItems.map((item, index) => {
           const percentage = actualPercentages[index] || 0;
           const formattedPercentage =
-            percentage > 0 && percentage < 0.1
-              ? '<0.1'
-              : percentage.toFixed(1);
+            percentage > 0 && percentage < 0.1 ? '<0.1' : percentage.toFixed(1);
           return (
             <Link
               key={item.fundAccountId}
@@ -427,7 +598,9 @@ export default function ChurchDashboard() {
             <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
               {label}
             </p>
-            <div className="mt-5 text-3xl font-semibold text-white">{value}</div>
+            <div className="mt-5 text-3xl font-semibold text-white">
+              {value}
+            </div>
             <p className="mt-4 text-xs font-semibold uppercase tracking-[0.2em] text-amber-200">
               Open ledger
             </p>
@@ -452,7 +625,7 @@ export default function ChurchDashboard() {
             </p>
           </div>
           <div className="mt-5">
-            <TrendChart data={trendByDate} />
+            <TrendChart buildLedgerPath={buildLedgerPath} data={trendByDate} />
           </div>
         </section>
 
@@ -546,22 +719,26 @@ export default function ChurchDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {(data.reportSummary?.recentContributions || []).map((item: any) => (
-                  <tr key={item.id}>
-                    <td>
-                      <div className="font-medium text-white">
-                        {item.contributor?.name || 'Unknown'}
-                      </div>
-                      <div className="text-xs text-stone-400">
-                        {item.contributor?.phone || '-'}
-                      </div>
-                    </td>
-                    <td>{item.fundAccountId ? item.fundAccountName : 'General'}</td>
-                    <td>{item.channel}</td>
-                    <td>KES {Number(item.amount || 0).toLocaleString()}</td>
-                    <td>{item.status}</td>
-                  </tr>
-                ))}
+                {(data.reportSummary?.recentContributions || []).map(
+                  (item: any) => (
+                    <tr key={item.id}>
+                      <td>
+                        <div className="font-medium text-white">
+                          {item.contributor?.name || 'Unknown'}
+                        </div>
+                        <div className="text-xs text-stone-400">
+                          {item.contributor?.phone || '-'}
+                        </div>
+                      </td>
+                      <td>
+                        {item.fundAccountId ? item.fundAccountName : 'General'}
+                      </td>
+                      <td>{item.channel}</td>
+                      <td>KES {Number(item.amount || 0).toLocaleString()}</td>
+                      <td>{item.status}</td>
+                    </tr>
+                  ),
+                )}
               </tbody>
             </table>
           </div>

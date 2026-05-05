@@ -107,10 +107,9 @@ export class PublicController {
         channel: 'mpesa',
         shortcode: church.mpesaShortcode || null,
         supportsStkPush: integrations.mpesaStkConfigured,
-        referenceHint:
-          integrations.mpesaStkConfigured
-            ? 'Enter your phone number and amount to receive an M-Pesa STK prompt.'
-            : 'Pay using the church M-Pesa account, then submit the receipt/reference here.',
+        referenceHint: integrations.mpesaStkConfigured
+          ? 'Enter your phone number and amount to receive an M-Pesa STK prompt.'
+          : 'Pay using the church M-Pesa account, then submit the receipt/reference here.',
       },
     };
   }
@@ -139,35 +138,35 @@ export class PublicController {
       page: page
         ? { ...page, isPublished: true }
         : {
-        isPublished: true,
-        heroTitle: `Welcome to ${church.name}`,
-        welcomeMessage:
-          'Stay connected with worship times, daily encouragement, church events, and programs from your church office.',
-        verseReference: 'Psalm 122:1',
-        verseText:
-          'I rejoiced with those who said to me, let us go to the house of the Lord.',
-        dailyVerses: [
-          {
-            date: new Date().toISOString().slice(0, 10),
-            reference: 'Psalm 122:1',
-            text: 'I rejoiced with those who said to me, let us go to the house of the Lord.',
+            isPublished: true,
+            heroTitle: `Welcome to ${church.name}`,
+            welcomeMessage:
+              'Stay connected with worship times, daily encouragement, church events, and programs from your church office.',
+            verseReference: 'Psalm 122:1',
+            verseText:
+              'I rejoiced with those who said to me, let us go to the house of the Lord.',
+            dailyVerses: [
+              {
+                date: new Date().toISOString().slice(0, 10),
+                reference: 'Psalm 122:1',
+                text: 'I rejoiced with those who said to me, let us go to the house of the Lord.',
+              },
+            ],
+            featuredImageUrl: null,
+            serviceTimes: [
+              {
+                label: 'Sunday Service',
+                time: '10:00 AM',
+                location: church.address || 'Main sanctuary',
+              },
+            ],
+            events: [],
+            massPrograms: [],
+            sermons: [],
+            galleryImages: DEFAULT_CONGREGATION_GALLERY_IMAGES,
+            contactNote: null,
+            updatedAt: null,
           },
-        ],
-        featuredImageUrl: null,
-        serviceTimes: [
-          {
-            label: 'Sunday Service',
-            time: '10:00 AM',
-            location: church.address || 'Main sanctuary',
-          },
-        ],
-        events: [],
-        massPrograms: [],
-        sermons: [],
-        galleryImages: DEFAULT_CONGREGATION_GALLERY_IMAGES,
-        contactNote: null,
-        updatedAt: null,
-      },
       givingUrl: `/c/${church.slug}/give`,
     };
   }

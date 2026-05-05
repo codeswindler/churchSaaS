@@ -174,7 +174,7 @@ function normalizeForm(data: any) {
     events: data?.events || [],
     massPrograms: data?.massPrograms || [],
     sermons: data?.sermons || [],
-    galleryImages: data?.galleryImages || [],
+    galleryImages: (data?.galleryImages || []).map(normalizeGalleryImageTitle),
     contactNote: data?.contactNote || '',
   };
 }
@@ -246,9 +246,13 @@ export default function ChurchCongregation() {
     }) => {
       const payload = new FormData();
       payload.append('image', file);
-      const response = await api.post('/church/congregation-page/images', payload, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const response = await api.post(
+        '/church/congregation-page/images',
+        payload,
+        {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        },
+      );
       return { imageUrl: response.data.imageUrl, target, index };
     },
     onSuccess: ({ imageUrl, target, index }) => {
@@ -271,7 +275,10 @@ export default function ChurchCongregation() {
 
         return {
           ...current,
-          galleryImages: [...current.galleryImages, createGalleryImage(imageUrl)],
+          galleryImages: [
+            ...current.galleryImages,
+            createGalleryImage(imageUrl),
+          ],
         };
       });
       toast.success('Image uploaded');
@@ -337,7 +344,9 @@ export default function ChurchCongregation() {
     uploadMutation.mutate({ file, target, index });
   };
 
-  const addDefaultGalleryImage = (image: (typeof defaultGalleryImages)[number]) => {
+  const addDefaultGalleryImage = (
+    image: (typeof defaultGalleryImages)[number],
+  ) => {
     setForm((current) => {
       const alreadyAdded = current.galleryImages.some(
         (item) => item.imageUrl === image.imageUrl,
@@ -594,7 +603,10 @@ export default function ChurchCongregation() {
                 onClick={() =>
                   setForm((current) => ({
                     ...current,
-                    serviceTimes: [...current.serviceTimes, createServiceTime()],
+                    serviceTimes: [
+                      ...current.serviceTimes,
+                      createServiceTime(),
+                    ],
                   }))
                 }
               >
@@ -900,9 +912,7 @@ export default function ChurchCongregation() {
                   <div className="mt-3 grid gap-3 md:grid-cols-[1fr_220px]">
                     <div className="space-y-3">
                       <div>
-                        <label className="label-compact">
-                          Sermon summary
-                        </label>
+                        <label className="label-compact">Sermon summary</label>
                         <textarea
                           className="input-compact mt-1.5 min-h-24"
                           value={item.summary || ''}

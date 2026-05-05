@@ -13,10 +13,14 @@ WHERE churchId = @church_id
 
 DELETE FROM contributors
 WHERE churchId = @church_id
-  AND memberNumber LIKE 'ATG-DEMO-%';
+  AND (
+    memberNumber LIKE 'ATG-DEMO-%'
+    OR memberNumber LIKE 'ATG-SEED-%'
+  );
 
 DROP TEMPORARY TABLE IF EXISTS
   tmp_seed_funds,
+  tmp_seed_names,
   tmp_seed_contributors,
   tmp_seed_days,
   tmp_seed_raw,
@@ -37,16 +41,104 @@ INSERT INTO tmp_seed_funds VALUES
 (5, 'general',  '7aea78b6-5b45-4661-ae99-297c503bd4c9', 'General'),
 (6, 'funeral',  '6da889cd-37e6-47a4-8574-d0858b76304c', 'FUNERAL');
 
+CREATE TEMPORARY TABLE tmp_seed_names (
+  seq_no int PRIMARY KEY,
+  name varchar(255),
+  gender varchar(20)
+);
+
+INSERT INTO tmp_seed_names VALUES
+(1, 'Grace Wambui', 'female'),
+(2, 'Peter Mwangi', 'male'),
+(3, 'Faith Njeri', 'female'),
+(4, 'John Otieno', 'male'),
+(5, 'Mercy Achieng', 'female'),
+(6, 'Samuel Kiptoo', 'male'),
+(7, 'Mary Wanjiku', 'female'),
+(8, 'Daniel Mutua', 'male'),
+(9, 'Esther Wairimu', 'female'),
+(10, 'Joseph Kariuki', 'male'),
+(11, 'Lucy Atieno', 'female'),
+(12, 'David Maina', 'male'),
+(13, 'Jane Muthoni', 'female'),
+(14, 'George Ochieng', 'male'),
+(15, 'Agnes Nyambura', 'female'),
+(16, 'Paul Karanja', 'male'),
+(17, 'Ruth Chebet', 'female'),
+(18, 'Simon Njoroge', 'male'),
+(19, 'Caroline Jepkoech', 'female'),
+(20, 'Moses Kamau', 'male'),
+(21, 'Ann Waithera', 'female'),
+(22, 'Francis Omondi', 'male'),
+(23, 'Beatrice Wanjiru', 'female'),
+(24, 'Isaac Kimani', 'male'),
+(25, 'Eunice Moraa', 'female'),
+(26, 'Martin Onyango', 'male'),
+(27, 'Irene Naliaka', 'female'),
+(28, 'Patrick Mbugua', 'male'),
+(29, 'Rose Nyokabi', 'female'),
+(30, 'Stephen Langat', 'male'),
+(31, 'Catherine Wairimu', 'female'),
+(32, 'Brian Ouma', 'male'),
+(33, 'Lydia Mumbi', 'female'),
+(34, 'Anthony Njuguna', 'male'),
+(35, 'Naomi Wangari', 'female'),
+(36, 'Michael Mutiso', 'male'),
+(37, 'Sarah Cherono', 'female'),
+(38, 'Kevin Odhiambo', 'male'),
+(39, 'Elizabeth Nyambura', 'female'),
+(40, 'James Macharia', 'male'),
+(41, 'Rebecca Akinyi', 'female'),
+(42, 'Philip Bett', 'male'),
+(43, 'Hannah Makena', 'female'),
+(44, 'Robert Wekesa', 'male'),
+(45, 'Joyce Njeri', 'female'),
+(46, 'Charles Githinji', 'male'),
+(47, 'Diana Jepchirchir', 'female'),
+(48, 'Andrew Muli', 'male'),
+(49, 'Monica Wanjala', 'female'),
+(50, 'Victor Kiprono', 'male'),
+(51, 'Teresa Nyawira', 'female'),
+(52, 'Emmanuel Barasa', 'male'),
+(53, 'Susan Muthoni', 'female'),
+(54, 'Nicholas Kibet', 'male'),
+(55, 'Purity Wambui', 'female'),
+(56, 'Collins Otieno', 'male'),
+(57, 'Janet Nekesa', 'female'),
+(58, 'Timothy Gakuru', 'male'),
+(59, 'Priscah Moraa', 'female'),
+(60, 'Alex Njenga', 'male'),
+(61, 'Miriam Chepkemoi', 'female'),
+(62, 'Edwin Munene', 'male'),
+(63, 'Florence Anyango', 'female'),
+(64, 'Dennis Wainaina', 'male'),
+(65, 'Margaret Wanjiru', 'female'),
+(66, 'Kenneth Kipchumba', 'male'),
+(67, 'Pauline Mbithe', 'female'),
+(68, 'Gabriel Muriithi', 'male'),
+(69, 'Alice Naliaka', 'female'),
+(70, 'Leonard Omollo', 'male'),
+(71, 'Christine Njoki', 'female'),
+(72, 'Vincent Mutua', 'male'),
+(73, 'Millicent Achieng', 'female'),
+(74, 'Julius Koech', 'male'),
+(75, 'Veronica Wairimu', 'female'),
+(76, 'Eric Kariuki', 'male'),
+(77, 'Nancy Chebet', 'female'),
+(78, 'Oscar Oloo', 'male'),
+(79, 'Dorcas Wangui', 'female'),
+(80, 'Benjamin Mwangi', 'male');
+
 CREATE TEMPORARY TABLE tmp_seed_contributors AS
 SELECT
-  seq AS seq_no,
+  seq_no,
   UUID() AS id,
   @church_id AS churchId,
-  CONCAT('ATG Demo Member ', LPAD(seq, 3, '0')) AS name,
-  CONCAT('2547', LPAD(10000000 + seq, 8, '0')) AS phone,
-  CONCAT('ATG-DEMO-', LPAD(seq, 3, '0')) AS memberNumber,
-  IF(MOD(seq, 2) = 0, 'female', 'male') AS gender
-FROM seq_1_to_80;
+  name,
+  CONCAT('2547', LPAD(11000000 + MOD(seq_no * 7919, 8899999), 8, '0')) AS phone,
+  CONCAT('ATG-SEED-', LPAD(seq_no, 3, '0')) AS memberNumber,
+  gender
+FROM tmp_seed_names;
 
 INSERT INTO contributors (
   id,

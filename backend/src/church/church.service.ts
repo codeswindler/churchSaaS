@@ -169,8 +169,7 @@ export class ChurchService {
           totalAmount:
             Number(contributionTotals?.totalAmount || 0) +
             fallbackTotals.totalAmount,
-          count:
-            Number(contributionTotals?.count || 0) + fallbackTotals.count,
+          count: Number(contributionTotals?.count || 0) + fallbackTotals.count,
         };
       });
 
@@ -416,9 +415,7 @@ export class ChurchService {
 
     if (body.gender !== undefined) {
       contributor.gender =
-        body.gender === 'male' || body.gender === 'female'
-          ? body.gender
-          : null;
+        body.gender === 'male' || body.gender === 'female' ? body.gender : null;
     }
     if (body.name !== undefined) {
       contributor.name = body.name || contributor.name;
@@ -499,7 +496,9 @@ export class ChurchService {
       [
         item.createdAt ? new Date(item.createdAt).toISOString() : '',
         item.recipientName || item.contributor?.name || '',
-        item.isHashedRecipient ? 'Hashed Safaricom recipient' : item.recipientMobile,
+        item.isHashedRecipient
+          ? 'Hashed Safaricom recipient'
+          : item.recipientMobile,
         item.messageType,
         item.estimatedUnits,
         item.providerDescription || item.sendStatus,
@@ -677,7 +676,9 @@ export class ChurchService {
 
     for (const line of lines) {
       const parsed = this.smsService.parseContactLine(line);
-      const normalizedPhone = this.smsService.normalizeKenyanPhone(parsed.phone);
+      const normalizedPhone = this.smsService.normalizeKenyanPhone(
+        parsed.phone,
+      );
       if (!normalizedPhone) {
         invalid += 1;
         continue;
@@ -845,7 +846,8 @@ export class ChurchService {
       welcomeMessage:
         'Stay connected with worship times, daily encouragement, church events, and programs from your church office.',
       verseReference: 'Psalm 122:1',
-      verseText: 'I rejoiced with those who said to me, let us go to the house of the Lord.',
+      verseText:
+        'I rejoiced with those who said to me, let us go to the house of the Lord.',
       dailyVerses: [
         {
           id: randomUUID(),
