@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { ContributionsModule } from '../contributions/contributions.module';
+import { ChurchCongregationPage } from '../entities/church-congregation-page.entity';
 import { Church } from '../entities/church.entity';
 import { ChurchUser } from '../entities/church-user.entity';
 import { Contributor } from '../entities/contributor.entity';
@@ -17,6 +18,7 @@ import { ChurchService } from './church.service';
   imports: [
     TypeOrmModule.forFeature([
       Church,
+      ChurchCongregationPage,
       ChurchUser,
       FundAccount,
       Contributor,

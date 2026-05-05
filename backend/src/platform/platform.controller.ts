@@ -46,6 +46,28 @@ export class PlatformController {
     return this.platformService.getChurchDetails(churchId);
   }
 
+  @Get('churches/:churchId/users')
+  listChurchUsers(@Param('churchId') churchId: string) {
+    return this.platformService.listChurchUsers(churchId);
+  }
+
+  @Post('churches/:churchId/users')
+  createChurchUser(
+    @Param('churchId') churchId: string,
+    @Body() body: any,
+  ) {
+    return this.platformService.createChurchUser(churchId, body);
+  }
+
+  @Patch('churches/:churchId/users/:userId')
+  updateChurchUser(
+    @Param('churchId') churchId: string,
+    @Param('userId') userId: string,
+    @Body() body: any,
+  ) {
+    return this.platformService.updateChurchUser(churchId, userId, body);
+  }
+
   @Post('churches')
   createChurch(@Body() body: any, @Request() req: any) {
     return this.platformService.createChurch(body, req.user.id);

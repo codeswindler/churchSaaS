@@ -3,6 +3,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { AppShell } from './layouts/AppShell';
 import Login from './pages/auth/Login';
 import ChurchContributions from './pages/church/Contributions';
+import ChurchCongregation from './pages/church/Congregation';
 import ChurchDashboard from './pages/church/Dashboard';
 import ChurchFundAccounts from './pages/church/FundAccounts';
 import ChurchMessaging from './pages/church/Messaging';
@@ -13,6 +14,7 @@ import PlatformCollections from './pages/platform/Collections';
 import PlatformDashboard from './pages/platform/Dashboard';
 import PlatformEnquiries from './pages/platform/Enquiries';
 import PlatformUsers from './pages/platform/Users';
+import PublicCongregation from './pages/public/Congregation';
 import PublicGive from './pages/public/Give';
 import { getPortalPath, getSession } from './services/api';
 
@@ -31,6 +33,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<PublicEntry />} />
       <Route path="/login" element={<PublicEntry />} />
+      <Route path="/c/:slug" element={<PublicCongregation />} />
       <Route path="/c/:slug/give" element={<PublicGive />} />
 
       <Route
@@ -60,6 +63,7 @@ export default function App() {
         <Route path="dashboard" element={<ChurchDashboard />} />
         <Route path="fund-accounts" element={<ChurchFundAccounts />} />
         <Route path="contributions" element={<ChurchContributions />} />
+        <Route path="congregation" element={<ChurchCongregation />} />
         <Route path="messaging" element={<ChurchMessaging />} />
         <Route path="users" element={<ChurchUsers />} />
         <Route path="reports" element={<ChurchReports />} />

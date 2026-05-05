@@ -50,7 +50,9 @@ export function CountdownBadge({
 
   if (variant === 'card') {
     return (
-      <div className={`rounded-3xl border p-5 ${meta.tone}`}>
+      <div
+        className={`subscription-countdown-badge subscription-countdown-${status} rounded-3xl border p-5 ${meta.tone}`}
+      >
         <div className="mb-3 flex items-center gap-3">
           <div className="rounded-2xl bg-black/15 p-2">{meta.icon}</div>
           <div>
@@ -71,7 +73,7 @@ export function CountdownBadge({
 
   return (
     <div
-      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium ${meta.tone}`}
+      className={`subscription-countdown-badge subscription-countdown-${status} inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium ${meta.tone}`}
     >
       {meta.icon}
       <span>{label || (status === 'grace' ? 'Grace ends in' : 'Ends in')}</span>

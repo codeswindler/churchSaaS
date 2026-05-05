@@ -1,12 +1,13 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { HeartHandshake } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { CreditCard, HeartHandshake, Smartphone } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useParams } from 'react-router-dom';
 import api from '../../services/api';
 
 export default function PublicGive() {
   const { slug = '' } = useParams();
+  const [paymentMode, setPaymentMode] = useState<'stk' | 'manual'>('stk');
   const [form, setForm] = useState({
     name: '',
     phone: '',
@@ -24,6 +25,13 @@ export default function PublicGive() {
   });
 
   const funds = useMemo(() => data?.fundAccounts || [], [data]);
+  const stkReady = Boolean(data?.paymentInstructions?.supportsStkPush);
+
+  useEffect(() => {
+    if (data && !stkReady) {
+      setPaymentMode('manual');
+    }
+  }, [data, stkReady]);
 
   const contributionMutation = useMutation({
     mutationFn: async () => {
@@ -47,6 +55,36 @@ export default function PublicGive() {
     },
   });
 
+  const stkMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/public/churches/${slug}/contributions/stk`, {
+        name: form.name,
+        phone: form.phone,
+        amount: Number(form.amount),
+        fundAccountId: form.fundAccountId,
+        notes: form.notes,
+      });
+      return response.data;
+    },
+    onSuccess: (result) => {
+      toast.success(result.message || 'STK push sent to your phone');
+      setForm((current) => ({
+        ...current,
+        amount: '',
+        paymentReference: '',
+        notes: '',
+      }));
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Unable to send STK push');
+    },
+  });
+
+  const effectivePaymentMode =
+    paymentMode === 'stk' && !stkReady ? 'manual' : paymentMode;
+  const activeMutation =
+    effectivePaymentMode === 'stk' ? stkMutation : contributionMutation;
+
   if (isLoading) {
     return <div className="min-h-screen p-8 text-stone-200">Loading church...</div>;
   }
@@ -64,14 +102,18 @@ export default function PublicGive() {
             {data?.church?.name || 'Church Giving'}
           </h1>
           <p className="mt-3 text-lg text-stone-300">
-            Pay using the church M-Pesa account, then submit your receipt details so the contribution can be recorded under the right fund.
+            Give securely by receiving an M-Pesa STK prompt on your phone, or
+            submit receipt details after paying through the church M-Pesa
+            account.
           </p>
 
           {data?.acceptingContributions ? (
             <div className="mt-6 rounded-3xl border border-amber-200/20 bg-amber-200/10 p-5 text-sm leading-6 text-amber-50">
               <div className="font-semibold">M-Pesa payment details</div>
               <p className="mt-2 text-amber-50/85">
-                {data?.paymentInstructions?.shortcode
+                {effectivePaymentMode === 'stk'
+                  ? 'Enter your phone number and amount. Safaricom will send a prompt to complete the contribution.'
+                  : data?.paymentInstructions?.shortcode
                   ? `Use M-Pesa shortcode ${data.paymentInstructions.shortcode}, then enter the M-Pesa receipt number below.`
                   : data?.paymentInstructions?.referenceHint ||
                     'Make the M-Pesa payment, then enter the receipt/reference number below.'}
@@ -90,21 +132,53 @@ export default function PublicGive() {
               className="mt-8 space-y-5"
               onSubmit={(event) => {
                 event.preventDefault();
-                contributionMutation.mutate();
+                activeMutation.mutate();
               }}
             >
+              <div className="grid gap-3 rounded-3xl border border-white/10 bg-black/10 p-2 sm:grid-cols-2">
+                <button
+                  className={`flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                    effectivePaymentMode === 'stk'
+                      ? 'bg-amber-200 text-[#0d2119]'
+                      : 'text-stone-300 hover:bg-white/10 hover:text-white'
+                  } ${!stkReady ? 'cursor-not-allowed opacity-50' : ''}`}
+                  disabled={!stkReady}
+                  type="button"
+                  onClick={() => setPaymentMode('stk')}
+                >
+                  <Smartphone size={16} />
+                  STK push
+                </button>
+                <button
+                  className={`flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                    effectivePaymentMode === 'manual'
+                      ? 'bg-amber-200 text-[#0d2119]'
+                      : 'text-stone-300 hover:bg-white/10 hover:text-white'
+                  }`}
+                  type="button"
+                  onClick={() => setPaymentMode('manual')}
+                >
+                  <CreditCard size={16} />
+                  Receipt entry
+                </button>
+              </div>
+
               <div className="grid gap-4 md:grid-cols-2">
                 {[
                   ['name', 'Your name'],
                   ['phone', 'Phone number'],
                   ['amount', 'Amount'],
-                  ['paymentReference', 'M-Pesa receipt number'],
+                  ...(effectivePaymentMode === 'manual'
+                    ? [['paymentReference', 'M-Pesa receipt number']]
+                    : []),
                 ].map(([key, label]) => (
                   <div key={key}>
                     <label className="label">{label}</label>
                     <input
                       className="input"
+                      min={key === 'amount' ? 1 : undefined}
                       required={key !== 'name'}
+                      type={key === 'amount' ? 'number' : 'text'}
                       value={(form as any)[key]}
                       onChange={(event) =>
                         setForm((current) => ({
@@ -120,6 +194,7 @@ export default function PublicGive() {
                   <label className="label">Contribution account</label>
                   <select
                     className="input"
+                    required
                     value={form.fundAccountId}
                     onChange={(event) =>
                       setForm((current) => ({
@@ -153,9 +228,13 @@ export default function PublicGive() {
               </div>
 
               <button className="btn-primary w-full justify-center" type="submit">
-                {contributionMutation.isPending
-                  ? 'Recording payment...'
-                  : 'Submit payment details'}
+                {activeMutation.isPending
+                  ? effectivePaymentMode === 'stk'
+                    ? 'Sending STK push...'
+                    : 'Recording payment...'
+                  : effectivePaymentMode === 'stk'
+                    ? 'Send STK push'
+                    : 'Submit payment details'}
               </button>
             </form>
           )}

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Building2,
+  BookOpenText,
   ChartColumn,
   Clock4,
   Coins,
@@ -69,6 +70,12 @@ const churchLinks = [
     permission: 'messaging.view',
   },
   {
+    to: '/church/congregation',
+    label: 'Sermons & Announcements',
+    icon: BookOpenText,
+    permission: 'congregation.manage',
+  },
+  {
     to: '/church/users',
     label: 'Staff Users',
     icon: Users,
@@ -133,6 +140,11 @@ const pageMeta = {
     {
       prefix: '/church/messaging',
       title: 'Messaging',
+      variant: 'compact',
+    },
+    {
+      prefix: '/church/congregation',
+      title: 'Sermons & Announcements',
       variant: 'compact',
     },
     { prefix: '/church/users', title: 'Staff users', variant: 'compact' },

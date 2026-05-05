@@ -12,6 +12,7 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
     await this.ensureRevenueAndAccessColumns();
     await this.ensureClientEnquiryTable();
     await this.ensureSmsMessagingTables();
+    await this.ensureCongregationPageTable();
   }
 
   private async ensureChurchCredentialColumns() {
@@ -398,6 +399,129 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `);
         this.logger.log('Created SMS outbox table.');
+      }
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  private async ensureCongregationPageTable() {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+
+    try {
+      const table = await queryRunner.getTable('church_congregation_pages');
+
+      if (!table) {
+        await queryRunner.query(`
+          CREATE TABLE \`church_congregation_pages\` (
+            \`id\` varchar(36) NOT NULL,
+            \`churchId\` varchar(36) NOT NULL,
+            \`isPublished\` tinyint NOT NULL DEFAULT 1,
+            \`heroTitle\` varchar(180) NULL,
+            \`welcomeMessage\` text NULL,
+            \`verseReference\` varchar(180) NULL,
+            \`verseText\` text NULL,
+            \`dailyVerses\` text NULL,
+            \`featuredImageUrl\` varchar(500) NULL,
+            \`serviceTimes\` text NULL,
+            \`events\` text NULL,
+            \`massPrograms\` text NULL,
+            \`sermons\` text NULL,
+            \`galleryImages\` text NULL,
+            \`contactNote\` text NULL,
+            \`updatedByUserId\` varchar(36) NULL,
+            \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            \`updatedAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+            PRIMARY KEY (\`id\`),
+            UNIQUE KEY \`UQ_church_congregation_pages_church\` (\`churchId\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        this.logger.log('Created church congregation pages table.');
+        return;
+      }
+
+      const statements: string[] = [];
+
+      if (!table.findColumnByName('churchId')) {
+        statements.push('ADD COLUMN `churchId` varchar(36) NOT NULL AFTER `id`');
+      }
+      if (!table.findColumnByName('isPublished')) {
+        statements.push(
+          'ADD COLUMN `isPublished` tinyint NOT NULL DEFAULT 1 AFTER `churchId`',
+        );
+      }
+      if (!table.findColumnByName('heroTitle')) {
+        statements.push(
+          'ADD COLUMN `heroTitle` varchar(180) NULL AFTER `isPublished`',
+        );
+      }
+      if (!table.findColumnByName('welcomeMessage')) {
+        statements.push(
+          'ADD COLUMN `welcomeMessage` text NULL AFTER `heroTitle`',
+        );
+      }
+      if (!table.findColumnByName('verseReference')) {
+        statements.push(
+          'ADD COLUMN `verseReference` varchar(180) NULL AFTER `welcomeMessage`',
+        );
+      }
+      if (!table.findColumnByName('verseText')) {
+        statements.push('ADD COLUMN `verseText` text NULL AFTER `verseReference`');
+      }
+      if (!table.findColumnByName('dailyVerses')) {
+        statements.push('ADD COLUMN `dailyVerses` text NULL AFTER `verseText`');
+      }
+      if (!table.findColumnByName('featuredImageUrl')) {
+        statements.push(
+          'ADD COLUMN `featuredImageUrl` varchar(500) NULL AFTER `dailyVerses`',
+        );
+      }
+      if (!table.findColumnByName('serviceTimes')) {
+        statements.push(
+          'ADD COLUMN `serviceTimes` text NULL AFTER `featuredImageUrl`',
+        );
+      }
+      if (!table.findColumnByName('events')) {
+        statements.push('ADD COLUMN `events` text NULL AFTER `serviceTimes`');
+      }
+      if (!table.findColumnByName('massPrograms')) {
+        statements.push('ADD COLUMN `massPrograms` text NULL AFTER `events`');
+      }
+      if (!table.findColumnByName('sermons')) {
+        statements.push('ADD COLUMN `sermons` text NULL AFTER `massPrograms`');
+      }
+      if (!table.findColumnByName('galleryImages')) {
+        statements.push(
+          'ADD COLUMN `galleryImages` text NULL AFTER `sermons`',
+        );
+      }
+      if (!table.findColumnByName('contactNote')) {
+        statements.push('ADD COLUMN `contactNote` text NULL AFTER `galleryImages`');
+      }
+      if (!table.findColumnByName('updatedByUserId')) {
+        statements.push(
+          'ADD COLUMN `updatedByUserId` varchar(36) NULL AFTER `contactNote`',
+        );
+      }
+      if (!table.findColumnByName('createdAt')) {
+        statements.push(
+          'ADD COLUMN `createdAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) AFTER `updatedByUserId`',
+        );
+      }
+      if (!table.findColumnByName('updatedAt')) {
+        statements.push(
+          'ADD COLUMN `updatedAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) AFTER `createdAt`',
+        );
+      }
+
+      if (statements.length > 0) {
+        await queryRunner.query(
+          `ALTER TABLE \`church_congregation_pages\` ${statements.join(', ')}`,
+        );
+        this.logger.log(
+          `Applied congregation page schema bootstrap with ${statements.length} column updates.`,
+        );
       }
     } finally {
       await queryRunner.release();

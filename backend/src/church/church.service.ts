@@ -5,6 +5,9 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
+import { randomUUID } from 'crypto';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { extname, join } from 'path';
 import { Repository } from 'typeorm';
 import {
   ChurchFeature,
@@ -14,6 +17,15 @@ import {
 } from '../common/access-control';
 import { sanitizeChurchForTenant } from '../common/church.utils';
 import { ContributionsService } from '../contributions/contributions.service';
+import {
+  ChurchCongregationPage,
+  CongregationEvent,
+  CongregationGalleryImage,
+  CongregationDailyVerse,
+  CongregationMassProgram,
+  CongregationSermon,
+  CongregationServiceTime,
+} from '../entities/church-congregation-page.entity';
 import { Church } from '../entities/church.entity';
 import { ChurchUser, ChurchUserRole } from '../entities/church-user.entity';
 import { Contributor } from '../entities/contributor.entity';
@@ -24,6 +36,44 @@ import { SmsBatchAudience } from '../entities/sms-batch.entity';
 import { SmsService } from '../sms/sms.service';
 import { ChurchSubscriptionsService } from '../subscriptions/church-subscriptions.service';
 
+const DEFAULT_CONGREGATION_GALLERY_IMAGES: CongregationGalleryImage[] = [
+  {
+    id: 'default-1',
+    title: 'Dove in light',
+    imageUrl: '/congregation-defaults/default_1.jpg',
+    isActive: true,
+    isDefault: true,
+  },
+  {
+    id: 'default-2',
+    title: 'Mountain glory',
+    imageUrl: '/congregation-defaults/default_2.jpg',
+    isActive: true,
+    isDefault: true,
+  },
+  {
+    id: 'default-3',
+    title: 'Sun rays through clouds',
+    imageUrl: '/congregation-defaults/default_3.avif',
+    isActive: true,
+    isDefault: true,
+  },
+  {
+    id: 'default-4',
+    title: 'Dove over blue sky',
+    imageUrl: '/congregation-defaults/default_4.jpg',
+    isActive: true,
+    isDefault: true,
+  },
+  {
+    id: 'default-5',
+    title: 'Shekinah glory',
+    imageUrl: '/congregation-defaults/default_5.jpg',
+    isActive: true,
+    isDefault: true,
+  },
+];
+
 @Injectable()
 export class ChurchService {
   private readonly receiptTemplateLimit = 160;
@@ -31,6 +81,8 @@ export class ChurchService {
   constructor(
     @InjectRepository(Church)
     private readonly churchRepo: Repository<Church>,
+    @InjectRepository(ChurchCongregationPage)
+    private readonly congregationPageRepo: Repository<ChurchCongregationPage>,
     @InjectRepository(ChurchUser)
     private readonly churchUserRepo: Repository<ChurchUser>,
     @InjectRepository(FundAccount)
@@ -676,6 +728,253 @@ export class ChurchService {
       invalid,
       duplicatesDropped: Math.max(0, lines.length - invalid - unique.size),
     };
+  }
+
+  async getCongregationPage(churchId: string) {
+    const [church, page] = await Promise.all([
+      this.churchRepo.findOne({ where: { id: churchId } }),
+      this.congregationPageRepo.findOne({ where: { churchId } }),
+    ]);
+
+    if (!church) {
+      throw new NotFoundException('Church not found');
+    }
+
+    return page || this.buildDefaultCongregationPage(church);
+  }
+
+  async updateCongregationPage(churchId: string, userId: string, body: any) {
+    const church = await this.churchRepo.findOne({ where: { id: churchId } });
+    if (!church) {
+      throw new NotFoundException('Church not found');
+    }
+
+    const existing =
+      (await this.congregationPageRepo.findOne({ where: { churchId } })) ||
+      this.buildDefaultCongregationPage(church);
+
+    existing.isPublished = true;
+    if (body.heroTitle !== undefined) {
+      existing.heroTitle = this.normalizeOptionalText(body.heroTitle, 180);
+    }
+    if (body.welcomeMessage !== undefined) {
+      existing.welcomeMessage = this.normalizeOptionalText(
+        body.welcomeMessage,
+        1400,
+      );
+    }
+    if (body.verseReference !== undefined) {
+      existing.verseReference = this.normalizeOptionalText(
+        body.verseReference,
+        180,
+      );
+    }
+    if (body.verseText !== undefined) {
+      existing.verseText = this.normalizeOptionalText(body.verseText, 900);
+    }
+    existing.dailyVerses = this.normalizeDailyVerses(body.dailyVerses);
+    if (body.featuredImageUrl !== undefined) {
+      existing.featuredImageUrl = this.normalizeOptionalText(
+        body.featuredImageUrl,
+        500,
+      );
+    }
+    if (body.contactNote !== undefined) {
+      existing.contactNote = this.normalizeOptionalText(body.contactNote, 900);
+    }
+    existing.serviceTimes = this.normalizeServiceTimes(body.serviceTimes);
+    existing.events = this.normalizeEvents(body.events);
+    existing.massPrograms = this.normalizeMassPrograms(body.massPrograms);
+    existing.sermons = this.normalizeSermons(body.sermons);
+    existing.galleryImages = this.normalizeGalleryImages(body.galleryImages);
+    existing.updatedByUserId = userId;
+
+    return this.congregationPageRepo.save(existing);
+  }
+
+  async uploadCongregationImage(churchId: string, file: any) {
+    if (!file) {
+      throw new BadRequestException('Image file is required');
+    }
+
+    const extensionByMime: Record<string, string> = {
+      'image/jpeg': '.jpg',
+      'image/png': '.png',
+      'image/webp': '.webp',
+    };
+    const extension =
+      extensionByMime[file.mimetype] || extname(file.originalname || '');
+
+    if (!['.jpg', '.jpeg', '.png', '.webp'].includes(extension.toLowerCase())) {
+      throw new BadRequestException('Upload a JPG, PNG, or WEBP image');
+    }
+
+    if (Number(file.size || 0) > 5 * 1024 * 1024) {
+      throw new BadRequestException('Image must be 5MB or smaller');
+    }
+
+    const uploadRoot =
+      process.env.UPLOAD_ROOT || join(process.cwd(), 'uploads');
+    const relativeDir = join('congregation', churchId);
+    const absoluteDir = join(uploadRoot, relativeDir);
+
+    if (!existsSync(absoluteDir)) {
+      mkdirSync(absoluteDir, { recursive: true });
+    }
+
+    const filename = `${Date.now()}-${randomUUID()}${extension.toLowerCase()}`;
+    const absolutePath = join(absoluteDir, filename);
+    writeFileSync(absolutePath, file.buffer);
+
+    return {
+      imageUrl: `/api/uploads/${relativeDir.replace(/\\/g, '/')}/${filename}`,
+    };
+  }
+
+  private buildDefaultCongregationPage(church: Church) {
+    return this.congregationPageRepo.create({
+      churchId: church.id,
+      isPublished: true,
+      heroTitle: `Welcome to ${church.name}`,
+      welcomeMessage:
+        'Stay connected with worship times, daily encouragement, church events, and programs from your church office.',
+      verseReference: 'Psalm 122:1',
+      verseText: 'I rejoiced with those who said to me, let us go to the house of the Lord.',
+      dailyVerses: [
+        {
+          id: randomUUID(),
+          date: new Date().toISOString().slice(0, 10),
+          reference: 'Psalm 122:1',
+          text: 'I rejoiced with those who said to me, let us go to the house of the Lord.',
+        },
+      ],
+      featuredImageUrl: null,
+      serviceTimes: [
+        {
+          id: randomUUID(),
+          label: 'Sunday Service',
+          time: '10:00 AM',
+          location: church.address || 'Main sanctuary',
+        },
+      ],
+      events: [],
+      massPrograms: [],
+      sermons: [],
+      galleryImages: DEFAULT_CONGREGATION_GALLERY_IMAGES,
+      contactNote:
+        church.contactPhone || church.contactEmail
+          ? 'Contact the church office for pastoral support, giving help, or program details.'
+          : null,
+      updatedByUserId: null,
+    });
+  }
+
+  private normalizeOptionalText(value: unknown, maxLength: number) {
+    if (value === undefined || value === null) {
+      return null;
+    }
+
+    const normalized = `${value}`.trim();
+    if (!normalized) {
+      return null;
+    }
+
+    if (normalized.length > maxLength) {
+      throw new BadRequestException(
+        `Text value must be ${maxLength} characters or less.`,
+      );
+    }
+
+    return normalized;
+  }
+
+  private normalizeServiceTimes(value: unknown): CongregationServiceTime[] {
+    return this.normalizeJsonList(value, 8)
+      .map((item) => ({
+        id: this.normalizeOptionalText(item.id, 80) || randomUUID(),
+        label: this.normalizeOptionalText(item.label, 120),
+        time: this.normalizeOptionalText(item.time, 120),
+        location: this.normalizeOptionalText(item.location, 180),
+      }))
+      .filter((item) => item.label && item.time) as CongregationServiceTime[];
+  }
+
+  private normalizeEvents(value: unknown): CongregationEvent[] {
+    return this.normalizeJsonList(value, 12)
+      .map((item) => ({
+        id: this.normalizeOptionalText(item.id, 80) || randomUUID(),
+        title: this.normalizeOptionalText(item.title, 160),
+        date: this.normalizeOptionalText(item.date, 40),
+        time: this.normalizeOptionalText(item.time, 80),
+        description: this.normalizeOptionalText(item.description, 700),
+        imageUrl: this.normalizeOptionalText(item.imageUrl, 500),
+      }))
+      .filter((item) => item.title) as CongregationEvent[];
+  }
+
+  private normalizeDailyVerses(value: unknown): CongregationDailyVerse[] {
+    return this.normalizeJsonList(value, 16)
+      .map((item) => ({
+        id: this.normalizeOptionalText(item.id, 80) || randomUUID(),
+        date: this.normalizeOptionalText(item.date, 40),
+        reference: this.normalizeOptionalText(item.reference, 180),
+        text: this.normalizeOptionalText(item.text, 900),
+      }))
+      .filter((item) => item.text) as CongregationDailyVerse[];
+  }
+
+  private normalizeMassPrograms(value: unknown): CongregationMassProgram[] {
+    return this.normalizeJsonList(value, 12)
+      .map((item) => ({
+        id: this.normalizeOptionalText(item.id, 80) || randomUUID(),
+        title: this.normalizeOptionalText(item.title, 160),
+        day: this.normalizeOptionalText(item.day, 120),
+        time: this.normalizeOptionalText(item.time, 120),
+        details: this.normalizeOptionalText(item.details, 800),
+      }))
+      .filter((item) => item.title) as CongregationMassProgram[];
+  }
+
+  private normalizeSermons(value: unknown): CongregationSermon[] {
+    return this.normalizeJsonList(value, 24)
+      .map((item) => ({
+        id: this.normalizeOptionalText(item.id, 80) || randomUUID(),
+        title: this.normalizeOptionalText(item.title, 180),
+        date: this.normalizeOptionalText(item.date, 40),
+        speaker: this.normalizeOptionalText(item.speaker, 160),
+        summary: this.normalizeOptionalText(item.summary, 900),
+        mediaUrl: this.normalizeOptionalText(item.mediaUrl, 500),
+        imageUrl: this.normalizeOptionalText(item.imageUrl, 500),
+      }))
+      .filter((item) => item.title) as CongregationSermon[];
+  }
+
+  private normalizeGalleryImages(value: unknown): CongregationGalleryImage[] {
+    return this.normalizeJsonList(value, 16)
+      .map((item) => ({
+        id: this.normalizeOptionalText(item.id, 80) || randomUUID(),
+        title: this.normalizeOptionalText(item.title, 140),
+        imageUrl: this.normalizeOptionalText(item.imageUrl, 500),
+        isActive: item.isActive === false ? false : true,
+        isDefault: item.isDefault === true,
+      }))
+      .filter((item) => item.imageUrl) as CongregationGalleryImage[];
+  }
+
+  private normalizeJsonList(value: unknown, limit: number): any[] {
+    if (value === undefined || value === null) {
+      return [];
+    }
+
+    if (!Array.isArray(value)) {
+      throw new BadRequestException('Expected a list value');
+    }
+
+    if (value.length > limit) {
+      throw new BadRequestException(`List can contain at most ${limit} items.`);
+    }
+
+    return value.filter((item) => item && typeof item === 'object');
   }
 
   private async ensureAddressBook(churchId: string, addressBookId: string) {

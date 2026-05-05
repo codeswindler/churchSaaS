@@ -1,5 +1,8 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import * as express from 'express';
+import { existsSync, mkdirSync } from 'fs';
+import { join } from 'path';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -11,7 +14,13 @@ async function bootstrap() {
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean);
+  const uploadRoot = process.env.UPLOAD_ROOT || join(process.cwd(), 'uploads');
 
+  if (!existsSync(uploadRoot)) {
+    mkdirSync(uploadRoot, { recursive: true });
+  }
+
+  app.use('/api/uploads', express.static(uploadRoot));
   app.enableCors({
     origin: (origin, callback) => {
       if (!origin || allowedOrigins.includes(origin)) {

@@ -21,6 +21,7 @@ import {
 } from '../entities/contribution.entity';
 import { Contributor } from '../entities/contributor.entity';
 import { FundAccount } from '../entities/fund-account.entity';
+import { MpesaService } from '../payments/mpesa.service';
 import { SmsMessageType } from '../entities/sms-outbox.entity';
 import { SmsService } from '../sms/sms.service';
 import { ChurchSubscriptionsService } from '../subscriptions/church-subscriptions.service';
@@ -42,6 +43,7 @@ export class ContributionsService {
     private readonly contributionRepo: Repository<Contribution>,
     private readonly smsService: SmsService,
     private readonly churchSubscriptionsService: ChurchSubscriptionsService,
+    private readonly mpesaService: MpesaService,
   ) {}
 
   async createManualContribution(
@@ -141,6 +143,107 @@ export class ContributionsService {
       message:
         'Payment details recorded. Receipt confirmation will be sent shortly.',
     };
+  }
+
+  async initiatePublicStkContribution(churchSlug: string, body: any) {
+    const church = await this.churchRepo.findOne({
+      where: { slug: churchSlug },
+    });
+    if (!church || church.status !== ChurchStatus.ACTIVE) {
+      throw new NotFoundException('Church not found');
+    }
+
+    const subscription =
+      await this.churchSubscriptionsService.assertChurchCanOperate(church.id);
+    if (subscription.status === 'suspended') {
+      throw new ForbiddenException(
+        'This church is not accepting contributions',
+      );
+    }
+
+    this.mpesaService.assertConfigured(church);
+
+    const fundAccount = await this.ensureFundAccount(
+      church.id,
+      body.fundAccountId,
+      true,
+    );
+    const amount = Number(body.amount);
+    if (!Number.isFinite(amount) || amount < 1) {
+      throw new BadRequestException('Amount must be at least KES 1');
+    }
+
+    const phone = this.extractKenyanPhone(body.phone);
+    if (!phone) {
+      throw new BadRequestException(
+        'Phone must start with 01, 07, 2541, 2547, 1, or 7.',
+      );
+    }
+
+    const contributor = await this.findOrCreateContributor(church.id, {
+      ...body,
+      phone,
+    });
+
+    const contribution = await this.contributionRepo.save(
+      this.contributionRepo.create({
+        churchId: church.id,
+        contributorId: contributor?.id || null,
+        fundAccountId: fundAccount.id,
+        fundAccountName: fundAccount.name,
+        amount,
+        channel: ContributionChannel.MPESA,
+        status: ContributionStatus.PENDING,
+        sourceType: ContributionSourceType.PUBLIC_MPESA,
+        commissionRatePctApplied: null,
+        commissionAmount: null,
+        providerRequestId: null,
+        paymentReference: null,
+        notes: body.notes || 'Public STK push initiated',
+        receivedAt: null,
+      }),
+    );
+
+    try {
+      const stkResponse = await this.mpesaService.stkPush(
+        phone,
+        amount,
+        fundAccount.code || fundAccount.name,
+        `Giving to ${church.name}`,
+        church,
+      );
+
+      contribution.providerRequestId =
+        stkResponse.CheckoutRequestID || contribution.providerRequestId;
+      contribution.notes = [
+        contribution.notes,
+        stkResponse.MerchantRequestID
+          ? `merchant request: ${stkResponse.MerchantRequestID}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join('; ');
+      await this.contributionRepo.save(contribution);
+
+      return {
+        contributionId: contribution.id,
+        checkoutRequestId: stkResponse.CheckoutRequestID || null,
+        merchantRequestId: stkResponse.MerchantRequestID || null,
+        responseCode: stkResponse.ResponseCode || null,
+        message:
+          stkResponse.CustomerMessage ||
+          'STK push sent. Complete the prompt on your phone.',
+      };
+    } catch (error: any) {
+      contribution.status = ContributionStatus.FAILED;
+      contribution.notes =
+        error?.response?.data?.errorMessage ||
+        error?.response?.data?.ResponseDescription ||
+        error?.message ||
+        'Unable to initiate STK push';
+      await this.contributionRepo.save(contribution);
+      throw new BadRequestException(contribution.notes);
+    }
   }
 
   async handleMpesaWebhook(body: any) {

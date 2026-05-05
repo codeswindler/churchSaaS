@@ -6,7 +6,9 @@ import {
   buildChurchIntegrationSummary,
 } from '../common/church.utils';
 import {
+  ChurchPermission,
   DEFAULT_CHURCH_FEATURES,
+  normalizeChurchRole,
   normalizeFeatureList,
 } from '../common/access-control';
 import { ContributionsService } from '../contributions/contributions.service';
@@ -274,6 +276,12 @@ export class PlatformService {
       throw new BadRequestException('Church not found');
     }
 
+    const [subscription, userCount, fundAccountCount] = await Promise.all([
+      this.churchSubscriptionsService.getChurchSubscriptionStatus(church.id),
+      this.churchUserRepo.count({ where: { churchId: church.id } }),
+      this.fundAccountRepo.count({ where: { churchId: church.id } }),
+    ]);
+
     return {
       id: church.id,
       name: church.name,
@@ -298,7 +306,155 @@ export class PlatformService {
       commissionRatePct: Number(church.commissionRatePct || 0),
       enabledFeatures: normalizeFeatureList(church.enabledFeatures),
       integrations: buildChurchIntegrationSummary(church),
+      subscription,
+      userCount,
+      fundAccountCount,
     };
+  }
+
+  async listChurchUsers(churchId: string) {
+    await this.ensureChurchExists(churchId);
+    const users = await this.churchUserRepo.find({
+      where: { churchId },
+      order: { createdAt: 'DESC' },
+    });
+    return users.map((user) => this.sanitizeChurchUser(user));
+  }
+
+  async createChurchUser(churchId: string, body: any) {
+    await this.ensureChurchExists(churchId);
+
+    const name = this.normalizeOptionalText(body.name);
+    const email = this.normalizeOptionalEmail(body.email);
+    const password = this.normalizeOptionalText(body.password);
+    const username = this.normalizeOptionalText(body.username);
+    const phone = this.normalizeOptionalText(body.phone);
+
+    if (!name || !email || !password || !body.role) {
+      throw new BadRequestException(
+        'Name, email, password, and role are required',
+      );
+    }
+
+    const existingWhere: any[] = [{ email }];
+    if (username) {
+      existingWhere.push({ username });
+    }
+    if (phone) {
+      existingWhere.push({ phone });
+    }
+
+    const existing = await this.churchUserRepo.findOne({
+      where: existingWhere,
+    });
+    if (existing) {
+      throw new BadRequestException('Church user already exists');
+    }
+
+    const user = this.churchUserRepo.create({
+      churchId,
+      name,
+      email,
+      username,
+      phone,
+      passwordHash: await bcrypt.hash(password, 10),
+      role: normalizeChurchRole(body.role) as ChurchUserRole,
+      permissionOverrides: this.normalizePermissionOverrides(
+        body.permissionOverrides,
+      ),
+      isActive: this.normalizeBoolean(body.isActive, true),
+    });
+
+    const saved = await this.churchUserRepo.save(user);
+    return this.sanitizeChurchUser(saved);
+  }
+
+  async updateChurchUser(churchId: string, userId: string, body: any) {
+    await this.ensureChurchExists(churchId);
+    const user = await this.churchUserRepo.findOne({
+      where: { id: userId, churchId },
+    });
+    if (!user) {
+      throw new BadRequestException('Church user not found');
+    }
+
+    if (body.name !== undefined) {
+      const name = this.normalizeOptionalText(body.name);
+      if (!name) {
+        throw new BadRequestException('Name is required');
+      }
+      user.name = name;
+    }
+
+    if (body.email !== undefined) {
+      const email = this.normalizeOptionalEmail(body.email);
+      if (!email) {
+        throw new BadRequestException('Email is required');
+      }
+      if (email !== user.email) {
+        const existing = await this.churchUserRepo.findOne({
+          where: { email },
+        });
+        if (existing && existing.id !== user.id) {
+          throw new BadRequestException('Email already in use');
+        }
+        user.email = email;
+      }
+    }
+
+    if (body.username !== undefined) {
+      const username = this.normalizeOptionalText(body.username);
+      if (username !== user.username) {
+        if (username) {
+          const existing = await this.churchUserRepo.findOne({
+            where: { username },
+          });
+          if (existing && existing.id !== user.id) {
+            throw new BadRequestException('Username already in use');
+          }
+        }
+        user.username = username;
+      }
+    }
+
+    if (body.phone !== undefined) {
+      const phone = this.normalizeOptionalText(body.phone);
+      if (phone !== user.phone) {
+        if (phone) {
+          const existing = await this.churchUserRepo.findOne({
+            where: { phone },
+          });
+          if (existing && existing.id !== user.id) {
+            throw new BadRequestException('Phone already in use');
+          }
+        }
+        user.phone = phone;
+      }
+    }
+
+    if (body.role !== undefined) {
+      user.role = normalizeChurchRole(body.role) as ChurchUserRole;
+    }
+
+    if (body.permissionOverrides !== undefined) {
+      user.permissionOverrides = this.normalizePermissionOverrides(
+        body.permissionOverrides,
+      );
+    }
+
+    if (body.isActive !== undefined) {
+      user.isActive = this.normalizeBoolean(body.isActive, user.isActive);
+    }
+
+    if (body.password !== undefined) {
+      const password = this.normalizeOptionalText(body.password);
+      if (password) {
+        user.passwordHash = await bcrypt.hash(password, 10);
+      }
+    }
+
+    const saved = await this.churchUserRepo.save(user);
+    return this.sanitizeChurchUser(saved);
   }
 
   async updateChurch(churchId: string, body: any) {
@@ -778,6 +934,52 @@ export class PlatformService {
       .filter(Boolean);
 
     return normalized.length > 0 ? Array.from(new Set(normalized)) : null;
+  }
+
+  private async ensureChurchExists(churchId: string) {
+    const church = await this.churchRepo.findOne({ where: { id: churchId } });
+    if (!church) {
+      throw new BadRequestException('Church not found');
+    }
+    return church;
+  }
+
+  private sanitizeChurchUser(user: ChurchUser) {
+    const { passwordHash, ...result } = user;
+    return result;
+  }
+
+  private normalizePermissionOverrides(value: unknown) {
+    if (!Array.isArray(value)) {
+      return null;
+    }
+
+    const valid = new Set(Object.values(ChurchPermission));
+    return value.filter((permission) =>
+      valid.has(permission as ChurchPermission),
+    ) as ChurchPermission[];
+  }
+
+  private normalizeBoolean(value: unknown, fallback: boolean) {
+    if (value === undefined || value === null || value === '') {
+      return fallback;
+    }
+
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (['false', '0', 'no', 'off'].includes(normalized)) {
+        return false;
+      }
+      if (['true', '1', 'yes', 'on'].includes(normalized)) {
+        return true;
+      }
+    }
+
+    return Boolean(value);
   }
 
   private normalizeOptionalText(value: unknown) {

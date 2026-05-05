@@ -11,16 +11,57 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { buildChurchIntegrationSummary } from '../common/church.utils';
 import { ContributionsService } from '../contributions/contributions.service';
+import { ChurchCongregationPage } from '../entities/church-congregation-page.entity';
 import { Church, ChurchStatus } from '../entities/church.entity';
 import { ClientEnquiry } from '../entities/client-enquiry.entity';
 import { FundAccount } from '../entities/fund-account.entity';
 import { ChurchSubscriptionsService } from '../subscriptions/church-subscriptions.service';
+
+const DEFAULT_CONGREGATION_GALLERY_IMAGES = [
+  {
+    id: 'default-1',
+    title: 'Dove in light',
+    imageUrl: '/congregation-defaults/default_1.jpg',
+    isActive: true,
+    isDefault: true,
+  },
+  {
+    id: 'default-2',
+    title: 'Mountain glory',
+    imageUrl: '/congregation-defaults/default_2.jpg',
+    isActive: true,
+    isDefault: true,
+  },
+  {
+    id: 'default-3',
+    title: 'Sun rays through clouds',
+    imageUrl: '/congregation-defaults/default_3.avif',
+    isActive: true,
+    isDefault: true,
+  },
+  {
+    id: 'default-4',
+    title: 'Dove over blue sky',
+    imageUrl: '/congregation-defaults/default_4.jpg',
+    isActive: true,
+    isDefault: true,
+  },
+  {
+    id: 'default-5',
+    title: 'Shekinah glory',
+    imageUrl: '/congregation-defaults/default_5.jpg',
+    isActive: true,
+    isDefault: true,
+  },
+];
 
 @Controller('public')
 export class PublicController {
   constructor(
     @InjectRepository(Church)
     private readonly churchRepo: Repository<Church>,
+    @InjectRepository(ChurchCongregationPage)
+    private readonly congregationPageRepo: Repository<ChurchCongregationPage>,
     @InjectRepository(FundAccount)
     private readonly fundAccountRepo: Repository<FundAccount>,
     @InjectRepository(ClientEnquiry)
@@ -65,15 +106,83 @@ export class PublicController {
       paymentInstructions: {
         channel: 'mpesa',
         shortcode: church.mpesaShortcode || null,
+        supportsStkPush: integrations.mpesaStkConfigured,
         referenceHint:
-          'Pay using the church M-Pesa account, then submit the receipt/reference here.',
+          integrations.mpesaStkConfigured
+            ? 'Enter your phone number and amount to receive an M-Pesa STK prompt.'
+            : 'Pay using the church M-Pesa account, then submit the receipt/reference here.',
       },
+    };
+  }
+
+  @Get('churches/:slug/congregation')
+  async getCongregationPage(@Param('slug') slug: string) {
+    const church = await this.churchRepo.findOne({ where: { slug } });
+    if (!church || church.status !== ChurchStatus.ACTIVE) {
+      throw new NotFoundException('Church not found');
+    }
+
+    const page = await this.congregationPageRepo.findOne({
+      where: { churchId: church.id },
+    });
+
+    return {
+      church: {
+        id: church.id,
+        name: church.name,
+        slug: church.slug,
+        logoUrl: church.logoUrl,
+        contactEmail: church.contactEmail,
+        contactPhone: church.contactPhone,
+        address: church.address,
+      },
+      page: page
+        ? { ...page, isPublished: true }
+        : {
+        isPublished: true,
+        heroTitle: `Welcome to ${church.name}`,
+        welcomeMessage:
+          'Stay connected with worship times, daily encouragement, church events, and programs from your church office.',
+        verseReference: 'Psalm 122:1',
+        verseText:
+          'I rejoiced with those who said to me, let us go to the house of the Lord.',
+        dailyVerses: [
+          {
+            date: new Date().toISOString().slice(0, 10),
+            reference: 'Psalm 122:1',
+            text: 'I rejoiced with those who said to me, let us go to the house of the Lord.',
+          },
+        ],
+        featuredImageUrl: null,
+        serviceTimes: [
+          {
+            label: 'Sunday Service',
+            time: '10:00 AM',
+            location: church.address || 'Main sanctuary',
+          },
+        ],
+        events: [],
+        massPrograms: [],
+        sermons: [],
+        galleryImages: DEFAULT_CONGREGATION_GALLERY_IMAGES,
+        contactNote: null,
+        updatedAt: null,
+      },
+      givingUrl: `/c/${church.slug}/give`,
     };
   }
 
   @Post('churches/:slug/contributions/mpesa')
   createPublicContribution(@Param('slug') slug: string, @Body() body: any) {
     return this.contributionsService.createPublicMpesaContribution(slug, body);
+  }
+
+  @Post('churches/:slug/contributions/stk')
+  initiatePublicStkContribution(
+    @Param('slug') slug: string,
+    @Body() body: any,
+  ) {
+    return this.contributionsService.initiatePublicStkContribution(slug, body);
   }
 
   @Post('enquiries')

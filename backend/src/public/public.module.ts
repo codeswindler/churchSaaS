@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ContributionsModule } from '../contributions/contributions.module';
+import { ChurchCongregationPage } from '../entities/church-congregation-page.entity';
 import { Church } from '../entities/church.entity';
 import { ClientEnquiry } from '../entities/client-enquiry.entity';
 import { FundAccount } from '../entities/fund-account.entity';
@@ -11,7 +12,12 @@ import { PublicController } from './public.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Church, FundAccount, ClientEnquiry]),
+    TypeOrmModule.forFeature([
+      Church,
+      ChurchCongregationPage,
+      FundAccount,
+      ClientEnquiry,
+    ]),
     ChurchSubscriptionsModule,
     ContributionsModule,
   ],

@@ -46,6 +46,7 @@ const permissionOptions = [
   ['messaging.view', 'View messaging'],
   ['messaging.send', 'Send bulk messages'],
   ['outbox.view', 'View outbox'],
+  ['congregation.manage', 'Manage sermons & announcements'],
   ['users.view', 'View staff users'],
   ['users.manage', 'Manage staff users'],
 ] as const;
@@ -71,6 +72,7 @@ const rolePermissionPresets: Record<string, string[]> = {
     'messaging.view',
     'messaging.send',
     'outbox.view',
+    'congregation.manage',
   ],
 };
 

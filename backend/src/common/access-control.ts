@@ -18,6 +18,7 @@ export enum ChurchPermission {
   MESSAGING_VIEW = 'messaging.view',
   MESSAGING_SEND = 'messaging.send',
   OUTBOX_VIEW = 'outbox.view',
+  CONGREGATION_PAGE_MANAGE = 'congregation.manage',
   USERS_VIEW = 'users.view',
   USERS_MANAGE = 'users.manage',
 }
@@ -50,6 +51,7 @@ export const ROLE_PERMISSION_PRESETS: Record<string, ChurchPermission[]> = {
     ChurchPermission.MESSAGING_VIEW,
     ChurchPermission.MESSAGING_SEND,
     ChurchPermission.OUTBOX_VIEW,
+    ChurchPermission.CONGREGATION_PAGE_MANAGE,
   ],
 };
 
@@ -66,6 +68,7 @@ export const PERMISSION_FEATURE_MAP: Record<ChurchPermission, ChurchFeature> = {
   [ChurchPermission.MESSAGING_VIEW]: ChurchFeature.MESSAGING,
   [ChurchPermission.MESSAGING_SEND]: ChurchFeature.MESSAGING,
   [ChurchPermission.OUTBOX_VIEW]: ChurchFeature.MESSAGING,
+  [ChurchPermission.CONGREGATION_PAGE_MANAGE]: ChurchFeature.MESSAGING,
   [ChurchPermission.USERS_VIEW]: ChurchFeature.STAFF_MANAGEMENT,
   [ChurchPermission.USERS_MANAGE]: ChurchFeature.STAFF_MANAGEMENT,
 };

@@ -9,7 +9,10 @@ import {
   Request,
   Res,
   UseGuards,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { ChurchPermission } from '../common/access-control';
 import { ChurchAccessGuard } from '../auth/church-access.guard';
@@ -50,6 +53,39 @@ export class ChurchController {
   )
   getSubscriptionStatus(@Request() req: any) {
     return this.churchService.getSubscriptionStatus(req.user.churchId);
+  }
+
+  @Get('congregation-page')
+  @Permissions(ChurchPermission.CONGREGATION_PAGE_MANAGE)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.SECRETARY)
+  getCongregationPage(@Request() req: any) {
+    return this.churchService.getCongregationPage(req.user.churchId);
+  }
+
+  @Patch('congregation-page')
+  @Permissions(ChurchPermission.CONGREGATION_PAGE_MANAGE)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.SECRETARY)
+  updateCongregationPage(@Request() req: any, @Body() body: any) {
+    return this.churchService.updateCongregationPage(
+      req.user.churchId,
+      req.user.id,
+      body,
+    );
+  }
+
+  @Post('congregation-page/images')
+  @UseInterceptors(
+    FileInterceptor('image', {
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  @Permissions(ChurchPermission.CONGREGATION_PAGE_MANAGE)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.SECRETARY)
+  uploadCongregationImage(
+    @Request() req: any,
+    @UploadedFile() image: any,
+  ) {
+    return this.churchService.uploadCongregationImage(req.user.churchId, image);
   }
 
   @Get('fund-accounts')

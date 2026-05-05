@@ -469,6 +469,32 @@ textarea {
   max-width: min(1180px, calc(100vw - 1rem));
 }
 
+.church-details-modal-card {
+  max-width: min(1040px, calc(100vw - 1rem));
+}
+
+:root[data-color-mode='light'] .subscription-countdown-badge {
+  box-shadow: inset 0 0 0 1px rgba(24, 49, 38, 0.02);
+}
+
+:root[data-color-mode='light'] .subscription-countdown-active {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+  border-color: rgba(4, 120, 87, 0.24) !important;
+  color: #075f46 !important;
+}
+
+:root[data-color-mode='light'] .subscription-countdown-grace {
+  background-color: rgba(245, 190, 80, 0.24) !important;
+  border-color: rgba(180, 117, 12, 0.34) !important;
+  color: #7a4d05 !important;
+}
+
+:root[data-color-mode='light'] .subscription-countdown-suspended {
+  background-color: rgba(244, 63, 94, 0.12) !important;
+  border-color: rgba(159, 18, 57, 0.24) !important;
+  color: #9f1239 !important;
+}
+
 .input-compact {
   @apply w-full rounded-xl px-3.5 py-2.5 text-sm text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-2;
   border: 1px solid var(--input-border);

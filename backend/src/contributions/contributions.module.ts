@@ -5,6 +5,7 @@ import { ChurchUser } from '../entities/church-user.entity';
 import { Contribution } from '../entities/contribution.entity';
 import { Contributor } from '../entities/contributor.entity';
 import { FundAccount } from '../entities/fund-account.entity';
+import { PaymentsModule } from '../payments/payments.module';
 import { SmsModule } from '../sms/sms.module';
 import { ChurchSubscriptionsModule } from '../subscriptions/church-subscriptions.module';
 import { ContributionsService } from './contributions.service';
@@ -19,6 +20,7 @@ import { ContributionsService } from './contributions.service';
       Contribution,
     ]),
     SmsModule,
+    PaymentsModule,
     ChurchSubscriptionsModule,
   ],
   providers: [ContributionsService],

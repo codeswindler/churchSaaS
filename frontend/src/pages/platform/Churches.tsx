@@ -11,12 +11,16 @@ import {
   PencilLine,
   RotateCcw,
   ShieldAlert,
+  Users,
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
+import ChurchDetailsModal, {
+  type PlatformChurchDetailsTab,
+} from './ChurchDetailsModal';
 
 function getDefaultMpesaCallbackUrl() {
   if (typeof window === 'undefined') {
@@ -120,6 +124,9 @@ export default function PlatformChurches() {
   const [isLoadingChurchDetails, setIsLoadingChurchDetails] = useState(false);
   const [editingChurchId, setEditingChurchId] = useState<string | null>(null);
   const [selectedChurchId, setSelectedChurchId] = useState<string | null>(null);
+  const [detailChurchId, setDetailChurchId] = useState<string | null>(null);
+  const [detailInitialTab, setDetailInitialTab] =
+    useState<PlatformChurchDetailsTab>('overview');
   const [visibleCredentialFields, setVisibleCredentialFields] = useState<
     Partial<Record<keyof ChurchFormState, boolean>>
   >({});
@@ -222,6 +229,13 @@ export default function PlatformChurches() {
   });
 
   const churchesList = useMemo(() => churches || [], [churches]);
+  const detailChurchSnapshot = useMemo(
+    () =>
+      detailChurchId
+        ? churchesList.find((church: any) => church.id === detailChurchId)
+        : null,
+    [churchesList, detailChurchId],
+  );
   const isModalBusy = saveMutation.isPending || isLoadingChurchDetails;
 
   useEffect(() => {
@@ -377,6 +391,19 @@ export default function PlatformChurches() {
     setEditingChurchId(null);
     setForm(createInitialForm());
     setVisibleCredentialFields({});
+  };
+
+  const openChurchDetails = (
+    churchId: string,
+    tab: PlatformChurchDetailsTab = 'overview',
+  ) => {
+    setSelectedChurchId(churchId);
+    setDetailInitialTab(tab);
+    setDetailChurchId(churchId);
+  };
+
+  const closeChurchDetails = () => {
+    setDetailChurchId(null);
   };
 
   const toggleCredentialVisibility = (field: keyof ChurchFormState) => {
@@ -610,9 +637,13 @@ export default function PlatformChurches() {
                     }
                   >
                     <td>
-                      <div className="font-medium text-white">
+                      <button
+                        className="text-left font-medium text-white transition hover:text-amber-100"
+                        type="button"
+                        onClick={() => openChurchDetails(church.id)}
+                      >
                         {church.name}
-                      </div>
+                      </button>
                       <div className="text-xs text-stone-400">
                         {church.contactEmail ||
                           church.contactPhone ||
@@ -685,6 +716,14 @@ export default function PlatformChurches() {
                         >
                           <CalendarClock size={14} />
                           History
+                        </button>
+                        <button
+                          className="btn-secondary px-3 py-2"
+                          type="button"
+                          onClick={() => openChurchDetails(church.id, 'users')}
+                        >
+                          <Users size={14} />
+                          Users
                         </button>
                         <button
                           className="btn-secondary px-3 py-2"
@@ -762,6 +801,17 @@ export default function PlatformChurches() {
           </div>
         )}
       </section>
+
+      <ChurchDetailsModal
+        church={detailChurchSnapshot}
+        churchId={detailChurchId}
+        initialTab={detailInitialTab}
+        onClose={closeChurchDetails}
+        onEdit={(churchId) => {
+          setDetailChurchId(null);
+          openEditModal(churchId);
+        }}
+      />
 
       {isChurchModalOpen ? (
         <div
