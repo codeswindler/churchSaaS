@@ -7,12 +7,16 @@ import {
   HeartHandshake,
   Mail,
   MapPin,
+  Moon,
   Phone,
   PlayCircle,
+  Sun,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import api from '../../services/api';
+
+const PUBLIC_THEME_STORAGE_KEY = 'church_public_theme';
 
 function resolveMediaUrl(value?: string | null) {
   if (!value) return '';
@@ -51,6 +55,10 @@ function formatLongDate(value?: string | null) {
 export default function PublicCongregation() {
   const { slug = '' } = useParams();
   const [activeVerseIndex, setActiveVerseIndex] = useState(0);
+  const [publicTheme, setPublicTheme] = useState(() => {
+    if (typeof window === 'undefined') return 'day';
+    return localStorage.getItem(PUBLIC_THEME_STORAGE_KEY) || 'day';
+  });
   const { data, isLoading, isError } = useQuery({
     queryKey: ['public-congregation-page', slug],
     queryFn: () =>
@@ -59,6 +67,10 @@ export default function PublicCongregation() {
         .then((response) => response.data),
     enabled: Boolean(slug),
   });
+
+  useEffect(() => {
+    localStorage.setItem(PUBLIC_THEME_STORAGE_KEY, publicTheme);
+  }, [publicTheme]);
 
   if (isLoading) {
     return (
@@ -119,6 +131,45 @@ export default function PublicCongregation() {
   const featuredImageUrl = resolveMediaUrl(
     page.featuredImageUrl || fallbackFeaturedImage,
   );
+  const isNightMode = publicTheme === 'night';
+  const pageClass = isNightMode
+    ? 'min-h-screen bg-[#071b17] text-stone-50'
+    : 'min-h-screen bg-[#f7f3ea] text-stone-900';
+  const headerClass = isNightMode
+    ? 'border-b border-white/10 bg-[#071b17]/92 backdrop-blur'
+    : 'border-b border-stone-200/80 bg-[#f7f3ea]/90 backdrop-blur';
+  const heroGlowClass = isNightMode
+    ? 'absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(125,211,252,0.14),transparent_30%),radial-gradient(circle_at_85%_0%,rgba(252,211,77,0.12),transparent_28%)]'
+    : 'absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(30,111,135,0.16),transparent_30%),radial-gradient(circle_at_85%_0%,rgba(190,136,46,0.18),transparent_28%)]';
+  const eyebrowClass = isNightMode
+    ? 'text-xs font-semibold uppercase tracking-[0.28em] text-amber-200'
+    : 'text-xs font-semibold uppercase tracking-[0.28em] text-[#9b6b19]';
+  const sectionEyebrowClass = isNightMode
+    ? 'text-xs font-semibold uppercase tracking-[0.24em] text-amber-200'
+    : 'text-xs font-semibold uppercase tracking-[0.24em] text-[#9b6b19]';
+  const bodyTextClass = isNightMode ? 'text-stone-300' : 'text-stone-700';
+  const mutedTextClass = isNightMode ? 'text-stone-400' : 'text-stone-600';
+  const panelClass = isNightMode
+    ? 'rounded-[28px] border border-white/10 bg-white/[0.06] p-6 shadow-sm'
+    : 'rounded-[28px] border border-stone-200 bg-white p-6 shadow-sm';
+  const itemCardClass = isNightMode
+    ? 'rounded-3xl border border-white/10 bg-white/[0.05] p-4'
+    : 'rounded-3xl border border-stone-200 bg-[#fbfaf6] p-4';
+  const articleClass = isNightMode
+    ? 'overflow-hidden rounded-3xl border border-white/10 bg-white/[0.05]'
+    : 'overflow-hidden rounded-3xl border border-stone-200 bg-[#fbfaf6]';
+  const sermonCardClass = isNightMode
+    ? 'overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.06] shadow-sm'
+    : 'overflow-hidden rounded-[28px] border border-stone-200 bg-white shadow-sm';
+  const infoPillClass = isNightMode
+    ? 'flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm text-stone-200'
+    : 'flex items-center gap-3 rounded-2xl border border-stone-200 bg-white/70 px-4 py-3 text-sm text-stone-700';
+  const officeClass = isNightMode
+    ? 'rounded-[28px] border border-white/10 bg-[#0f2f2a] p-6 text-white shadow-sm'
+    : 'rounded-[28px] border border-stone-200 bg-[#14352e] p-6 text-white shadow-sm';
+  const sermonButtonClass = isNightMode
+    ? 'mt-5 inline-flex items-center gap-2 rounded-full bg-amber-200 px-4 py-2 text-sm font-semibold text-[#10241f] transition hover:bg-amber-100'
+    : 'mt-5 inline-flex items-center gap-2 rounded-full bg-[#143f34] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#215e4e]';
 
   const showPreviousVerse = () => {
     setActiveVerseIndex((current) =>
@@ -135,8 +186,8 @@ export default function PublicCongregation() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f7f3ea] text-stone-900">
-      <header className="border-b border-stone-200/80 bg-[#f7f3ea]/90 backdrop-blur">
+    <div className={pageClass}>
+      <header className={headerClass}>
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <Link className="flex min-w-0 items-center gap-3" to={`/c/${slug}`}>
             <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-stone-200">
@@ -155,47 +206,72 @@ export default function PublicCongregation() {
               <div className="truncate text-base font-semibold">
                 {church.name}
               </div>
-              <p className="truncate text-xs uppercase tracking-[0.22em] text-stone-500">
+              <p
+                className={`truncate text-xs uppercase tracking-[0.22em] ${
+                  isNightMode ? 'text-stone-400' : 'text-stone-500'
+                }`}
+              >
                 Sermons & Announcements
               </p>
             </div>
           </Link>
 
-          <Link
-            className="inline-flex items-center gap-2 rounded-full bg-[#163f34] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#215e4e]"
-            to={`/c/${slug}/give`}
-          >
-            <HeartHandshake size={16} />
-            Give
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              aria-label={
+                isNightMode ? 'Switch to day mode' : 'Switch to night mode'
+              }
+              className={`inline-flex h-10 w-10 items-center justify-center rounded-full border text-sm font-semibold transition ${
+                isNightMode
+                  ? 'border-white/15 bg-white/10 text-amber-100 hover:bg-white/15'
+                  : 'border-stone-200 bg-white/80 text-[#163f34] hover:bg-white'
+              }`}
+              title={isNightMode ? 'Day mode' : 'Night mode'}
+              type="button"
+              onClick={() =>
+                setPublicTheme((current) =>
+                  current === 'night' ? 'day' : 'night',
+                )
+              }
+            >
+              {isNightMode ? <Sun size={17} /> : <Moon size={17} />}
+            </button>
+            <Link
+              className="inline-flex items-center gap-2 rounded-full bg-[#163f34] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#215e4e]"
+              to={`/c/${slug}/give`}
+            >
+              <HeartHandshake size={16} />
+              Give
+            </Link>
+          </div>
         </div>
       </header>
 
       <main>
         <section className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(30,111,135,0.16),transparent_30%),radial-gradient(circle_at_85%_0%,rgba(190,136,46,0.18),transparent_28%)]" />
+          <div className={heroGlowClass} />
           <div className="relative mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,1fr)_460px] lg:px-8 lg:py-16">
             <div className="flex flex-col justify-center">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#9b6b19]">
+              <p className={eyebrowClass}>
                 {church.name}
               </p>
               <h1 className="mt-5 max-w-4xl text-5xl font-semibold leading-[0.98] tracking-[-0.01em] sm:text-6xl">
                 {page.heroTitle || `Welcome to ${church.name}`}
               </h1>
-              <p className="mt-6 max-w-2xl text-lg leading-8 text-stone-700">
+              <p className={`mt-6 max-w-2xl text-lg leading-8 ${bodyTextClass}`}>
                 {page.welcomeMessage}
               </p>
 
               <div className="mt-8 grid gap-3 sm:grid-cols-2">
                 {church.address ? (
-                  <div className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white/70 px-4 py-3 text-sm text-stone-700">
+                  <div className={infoPillClass}>
                     <MapPin size={16} className="text-[#1e6f87]" />
                     {church.address}
                   </div>
                 ) : null}
                 {church.contactPhone ? (
                   <a
-                    className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white/70 px-4 py-3 text-sm text-stone-700"
+                    className={infoPillClass}
                     href={`tel:${church.contactPhone}`}
                   >
                     <Phone size={16} className="text-[#1e6f87]" />
@@ -294,22 +370,22 @@ export default function PublicCongregation() {
         </section>
 
         <section className="mx-auto grid max-w-7xl gap-6 px-4 py-10 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
-          <div className="rounded-[28px] border border-stone-200 bg-white p-6 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#9b6b19]">
+          <div className={panelClass}>
+            <p className={sectionEyebrowClass}>
               Worship Times
             </p>
             <h2 className="mt-3 text-3xl font-semibold">Join us this week</h2>
             <div className="mt-6 space-y-3">
               {serviceTimes.map((item: any, index: number) => (
                 <div
-                  className="rounded-3xl border border-stone-200 bg-[#fbfaf6] p-4"
+                  className={itemCardClass}
                   key={item.id || index}
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <h3 className="text-lg font-semibold">{item.label}</h3>
                       {item.location ? (
-                        <p className="mt-1 text-sm text-stone-600">
+                        <p className={`mt-1 text-sm ${mutedTextClass}`}>
                           {item.location}
                         </p>
                       ) : null}
@@ -322,13 +398,13 @@ export default function PublicCongregation() {
                 </div>
               ))}
               {serviceTimes.length === 0 ? (
-                <p className="text-stone-600">Service times will appear here.</p>
+                <p className={mutedTextClass}>Service times will appear here.</p>
               ) : null}
             </div>
           </div>
 
-          <div className="rounded-[28px] border border-stone-200 bg-white p-6 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#9b6b19]">
+          <div className={panelClass}>
+            <p className={sectionEyebrowClass}>
               Events
             </p>
             <h2 className="mt-3 text-3xl font-semibold">
@@ -337,7 +413,7 @@ export default function PublicCongregation() {
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               {events.map((event: any, index: number) => (
                 <article
-                  className="overflow-hidden rounded-3xl border border-stone-200 bg-[#fbfaf6]"
+                  className={articleClass}
                   key={event.id || index}
                 >
                   {event.imageUrl ? (
@@ -356,7 +432,7 @@ export default function PublicCongregation() {
                     </div>
                     <h3 className="mt-3 text-xl font-semibold">{event.title}</h3>
                     {event.description ? (
-                      <p className="mt-2 text-sm leading-6 text-stone-600">
+                      <p className={`mt-2 text-sm leading-6 ${mutedTextClass}`}>
                         {event.description}
                       </p>
                     ) : null}
@@ -364,22 +440,22 @@ export default function PublicCongregation() {
                 </article>
               ))}
               {events.length === 0 ? (
-                <p className="text-stone-600">Upcoming events will appear here.</p>
+                <p className={mutedTextClass}>Upcoming events will appear here.</p>
               ) : null}
             </div>
           </div>
         </section>
 
         <section className="mx-auto grid max-w-7xl gap-6 px-4 pb-12 sm:px-6 lg:grid-cols-[1fr_0.8fr] lg:px-8">
-          <div className="rounded-[28px] border border-stone-200 bg-white p-6 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#9b6b19]">
+          <div className={panelClass}>
+            <p className={sectionEyebrowClass}>
               Mass Programs
             </p>
             <h2 className="mt-3 text-3xl font-semibold">Program schedule</h2>
             <div className="mt-6 grid gap-3 md:grid-cols-2">
               {programs.map((program: any, index: number) => (
                 <article
-                  className="rounded-3xl border border-stone-200 bg-[#fbfaf6] p-4"
+                  className={itemCardClass}
                   key={program.id || index}
                 >
                   <h3 className="text-lg font-semibold">{program.title}</h3>
@@ -387,19 +463,19 @@ export default function PublicCongregation() {
                     {[program.day, program.time].filter(Boolean).join(' - ')}
                   </p>
                   {program.details ? (
-                    <p className="mt-3 text-sm leading-6 text-stone-600">
+                    <p className={`mt-3 text-sm leading-6 ${mutedTextClass}`}>
                       {program.details}
                     </p>
                   ) : null}
                 </article>
               ))}
               {programs.length === 0 ? (
-                <p className="text-stone-600">Programs will appear here.</p>
+                <p className={mutedTextClass}>Programs will appear here.</p>
               ) : null}
             </div>
           </div>
 
-          <aside className="rounded-[28px] border border-stone-200 bg-[#14352e] p-6 text-white shadow-sm">
+          <aside className={officeClass}>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-100">
               Church Office
             </p>
@@ -434,7 +510,7 @@ export default function PublicCongregation() {
           <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 lg:px-8">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#9b6b19]">
+                <p className={sectionEyebrowClass}>
                   Sermons
                 </p>
                 <h2 className="mt-3 text-3xl font-semibold">Past sermons</h2>
@@ -443,7 +519,7 @@ export default function PublicCongregation() {
             <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {sermons.map((sermon: any, index: number) => (
                 <article
-                  className="overflow-hidden rounded-[28px] border border-stone-200 bg-white shadow-sm"
+                  className={sermonCardClass}
                   key={sermon.id || index}
                 >
                   {sermon.imageUrl ? (
@@ -462,18 +538,22 @@ export default function PublicCongregation() {
                       {sermon.title}
                     </h3>
                     {sermon.speaker ? (
-                      <p className="mt-1 text-sm font-semibold text-stone-500">
+                      <p
+                        className={`mt-1 text-sm font-semibold ${
+                          isNightMode ? 'text-stone-400' : 'text-stone-500'
+                        }`}
+                      >
                         {sermon.speaker}
                       </p>
                     ) : null}
                     {sermon.summary ? (
-                      <p className="mt-3 text-sm leading-6 text-stone-600">
+                      <p className={`mt-3 text-sm leading-6 ${mutedTextClass}`}>
                         {sermon.summary}
                       </p>
                     ) : null}
                     {sermon.mediaUrl ? (
                       <a
-                        className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#143f34] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#215e4e]"
+                        className={sermonButtonClass}
                         href={sermon.mediaUrl}
                         rel="noreferrer"
                         target="_blank"
