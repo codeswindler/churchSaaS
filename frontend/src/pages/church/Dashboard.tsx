@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CountdownBadge } from '../../components/CountdownBadge';
 import api from '../../services/api';
@@ -185,6 +185,16 @@ function TrendChart({
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [pinnedIndex, setPinnedIndex] = useState<number | null>(null);
   const isMobileChart = useMediaQuery('(max-width: 768px)');
+  const chartScrollRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const scrollElement = chartScrollRef.current;
+
+    if (!isMobileChart || !scrollElement) return;
+
+    scrollElement.scrollLeft =
+      scrollElement.scrollWidth - scrollElement.clientWidth;
+  }, [data.length, granularity, isMobileChart]);
 
   if (!data.length) {
     return (
@@ -202,16 +212,14 @@ function TrendChart({
   const pointGap =
     granularity === 'daily'
       ? isMobileChart
-        ? 28
+        ? 42
         : 44
       : isMobileChart
-        ? 50
+        ? 84
         : 96;
   const minPlotWidth = isMobileChart ? 250 : 760;
   const naturalPlotWidth = Math.max(1, Math.max(data.length - 1, 1) * pointGap);
-  const plotWidth = isMobileChart
-    ? minPlotWidth
-    : Math.max(minPlotWidth, naturalPlotWidth);
+  const plotWidth = Math.max(minPlotWidth, naturalPlotWidth);
   const width = paddingLeft + paddingRight + plotWidth;
   const baselineY = height - paddingBottom;
   const plotOffsetX =
@@ -225,10 +233,6 @@ function TrendChart({
   const xFor = (index: number) => {
     if (data.length === 1) {
       return paddingLeft + plotWidth / 2;
-    }
-
-    if (isMobileChart && naturalPlotWidth > plotWidth) {
-      return paddingLeft + (index / (data.length - 1)) * plotWidth;
     }
 
     return paddingLeft + plotOffsetX + index * pointGap;
@@ -295,7 +299,10 @@ function TrendChart({
         Open {selectedKind} ledger
       </Link>
 
-      <div className="trend-chart-scroll -mx-1 overflow-x-auto pb-1">
+      <div
+        ref={chartScrollRef}
+        className="trend-chart-scroll -mx-1 overflow-x-auto pb-1"
+      >
         <svg
           aria-label="Contribution trend chart"
           className="trend-chart-svg h-[340px] max-w-none"
