@@ -804,3 +804,232 @@ select.input-compact option:checked {
     animation: none;
   }
 }
+
+@media (max-width: 640px) {
+  .app-shell-background > .mx-auto {
+    gap: 0.85rem;
+    padding: 0.65rem;
+  }
+
+  .mobile-shell-bar {
+    position: sticky;
+    top: 0.65rem;
+    z-index: 30;
+    border-radius: 20px;
+    box-shadow: 0 18px 48px -34px rgba(0, 0, 0, 0.75);
+  }
+
+  .panel {
+    border-radius: 22px;
+    box-shadow: 0 18px 56px -34px rgba(0, 0, 0, 0.72);
+  }
+
+  .panel.p-3,
+  .panel.p-4,
+  .panel.p-5,
+  .panel.p-6,
+  .panel.sm\:p-6,
+  .panel.sm\:p-7 {
+    padding: 1rem;
+  }
+
+  .shell-hero {
+    gap: 0.9rem;
+    padding: 1rem;
+  }
+
+  .shell-hero h2,
+  .panel h3 {
+    font-size: clamp(1.25rem, 5.4vw, 1.55rem);
+    line-height: 1.18;
+  }
+
+  .panel h4 {
+    font-size: 1rem;
+    line-height: 1.25;
+  }
+
+  .label,
+  .label-compact {
+    font-size: 0.66rem;
+    letter-spacing: 0.15em;
+  }
+
+  .input,
+  .input-compact {
+    min-height: 46px;
+    border-radius: 16px;
+    font-size: 16px;
+  }
+
+  textarea.input,
+  textarea.input-compact {
+    line-height: 1.45;
+  }
+
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger {
+    min-height: 44px;
+    border-radius: 16px;
+    justify-content: center;
+  }
+
+  .badge {
+    padding: 0.3rem 0.65rem;
+    letter-spacing: 0.12em;
+  }
+
+  .page-grid,
+  .overview-shell-grid {
+    gap: 0.85rem;
+  }
+
+  .overview-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .stat-card {
+    min-height: 116px;
+    padding: 1rem;
+    border-radius: 20px;
+  }
+
+  .stat-card .text-3xl {
+    margin-top: 0.9rem;
+    font-size: clamp(1.35rem, 6vw, 1.7rem);
+    line-height: 1.12;
+  }
+
+  .stat-card p:last-child {
+    margin-top: 0.9rem;
+    letter-spacing: 0.14em;
+  }
+
+  .overview-panel-tall,
+  .overview-panel-xl {
+    min-height: auto;
+  }
+
+  .table-shell {
+    overflow: visible;
+  }
+
+  .table-shell > .border-b {
+    padding: 1rem;
+  }
+
+  .table-scroll-region {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table-shell table.mobile-card-table,
+  .mobile-card-table {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    border-collapse: separate;
+  }
+
+  .mobile-card-table thead {
+    display: none;
+  }
+
+  .mobile-card-table tbody {
+    display: grid;
+    gap: 0.75rem;
+    padding: 0.75rem;
+  }
+
+  .mobile-card-table tr {
+    display: grid;
+    gap: 0.62rem;
+    padding: 0.9rem;
+    border: 1px solid var(--panel-border);
+    border-radius: 20px;
+    background: rgba(0, 0, 0, 0.1);
+  }
+
+  .mobile-card-table td,
+  .mobile-card-table th {
+    padding: 0 !important;
+  }
+
+  .mobile-card-table td {
+    display: grid;
+    grid-template-columns: minmax(6.25rem, 0.42fr) minmax(0, 1fr);
+    gap: 0.75rem;
+    align-items: start;
+    border: 0;
+    color: #f8f5ef;
+    word-break: break-word;
+  }
+
+  .mobile-card-table td::before {
+    content: attr(data-label);
+    min-width: 0;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(214, 211, 209, 0.64);
+  }
+
+  .mobile-card-table td[colspan] {
+    display: block;
+    color: #d6d3d1;
+  }
+
+  .mobile-card-table td[colspan]::before {
+    display: none;
+  }
+
+  .mobile-card-table td[data-label='Message'],
+  .mobile-card-table td[data-label='Contributor'],
+  .mobile-card-table td[data-label='Name'],
+  .mobile-card-table td[data-label='Recipient'] {
+    grid-template-columns: 1fr;
+  }
+
+  .mobile-card-table td[data-label='Message']::before,
+  .mobile-card-table td[data-label='Contributor']::before,
+  .mobile-card-table td[data-label='Name']::before,
+  .mobile-card-table td[data-label='Recipient']::before {
+    margin-bottom: -0.35rem;
+  }
+
+  .mobile-card-table .truncate,
+  .mobile-card-table .max-w-md {
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .modal-shell {
+    align-items: flex-end;
+    padding: 0.5rem;
+  }
+
+  .modal-card {
+    max-height: calc(100dvh - 0.75rem);
+    border-radius: 24px;
+  }
+
+  .subscription-countdown-badge.rounded-3xl {
+    border-radius: 20px;
+    padding: 1rem;
+  }
+
+  .subscription-countdown-badge .text-3xl {
+    font-size: 1.55rem;
+  }
+}
+
+@media (max-width: 380px) {
+  .overview-stat-grid {
+    grid-template-columns: 1fr;
+  }
+}

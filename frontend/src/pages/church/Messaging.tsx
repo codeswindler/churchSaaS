@@ -870,7 +870,7 @@ export default function ChurchMessaging() {
                 <div className="p-5 text-stone-300">Loading contacts...</div>
               ) : contacts.length > 0 ? (
                 <div className="table-scroll-region">
-                  <table className="w-full min-w-[640px] divide-y divide-white/10 text-sm">
+                  <table className="mobile-card-table w-full min-w-[640px] divide-y divide-white/10 text-sm">
                     <thead className="bg-black/20 text-left text-xs uppercase tracking-[0.22em] text-stone-400">
                       <tr>
                         <th className="px-4 py-3">Name</th>
@@ -886,17 +886,25 @@ export default function ChurchMessaging() {
                           className="border-t border-white/5"
                           key={contact.id}
                         >
-                          <td className="px-4 py-3 font-medium text-white">
+                          <td
+                            className="px-4 py-3 font-medium text-white"
+                            data-label="Name"
+                          >
                             {contact.displayName || contact.firstName || '-'}
                           </td>
-                          <td className="px-4 py-3">{contact.normalizedPhone}</td>
-                          <td className="px-4 py-3 capitalize">
+                          <td className="px-4 py-3" data-label="Phone">
+                            {contact.normalizedPhone}
+                          </td>
+                          <td className="px-4 py-3 capitalize" data-label="Gender">
                             {contact.gender || '-'}
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3" data-label="Source">
                             {contact.sourceLabel || 'manual'}
                           </td>
-                          <td className="px-4 py-3 text-xs text-stone-400">
+                          <td
+                            className="px-4 py-3 text-xs text-stone-400"
+                            data-label="Added"
+                          >
                             {new Date(contact.createdAt).toLocaleDateString()}
                           </td>
                         </tr>
@@ -1130,7 +1138,7 @@ export default function ChurchMessaging() {
               <div className="p-6 text-stone-300">Loading outbox...</div>
             ) : (
               <div className="table-scroll-region">
-                <table>
+                <table className="mobile-card-table">
                   <thead>
                     <tr>
                       <th>Date</th>
@@ -1145,10 +1153,10 @@ export default function ChurchMessaging() {
                   <tbody>
                     {outboxRows.map((item: any) => (
                       <tr key={item.id}>
-                        <td className="mono text-xs">
+                        <td className="mono text-xs" data-label="Date">
                           {new Date(item.createdAt).toLocaleString()}
                         </td>
-                        <td>
+                        <td data-label="Recipient">
                           <div className="font-medium text-white">
                             {item.recipientName ||
                               item.contributor?.name ||
@@ -1160,11 +1168,17 @@ export default function ChurchMessaging() {
                               : item.recipientMobile}
                           </div>
                         </td>
-                        <td>{item.messageType}</td>
-                        <td>{item.estimatedUnits}</td>
-                        <td>{item.providerDescription || item.sendStatus}</td>
-                        <td>{item.deliveryDescription || item.deliveryStatus}</td>
-                        <td className="max-w-md truncate">{item.messageBody}</td>
+                        <td data-label="Type">{item.messageType}</td>
+                        <td data-label="Units">{item.estimatedUnits}</td>
+                        <td data-label="Provider">
+                          {item.providerDescription || item.sendStatus}
+                        </td>
+                        <td data-label="Delivery">
+                          {item.deliveryDescription || item.deliveryStatus}
+                        </td>
+                        <td className="max-w-md truncate" data-label="Message">
+                          {item.messageBody}
+                        </td>
                       </tr>
                     ))}
                     {outboxRows.length === 0 ? (

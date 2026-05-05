@@ -189,7 +189,7 @@ export default function ChurchFundAccounts() {
         {isLoading ? (
           <div className="p-6 text-stone-300">Loading fund accounts...</div>
         ) : (
-          <table>
+          <table className="mobile-card-table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -202,16 +202,20 @@ export default function ChurchFundAccounts() {
             <tbody>
               {accounts.map((item: any) => (
                 <tr key={item.id}>
-                  <td>
+                  <td data-label="Name">
                     <div className="font-medium text-white">{item.name}</div>
                     <div className="text-xs text-stone-400">
                       {item.description || 'No description'}
                     </div>
                   </td>
-                  <td className="mono">{item.code}</td>
-                  <td>{item.isActive ? 'Active' : 'Inactive'}</td>
-                  <td>{item.displayOrder}</td>
-                  <td>
+                  <td className="mono" data-label="Code">
+                    {item.code}
+                  </td>
+                  <td data-label="Status">
+                    {item.isActive ? 'Active' : 'Inactive'}
+                  </td>
+                  <td data-label="Order">{item.displayOrder}</td>
+                  <td data-label="Actions">
                     <button
                       className="btn-secondary px-3 py-2"
                       onClick={() => {

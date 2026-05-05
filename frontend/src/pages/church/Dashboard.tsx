@@ -807,7 +807,7 @@ export default function ChurchDashboard() {
                   className="rounded-3xl border border-white/10 bg-black/10 p-4 transition hover:-translate-y-0.5 hover:bg-white/5"
                   to={buildLedgerPath({ fundAccountId: item.fundAccountId })}
                 >
-                  <div className="flex items-center justify-between gap-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div>
                       <h4 className="text-lg font-semibold text-white">
                         {item.fundAccountName}
@@ -841,7 +841,7 @@ export default function ChurchDashboard() {
             </h3>
           </div>
           <div className="table-scroll-region">
-            <table>
+            <table className="mobile-card-table">
               <thead>
                 <tr>
                   <th>Contributor</th>
@@ -855,7 +855,7 @@ export default function ChurchDashboard() {
                 {(data.reportSummary?.recentContributions || []).map(
                   (item: any) => (
                     <tr key={item.id}>
-                      <td>
+                      <td data-label="Contributor">
                         <div className="font-medium text-white">
                           {item.contributor?.name || 'Unknown'}
                         </div>
@@ -863,12 +863,14 @@ export default function ChurchDashboard() {
                           {item.contributor?.phone || '-'}
                         </div>
                       </td>
-                      <td>
+                      <td data-label="Fund Account">
                         {item.fundAccountId ? item.fundAccountName : 'General'}
                       </td>
-                      <td>{item.channel}</td>
-                      <td>KES {Number(item.amount || 0).toLocaleString()}</td>
-                      <td>{item.status}</td>
+                      <td data-label="Channel">{item.channel}</td>
+                      <td data-label="Amount">
+                        KES {Number(item.amount || 0).toLocaleString()}
+                      </td>
+                      <td data-label="Status">{item.status}</td>
                     </tr>
                   ),
                 )}

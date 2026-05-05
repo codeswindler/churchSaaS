@@ -291,7 +291,7 @@ export default function ChurchReports() {
                       : {},
                   )}
                 >
-                  <div className="flex items-center justify-between gap-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div>
                       <h4 className="text-lg font-semibold text-white">
                         {item.fundAccountName}

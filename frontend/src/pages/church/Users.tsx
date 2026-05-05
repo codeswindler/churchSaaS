@@ -210,7 +210,7 @@ export default function ChurchUsers() {
           <div className="p-6 text-stone-300">Loading staff users...</div>
         ) : (
           <div className="table-scroll-region">
-            <table>
+            <table className="mobile-card-table">
               <thead>
                 <tr>
                   <th>Name</th>
@@ -223,18 +223,20 @@ export default function ChurchUsers() {
               <tbody>
                 {(users || []).map((user: any) => (
                   <tr key={user.id}>
-                    <td>
+                    <td data-label="Name">
                       <div className="font-medium text-white">{user.name}</div>
                       <div className="text-xs text-stone-400">
                         {user.phone || user.username || '-'}
                       </div>
                     </td>
-                    <td>{user.email}</td>
-                    <td className="capitalize">
+                    <td data-label="Email">{user.email}</td>
+                    <td className="capitalize" data-label="Role">
                       {`${user.role || ''}`.replace(/_/g, ' ')}
                     </td>
-                    <td>{user.isActive ? 'Active' : 'Inactive'}</td>
-                    <td>
+                    <td data-label="Status">
+                      {user.isActive ? 'Active' : 'Inactive'}
+                    </td>
+                    <td data-label="Actions">
                       <button
                         className="btn-secondary px-3 py-2"
                         type="button"

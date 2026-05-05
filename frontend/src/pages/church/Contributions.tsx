@@ -346,7 +346,7 @@ export default function ChurchContributions() {
           <div className="p-6 text-stone-300">Loading contributions...</div>
         ) : (
           <div className="table-scroll-region">
-            <table>
+            <table className="mobile-card-table">
               <thead>
                 <tr>
                   <th>Date</th>
@@ -361,10 +361,10 @@ export default function ChurchContributions() {
               <tbody>
                 {(contributions || []).map((item: any) => (
                   <tr key={item.id}>
-                    <td className="mono text-xs">
+                    <td className="mono text-xs" data-label="Date">
                       {new Date(item.receivedAt || item.createdAt).toLocaleString()}
                     </td>
-                    <td>
+                    <td data-label="Contributor">
                       <div className="font-medium text-white">
                         {item.contributor?.name || 'Unknown'}
                       </div>
@@ -388,11 +388,19 @@ export default function ChurchContributions() {
                         </select>
                       ) : null}
                     </td>
-                    <td>{item.fundAccountId ? item.fundAccountName : 'General'}</td>
-                    <td>{item.channel === 'manual_cash' ? 'Cash' : 'M-Pesa'}</td>
-                    <td>{item.status}</td>
-                    <td>KES {Number(item.amount || 0).toLocaleString()}</td>
-                    <td>{item.receiptMessageSent ? 'Sent' : 'Pending / failed'}</td>
+                    <td data-label="Fund Account">
+                      {item.fundAccountId ? item.fundAccountName : 'General'}
+                    </td>
+                    <td data-label="Channel">
+                      {item.channel === 'manual_cash' ? 'Cash' : 'M-Pesa'}
+                    </td>
+                    <td data-label="Status">{item.status}</td>
+                    <td data-label="Amount">
+                      KES {Number(item.amount || 0).toLocaleString()}
+                    </td>
+                    <td data-label="Receipt">
+                      {item.receiptMessageSent ? 'Sent' : 'Pending / failed'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
