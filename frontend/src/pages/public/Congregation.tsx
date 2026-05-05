@@ -488,34 +488,6 @@ export default function PublicCongregation() {
             </div>
           </section>
         ) : null}
-
-        {gallery.length > 0 ? (
-          <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 lg:px-8">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#9b6b19]">
-              Gallery
-            </p>
-            <h2 className="mt-3 text-3xl font-semibold">Life in the church</h2>
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {gallery.map((image: any, index: number) => (
-                <figure
-                  className="overflow-hidden rounded-3xl border border-stone-200 bg-white"
-                  key={image.id || index}
-                >
-                  <img
-                    alt=""
-                    className="aspect-[4/3] w-full object-cover"
-                    src={resolveMediaUrl(image.imageUrl)}
-                  />
-                  {image.title ? (
-                    <figcaption className="px-4 py-3 text-sm font-semibold text-stone-700">
-                      {image.title}
-                    </figcaption>
-                  ) : null}
-                </figure>
-              ))}
-            </div>
-          </section>
-        ) : null}
       </main>
     </div>
   );
