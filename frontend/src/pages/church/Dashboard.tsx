@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CountdownBadge } from '../../components/CountdownBadge';
 import api from '../../services/api';
@@ -154,6 +154,25 @@ function aggregateTrendData(data: any[], granularity: TrendGranularity) {
   return [...buckets.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(() =>
+    typeof window === 'undefined' ? false : window.matchMedia(query).matches,
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const mediaQuery = window.matchMedia(query);
+    const updateMatches = () => setMatches(mediaQuery.matches);
+    updateMatches();
+    mediaQuery.addEventListener('change', updateMatches);
+
+    return () => mediaQuery.removeEventListener('change', updateMatches);
+  }, [query]);
+
+  return matches;
+}
+
 function TrendChart({
   data,
   buildLedgerPath,
@@ -165,6 +184,7 @@ function TrendChart({
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [pinnedIndex, setPinnedIndex] = useState<number | null>(null);
+  const isMobileChart = useMediaQuery('(max-width: 768px)');
 
   if (!data.length) {
     return (
@@ -174,28 +194,45 @@ function TrendChart({
     );
   }
 
-  const height = 320;
-  const paddingLeft = 104;
-  const paddingRight = 48;
-  const paddingTop = 34;
-  const paddingBottom = 34;
+  const height = isMobileChart ? 224 : 320;
+  const paddingLeft = isMobileChart ? 62 : 104;
+  const paddingRight = isMobileChart ? 18 : 48;
+  const paddingTop = isMobileChart ? 28 : 34;
+  const paddingBottom = isMobileChart ? 30 : 34;
   const pointGap =
-    granularity === 'daily' ? 44 : granularity === 'monthly' ? 96 : 96;
-  const minPlotWidth = 760;
+    granularity === 'daily'
+      ? isMobileChart
+        ? 28
+        : 44
+      : isMobileChart
+        ? 50
+        : 96;
+  const minPlotWidth = isMobileChart ? 250 : 760;
   const naturalPlotWidth = Math.max(1, Math.max(data.length - 1, 1) * pointGap);
-  const plotWidth = Math.max(minPlotWidth, naturalPlotWidth);
+  const plotWidth = isMobileChart
+    ? minPlotWidth
+    : Math.max(minPlotWidth, naturalPlotWidth);
   const width = paddingLeft + paddingRight + plotWidth;
   const baselineY = height - paddingBottom;
   const plotOffsetX =
-    data.length > 1 ? Math.max(0, (plotWidth - naturalPlotWidth) / 2) : 0;
+    data.length > 1 && naturalPlotWidth <= plotWidth
+      ? Math.max(0, (plotWidth - naturalPlotWidth) / 2)
+      : 0;
   const maxAmount = Math.max(
     1,
     ...data.map((item) => Number(item.totalAmount || 0)),
   );
-  const xFor = (index: number) =>
-    data.length === 1
-      ? paddingLeft + plotWidth / 2
-      : paddingLeft + plotOffsetX + index * pointGap;
+  const xFor = (index: number) => {
+    if (data.length === 1) {
+      return paddingLeft + plotWidth / 2;
+    }
+
+    if (isMobileChart && naturalPlotWidth > plotWidth) {
+      return paddingLeft + (index / (data.length - 1)) * plotWidth;
+    }
+
+    return paddingLeft + plotOffsetX + index * pointGap;
+  };
   const yFor = (amount: number) =>
     height -
     paddingBottom -
@@ -222,13 +259,13 @@ function TrendChart({
     hoveredIndex === null ? null : Math.min(hoveredIndex, points.length - 1);
   const activeIndex = safeHoveredIndex ?? safePinnedIndex;
   const activePoint = points[activeIndex];
-  const hitWidth = Math.max(24, pointGap);
-  const tooltipWidth = 154;
+  const hitWidth = Math.max(isMobileChart ? 28 : 24, pointGap);
+  const tooltipWidth = isMobileChart ? 112 : 154;
   const tooltipX = Math.min(
     Math.max(activePoint.x - tooltipWidth / 2, paddingLeft),
     width - paddingRight - tooltipWidth,
   );
-  const tooltipY = Math.max(activePoint.y - 58, paddingTop + 2);
+  const tooltipY = Math.max(activePoint.y - (isMobileChart ? 50 : 58), paddingTop + 2);
   const yTicks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
     const value = maxAmount * ratio;
     return {
@@ -249,7 +286,7 @@ function TrendChart({
       onMouseLeave={() => setHoveredIndex(null)}
     >
       <Link
-        className="absolute right-5 top-5 z-10 rounded-full border border-amber-200/25 bg-stone-950/80 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 shadow-lg shadow-black/20 backdrop-blur hover:border-amber-100/40 hover:text-amber-100"
+        className="trend-ledger-link absolute right-5 top-5 z-10 rounded-full border border-amber-200/25 bg-stone-950/80 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 shadow-lg shadow-black/20 backdrop-blur hover:border-amber-100/40 hover:text-amber-100"
         to={buildLedgerPath({
           from: activePoint.ledgerFrom,
           to: activePoint.ledgerTo,
@@ -324,7 +361,7 @@ function TrendChart({
         <g>
           <rect
             fill="rgba(19,31,27,0.94)"
-            height="48"
+            height={isMobileChart ? '44' : '48'}
             rx="10"
             stroke="rgba(52,211,153,0.36)"
             width={tooltipWidth}
@@ -333,7 +370,7 @@ function TrendChart({
           />
           <text
             fill="rgba(231,229,228,0.66)"
-            fontSize="10"
+            fontSize={isMobileChart ? '9' : '10'}
             textAnchor="middle"
             x={tooltipX + tooltipWidth / 2}
             y={tooltipY + 17}
@@ -342,13 +379,15 @@ function TrendChart({
           </text>
           <text
             fill={trendColor}
-            fontSize="13"
+            fontSize={isMobileChart ? '11' : '13'}
             fontWeight="700"
             textAnchor="middle"
             x={tooltipX + tooltipWidth / 2}
             y={tooltipY + 35}
           >
-            {formatMoney(activePoint.amount)}
+            {isMobileChart
+              ? formatCompactMoney(activePoint.amount)
+              : formatMoney(activePoint.amount)}
           </text>
         </g>
         {points.map((item, index) => (

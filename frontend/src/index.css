@@ -922,12 +922,23 @@ select.input-compact option:checked {
   .trend-chart-scroll {
     margin-left: 0;
     margin-right: 0;
+    padding-bottom: 0;
     overflow-x: hidden;
+  }
+
+  .trend-ledger-link {
+    position: static;
+    display: flex;
+    width: fit-content;
+    margin-bottom: 0.7rem;
+    margin-left: auto;
+    padding: 0.55rem 0.75rem;
+    letter-spacing: 0.12em;
   }
 
   .trend-chart-svg {
     width: 100% !important;
-    height: 260px;
+    height: 238px;
     min-width: 0;
   }
 
