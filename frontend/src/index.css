@@ -805,7 +805,14 @@ select.input-compact option:checked {
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
+  html,
+  body,
+  #root {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   .app-shell-background > .mx-auto {
     gap: 0.85rem;
     padding: 0.65rem;
@@ -912,6 +919,41 @@ select.input-compact option:checked {
     min-height: auto;
   }
 
+  .trend-chart-scroll {
+    margin-left: 0;
+    margin-right: 0;
+    overflow-x: hidden;
+  }
+
+  .trend-chart-svg {
+    width: 100% !important;
+    height: 260px;
+    min-width: 0;
+  }
+
+  .fund-split-layout {
+    gap: 0.85rem;
+  }
+
+  .fund-split-pie {
+    width: min(10.5rem, 58vw);
+    height: min(10.5rem, 58vw);
+    padding: 0.75rem;
+  }
+
+  .fund-split-layout a {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    border-radius: 18px;
+    padding: 0.85rem;
+  }
+
+  .fund-split-layout a > span:last-child {
+    font-size: 0.82rem;
+    text-align: right;
+  }
+
   .table-shell {
     overflow: visible;
   }
@@ -925,11 +967,15 @@ select.input-compact option:checked {
     -webkit-overflow-scrolling: touch;
   }
 
+  .table-scroll-region:has(.mobile-card-table) {
+    overflow: visible;
+  }
+
   .table-shell table.mobile-card-table,
   .mobile-card-table {
     display: block;
     width: 100%;
-    min-width: 0;
+    min-width: 0 !important;
     border-collapse: separate;
   }
 

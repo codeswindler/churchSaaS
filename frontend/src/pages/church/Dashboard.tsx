@@ -258,10 +258,10 @@ function TrendChart({
         Open {selectedKind} ledger
       </Link>
 
-      <div className="-mx-1 overflow-x-auto pb-1">
+      <div className="trend-chart-scroll -mx-1 overflow-x-auto pb-1">
         <svg
           aria-label="Contribution trend chart"
-          className="h-[340px] max-w-none"
+          className="trend-chart-svg h-[340px] max-w-none"
           preserveAspectRatio="none"
           style={{ width: `${width}px` }}
           viewBox={`0 0 ${width} ${height}`}
@@ -469,8 +469,8 @@ function FundSplitChart({
     .join(', ');
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[220px_1fr] xl:grid-cols-1 2xl:grid-cols-[220px_1fr]">
-      <div className="mx-auto flex h-56 w-56 items-center justify-center rounded-full border border-white/10 bg-black/20 p-4">
+    <div className="fund-split-layout grid gap-5 lg:grid-cols-[220px_1fr] xl:grid-cols-1 2xl:grid-cols-[220px_1fr]">
+      <div className="fund-split-pie mx-auto flex h-56 w-56 items-center justify-center rounded-full border border-white/10 bg-black/20 p-4">
         <div
           className="h-full w-full rounded-full"
           style={{ background: `conic-gradient(${segments})` }}
