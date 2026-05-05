@@ -208,16 +208,12 @@ function TrendChart({
     count: Number(item.count || 0),
   }));
   const plotStartX = paddingLeft;
-  const plotEndX = paddingLeft + plotWidth;
-  const linePoints = [
-    { x: plotStartX, y: baselineY },
-    ...points,
-    { x: plotEndX, y: baselineY },
-  ];
+  const lastPoint = points[points.length - 1];
+  const linePoints = [{ x: plotStartX, y: baselineY }, ...points];
   const linePointString = linePoints
     .map((point) => `${point.x},${point.y}`)
     .join(' ');
-  const areaPoints = `${plotStartX},${baselineY} ${linePointString} ${plotEndX},${baselineY}`;
+  const areaPoints = `${plotStartX},${baselineY} ${linePointString} ${lastPoint.x},${baselineY}`;
   const safePinnedIndex =
     pinnedIndex === null
       ? points.length - 1
@@ -310,7 +306,7 @@ function TrendChart({
           filter="url(#trendGlow)"
           points={linePointString}
           stroke={trendColor}
-          strokeLinecap="round"
+          strokeLinecap="butt"
           strokeLinejoin="round"
           strokeWidth="4"
         />
