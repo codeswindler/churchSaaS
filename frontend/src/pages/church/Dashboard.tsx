@@ -174,26 +174,28 @@ function TrendChart({
     );
   }
 
-  const pointGap =
-    granularity === 'daily' ? 44 : granularity === 'monthly' ? 86 : 120;
-  const baseWidth =
-    granularity === 'daily' ? 760 : granularity === 'monthly' ? 520 : 360;
-  const width = Math.max(
-    baseWidth,
-    88 + Math.max(data.length - 1, 1) * pointGap,
-  );
   const height = 320;
-  const paddingX = 44;
+  const paddingLeft = 104;
+  const paddingRight = 48;
   const paddingTop = 34;
   const paddingBottom = 34;
+  const pointGap =
+    granularity === 'daily' ? 44 : granularity === 'monthly' ? 96 : 96;
+  const minPlotWidth = 760;
+  const naturalPlotWidth = Math.max(1, Math.max(data.length - 1, 1) * pointGap);
+  const plotWidth = Math.max(minPlotWidth, naturalPlotWidth);
+  const width = paddingLeft + paddingRight + plotWidth;
+  const baselineY = height - paddingBottom;
+  const plotOffsetX =
+    data.length > 1 ? Math.max(0, (plotWidth - naturalPlotWidth) / 2) : 0;
   const maxAmount = Math.max(
     1,
     ...data.map((item) => Number(item.totalAmount || 0)),
   );
   const xFor = (index: number) =>
     data.length === 1
-      ? width / 2
-      : paddingX + (index / (data.length - 1)) * (width - paddingX * 2);
+      ? paddingLeft + plotWidth / 2
+      : paddingLeft + plotOffsetX + index * pointGap;
   const yFor = (amount: number) =>
     height -
     paddingBottom -
@@ -206,9 +208,21 @@ function TrendChart({
     count: Number(item.count || 0),
   }));
   const pointString = points.map((point) => `${point.x},${point.y}`).join(' ');
-  const areaPoints = `${paddingX},${height - paddingBottom} ${pointString} ${
-    width - paddingX
-  },${height - paddingBottom}`;
+  const areaPoints =
+    points.length === 1
+      ? `${Math.max(paddingLeft, points[0].x - pointGap / 2)},${baselineY} ${Math.max(
+          paddingLeft,
+          points[0].x - pointGap / 2,
+        )},${points[0].y} ${Math.min(
+          width - paddingRight,
+          points[0].x + pointGap / 2,
+        )},${points[0].y} ${Math.min(
+          width - paddingRight,
+          points[0].x + pointGap / 2,
+        )},${baselineY}`
+      : `${points[0].x},${baselineY} ${pointString} ${
+          points[points.length - 1].x
+        },${baselineY}`;
   const safePinnedIndex =
     pinnedIndex === null
       ? points.length - 1
@@ -220,8 +234,8 @@ function TrendChart({
   const hitWidth = Math.max(24, pointGap);
   const tooltipWidth = 154;
   const tooltipX = Math.min(
-    Math.max(activePoint.x - tooltipWidth / 2, paddingX),
-    width - paddingX - tooltipWidth,
+    Math.max(activePoint.x - tooltipWidth / 2, paddingLeft),
+    width - paddingRight - tooltipWidth,
   );
   const tooltipY = Math.max(activePoint.y - 58, paddingTop + 2);
   const yTicks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
@@ -258,7 +272,7 @@ function TrendChart({
           aria-label="Contribution trend chart"
           className="h-[340px] max-w-none"
           preserveAspectRatio="none"
-          style={{ width: `max(100%, ${width}px)` }}
+          style={{ width: `${width}px` }}
           viewBox={`0 0 ${width} ${height}`}
         >
         <defs>
@@ -279,8 +293,8 @@ function TrendChart({
             <line
               stroke="rgba(255,255,255,0.08)"
               strokeDasharray="5 8"
-              x1={paddingX}
-              x2={width - paddingX}
+              x1={paddingLeft}
+              x2={width - paddingRight}
               y1={tick.y}
               y2={tick.y}
             />
@@ -288,7 +302,7 @@ function TrendChart({
               fill="rgba(231,229,228,0.48)"
               fontSize="10"
               textAnchor="end"
-              x={paddingX - 8}
+              x={paddingLeft - 12}
               y={tick.y + 4}
             >
               {tick.label}
@@ -313,7 +327,7 @@ function TrendChart({
             x1={activePoint.x}
             x2={activePoint.x}
             y1={paddingTop}
-            y2={height - paddingBottom}
+            y2={baselineY}
           />
         ) : null}
         <g>
@@ -383,20 +397,22 @@ function TrendChart({
           fill="rgba(231,229,228,0.56)"
           fontSize="11"
           textAnchor="start"
-          x={paddingX}
+          x={points[0].x}
           y={height - 7}
         >
           {data[0].shortLabel}
         </text>
-        <text
-          fill="rgba(231,229,228,0.56)"
-          fontSize="11"
-          textAnchor="end"
-          x={width - paddingX}
-          y={height - 7}
-        >
-          {data[data.length - 1].shortLabel}
-        </text>
+        {points.length > 1 ? (
+          <text
+            fill="rgba(231,229,228,0.56)"
+            fontSize="11"
+            textAnchor="end"
+            x={points[points.length - 1].x}
+            y={height - 7}
+          >
+            {data[data.length - 1].shortLabel}
+          </text>
+        ) : null}
         </svg>
       </div>
     </div>
