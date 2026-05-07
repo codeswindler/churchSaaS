@@ -14,6 +14,10 @@ import { ContributionsService } from '../contributions/contributions.service';
 import { ChurchCongregationPage } from '../entities/church-congregation-page.entity';
 import { Church, ChurchStatus } from '../entities/church.entity';
 import { ClientEnquiry } from '../entities/client-enquiry.entity';
+import {
+  Contribution,
+  ContributionStatus,
+} from '../entities/contribution.entity';
 import { FundAccount } from '../entities/fund-account.entity';
 import { ChurchSubscriptionsService } from '../subscriptions/church-subscriptions.service';
 
@@ -66,6 +70,8 @@ export class PublicController {
     private readonly fundAccountRepo: Repository<FundAccount>,
     @InjectRepository(ClientEnquiry)
     private readonly clientEnquiryRepo: Repository<ClientEnquiry>,
+    @InjectRepository(Contribution)
+    private readonly contributionRepo: Repository<Contribution>,
     private readonly churchSubscriptionsService: ChurchSubscriptionsService,
     private readonly contributionsService: ContributionsService,
   ) {}
@@ -124,6 +130,39 @@ export class PublicController {
     const page = await this.congregationPageRepo.findOne({
       where: { churchId: church.id },
     });
+    const basePage = page
+      ? { ...page, isPublished: true }
+      : {
+          isPublished: true,
+          heroTitle: `Welcome to ${church.name}`,
+          welcomeMessage:
+            'Stay connected with worship times, daily encouragement, church events, and programs from your church office.',
+          verseReference: 'Psalm 122:1',
+          verseText:
+            'I rejoiced with those who said to me, let us go to the house of the Lord.',
+          dailyVerses: [
+            {
+              date: new Date().toISOString().slice(0, 10),
+              reference: 'Psalm 122:1',
+              text: 'I rejoiced with those who said to me, let us go to the house of the Lord.',
+            },
+          ],
+          featuredImageUrl: null,
+          serviceTimes: [
+            {
+              label: 'Sunday Service',
+              time: '10:00 AM',
+              location: church.address || 'Main sanctuary',
+            },
+          ],
+          events: [],
+          massPrograms: [],
+          sermons: [],
+          fundDisplays: [],
+          galleryImages: DEFAULT_CONGREGATION_GALLERY_IMAGES,
+          contactNote: null,
+          updatedAt: null,
+        };
 
     return {
       church: {
@@ -135,38 +174,13 @@ export class PublicController {
         contactPhone: church.contactPhone,
         address: church.address,
       },
-      page: page
-        ? { ...page, isPublished: true }
-        : {
-            isPublished: true,
-            heroTitle: `Welcome to ${church.name}`,
-            welcomeMessage:
-              'Stay connected with worship times, daily encouragement, church events, and programs from your church office.',
-            verseReference: 'Psalm 122:1',
-            verseText:
-              'I rejoiced with those who said to me, let us go to the house of the Lord.',
-            dailyVerses: [
-              {
-                date: new Date().toISOString().slice(0, 10),
-                reference: 'Psalm 122:1',
-                text: 'I rejoiced with those who said to me, let us go to the house of the Lord.',
-              },
-            ],
-            featuredImageUrl: null,
-            serviceTimes: [
-              {
-                label: 'Sunday Service',
-                time: '10:00 AM',
-                location: church.address || 'Main sanctuary',
-              },
-            ],
-            events: [],
-            massPrograms: [],
-            sermons: [],
-            galleryImages: DEFAULT_CONGREGATION_GALLERY_IMAGES,
-            contactNote: null,
-            updatedAt: null,
-          },
+      page: {
+        ...basePage,
+        fundDisplays: await this.resolvePublicFundDisplays(
+          church.id,
+          basePage.fundDisplays || [],
+        ),
+      },
       givingUrl: `/c/${church.slug}/give`,
     };
   }
@@ -254,5 +268,122 @@ export class PublicController {
     }
 
     return normalized;
+  }
+
+  private async resolvePublicFundDisplays(churchId: string, displays: any[]) {
+    const activeDisplays = Array.isArray(displays)
+      ? displays.filter(
+          (display) =>
+            display?.isActive !== false &&
+            display?.fundAccountId &&
+            display?.startDate,
+        )
+      : [];
+    if (activeDisplays.length === 0) {
+      return [];
+    }
+
+    const fundAccountIds = Array.from(
+      new Set(activeDisplays.map((display) => display.fundAccountId)),
+    );
+    const fundAccounts = await this.fundAccountRepo
+      .createQueryBuilder('fundAccount')
+      .where('fundAccount.churchId = :churchId', { churchId })
+      .andWhere('fundAccount.id IN (:...fundAccountIds)', { fundAccountIds })
+      .andWhere('fundAccount.isActive = :isActive', { isActive: true })
+      .getMany();
+    const fundAccountById = new Map(
+      fundAccounts.map((fundAccount) => [fundAccount.id, fundAccount]),
+    );
+
+    const resolved: any[] = [];
+    for (const display of activeDisplays) {
+      const fundAccount = fundAccountById.get(display.fundAccountId);
+      if (!fundAccount) {
+        continue;
+      }
+
+      const startDate = this.parseDateBoundary(display.startDate, 'start');
+      const endMode = display.endMode === 'static' ? 'static' : 'to_date';
+      const endDate =
+        endMode === 'static' && display.endDate
+          ? this.parseDateBoundary(display.endDate, 'end')
+          : null;
+      const totals = await this.getFundDisplayTotals(
+        churchId,
+        fundAccount.id,
+        startDate,
+        endDate,
+      );
+
+      resolved.push({
+        id: display.id,
+        title: display.title || fundAccount.name,
+        description: display.description || null,
+        fundAccountId: fundAccount.id,
+        fundAccountName: fundAccount.name,
+        fundAccountCode: fundAccount.code,
+        startDate: display.startDate,
+        endMode,
+        endDate: endMode === 'static' ? display.endDate || null : null,
+        totalAmount: totals.totalAmount,
+        contributionCount: totals.contributionCount,
+        lastContributionAt: totals.lastContributionAt,
+      });
+    }
+
+    return resolved;
+  }
+
+  private async getFundDisplayTotals(
+    churchId: string,
+    fundAccountId: string,
+    startDate: Date,
+    endDate: Date | null,
+  ) {
+    const qb = this.contributionRepo
+      .createQueryBuilder('contribution')
+      .select('COALESCE(SUM(contribution.amount), 0)', 'totalAmount')
+      .addSelect('COUNT(contribution.id)', 'contributionCount')
+      .addSelect(
+        'MAX(COALESCE(contribution.receivedAt, contribution.createdAt))',
+        'lastContributionAt',
+      )
+      .where('contribution.churchId = :churchId', { churchId })
+      .andWhere('contribution.fundAccountId = :fundAccountId', {
+        fundAccountId,
+      })
+      .andWhere('contribution.status = :status', {
+        status: ContributionStatus.CONFIRMED,
+      })
+      .andWhere(
+        'COALESCE(contribution.receivedAt, contribution.createdAt) >= :startDate',
+        { startDate },
+      );
+
+    if (endDate) {
+      qb.andWhere(
+        'COALESCE(contribution.receivedAt, contribution.createdAt) <= :endDate',
+        { endDate },
+      );
+    }
+
+    const raw = await qb.getRawOne();
+    return {
+      totalAmount: Number(raw?.totalAmount || 0),
+      contributionCount: Number(raw?.contributionCount || 0),
+      lastContributionAt: raw?.lastContributionAt || null,
+    };
+  }
+
+  private parseDateBoundary(value: string, boundary: 'start' | 'end') {
+    const [year, month, day] = `${value || ''}`.split('-').map(Number);
+    if (!year || !month || !day) {
+      return new Date();
+    }
+
+    return boundary === 'end'
+      ? new Date(year, month - 1, day, 23, 59, 59, 999)
+      : new Date(year, month - 1, day, 0, 0, 0, 0);
   }
 }

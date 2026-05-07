@@ -25,6 +25,7 @@ const emptyForm = {
   events: [] as any[],
   massPrograms: [] as any[],
   sermons: [] as any[],
+  fundDisplays: [] as any[],
   galleryImages: [] as any[],
   contactNote: '',
 };
@@ -115,6 +116,19 @@ function createSermon() {
   };
 }
 
+function createFundDisplay(fundAccountId = '') {
+  return {
+    id: createId(),
+    title: '',
+    description: '',
+    fundAccountId,
+    startDate: getTodayInputDate(),
+    endMode: 'to_date',
+    endDate: '',
+    isActive: true,
+  };
+}
+
 function createGalleryImage(imageUrl = '', title = '', isDefault = false) {
   return {
     id: isDefault ? `gallery-${createId()}` : createId(),
@@ -174,6 +188,7 @@ function normalizeForm(data: any) {
     events: data?.events || [],
     massPrograms: data?.massPrograms || [],
     sermons: data?.sermons || [],
+    fundDisplays: data?.fundDisplays || [],
     galleryImages: (data?.galleryImages || []).map(normalizeGalleryImageTitle),
     contactNote: data?.contactNote || '',
   };
@@ -211,6 +226,14 @@ export default function ChurchCongregation() {
     queryFn: () =>
       api.get('/church/congregation-page').then((response) => response.data),
   });
+  const { data: fundAccounts } = useQuery({
+    queryKey: ['church-fund-accounts'],
+    queryFn: () =>
+      api.get('/church/fund-accounts').then((response) => response.data),
+  });
+  const activeFundAccounts = (fundAccounts || []).filter(
+    (fundAccount: any) => fundAccount.isActive !== false,
+  );
 
   useEffect(() => {
     if (data) {
@@ -295,6 +318,7 @@ export default function ChurchCongregation() {
       { label: 'Events', value: form.events.length },
       { label: 'Programs', value: form.massPrograms.length },
       { label: 'Sermons', value: form.sermons.length },
+      { label: 'Fund Displays', value: form.fundDisplays.length },
       { label: 'Gallery Images', value: form.galleryImages.length },
     ],
     [form],
@@ -307,10 +331,11 @@ export default function ChurchCongregation() {
       | 'events'
       | 'massPrograms'
       | 'sermons'
+      | 'fundDisplays'
       | 'galleryImages',
     index: number,
     field: string,
-    value: string,
+    value: unknown,
   ) => {
     setForm((current) => {
       const nextItems = [...current[key]];
@@ -326,6 +351,7 @@ export default function ChurchCongregation() {
       | 'events'
       | 'massPrograms'
       | 'sermons'
+      | 'fundDisplays'
       | 'galleryImages',
     index: number,
   ) => {
@@ -584,6 +610,191 @@ export default function ChurchCongregation() {
                   ))}
                 </div>
               </section>
+            </div>
+          </section>
+
+          <section className="panel p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+                  Public Collections
+                </p>
+                <h3 className="mt-2 text-2xl font-semibold text-white">
+                  Fund account totals
+                </h3>
+              </div>
+              <button
+                className="btn-secondary justify-center"
+                disabled={activeFundAccounts.length === 0}
+                type="button"
+                onClick={() =>
+                  setForm((current) => ({
+                    ...current,
+                    fundDisplays: [
+                      ...current.fundDisplays,
+                      createFundDisplay(activeFundAccounts[0]?.id || ''),
+                    ],
+                  }))
+                }
+              >
+                <Plus size={16} />
+                Add display
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              {form.fundDisplays.map((item, index) => (
+                <div
+                  key={item.id || index}
+                  className="rounded-3xl border border-white/10 bg-black/10 p-4"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <label className="inline-flex items-center gap-3 text-sm font-semibold text-stone-200">
+                      <input
+                        checked={item.isActive !== false}
+                        className="h-4 w-4 accent-emerald-300"
+                        type="checkbox"
+                        onChange={(event) =>
+                          updateListItem(
+                            'fundDisplays',
+                            index,
+                            'isActive',
+                            event.target.checked,
+                          )
+                        }
+                      />
+                      Show on public page
+                    </label>
+                    <button
+                      aria-label="Remove fund display"
+                      className="btn-secondary self-start px-3 py-2"
+                      type="button"
+                      onClick={() => removeListItem('fundDisplays', index)}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-[1fr_220px]">
+                    <div>
+                      <label className="label-compact">Display title</label>
+                      <input
+                        className="input-compact mt-1.5"
+                        placeholder="Tithe collections"
+                        value={item.title || ''}
+                        onChange={(event) =>
+                          updateListItem(
+                            'fundDisplays',
+                            index,
+                            'title',
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="label-compact">Fund account</label>
+                      <select
+                        className="input-compact mt-1.5"
+                        value={item.fundAccountId || ''}
+                        onChange={(event) =>
+                          updateListItem(
+                            'fundDisplays',
+                            index,
+                            'fundAccountId',
+                            event.target.value,
+                          )
+                        }
+                      >
+                        <option value="">Select account</option>
+                        {activeFundAccounts.map((fundAccount: any) => (
+                          <option key={fundAccount.id} value={fundAccount.id}>
+                            {fundAccount.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid gap-3 md:grid-cols-[180px_180px_180px]">
+                    <div>
+                      <label className="label-compact">Start date</label>
+                      <input
+                        className="input-compact mt-1.5"
+                        type="date"
+                        value={item.startDate || ''}
+                        onChange={(event) =>
+                          updateListItem(
+                            'fundDisplays',
+                            index,
+                            'startDate',
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="label-compact">End mode</label>
+                      <select
+                        className="input-compact mt-1.5"
+                        value={item.endMode || 'to_date'}
+                        onChange={(event) =>
+                          updateListItem(
+                            'fundDisplays',
+                            index,
+                            'endMode',
+                            event.target.value,
+                          )
+                        }
+                      >
+                        <option value="to_date">To date</option>
+                        <option value="static">Fixed end date</option>
+                      </select>
+                    </div>
+                    {item.endMode === 'static' ? (
+                      <div>
+                        <label className="label-compact">End date</label>
+                        <input
+                          className="input-compact mt-1.5"
+                          type="date"
+                          value={item.endDate || ''}
+                          onChange={(event) =>
+                            updateListItem(
+                              'fundDisplays',
+                              index,
+                              'endDate',
+                              event.target.value,
+                            )
+                          }
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-3">
+                    <label className="label-compact">Public note</label>
+                    <textarea
+                      className="input-compact mt-1.5 min-h-20"
+                      placeholder="Optional short context shown below the total."
+                      value={item.description || ''}
+                      onChange={(event) =>
+                        updateListItem(
+                          'fundDisplays',
+                          index,
+                          'description',
+                          event.target.value,
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+              ))}
+              {form.fundDisplays.length === 0 ? (
+                <div className="rounded-3xl border border-white/10 bg-black/10 p-4 text-sm text-stone-400">
+                  Add a public collection display when you want members to see a
+                  fund account total for a selected timeframe.
+                </div>
+              ) : null}
             </div>
           </section>
 

@@ -13,9 +13,11 @@ import { ChurchUser } from './church-user.entity';
 import { SmsOutbox } from './sms-outbox.entity';
 
 export enum SmsBatchAudience {
+  MULTIPLE = 'multiple',
   ALL_CONTRIBUTORS = 'all_contributors',
   MALE_CONTRIBUTORS = 'male_contributors',
   FEMALE_CONTRIBUTORS = 'female_contributors',
+  FUND_ACCOUNTS = 'fund_accounts',
   ADDRESS_BOOKS = 'address_books',
   PASTED_CONTACTS = 'pasted_contacts',
 }

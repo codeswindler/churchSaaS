@@ -376,6 +376,7 @@ export class SmsService {
       message: string;
       pastedContacts?: string;
       addressBookIds?: string[];
+      fundAccountIds?: string[];
       smsShortcode?: string;
     },
   ) {
@@ -828,6 +829,7 @@ export class SmsService {
       genderFilter?: ContributorGender | null;
       pastedContacts?: string;
       addressBookIds?: string[];
+      fundAccountIds?: string[];
     },
   ): Promise<BulkRecipient[]> {
     const recipients: BulkRecipient[] = [];
@@ -839,6 +841,19 @@ export class SmsService {
         ...(await this.resolveContributorRecipients(
           churchId,
           audience,
+          genderFilter,
+        )),
+      );
+    }
+
+    const fundAccountIds = Array.isArray(body.fundAccountIds)
+      ? Array.from(new Set(body.fundAccountIds.filter(Boolean)))
+      : [];
+    if (fundAccountIds.length > 0) {
+      recipients.push(
+        ...(await this.resolveFundAccountRecipients(
+          churchId,
+          fundAccountIds,
           genderFilter,
         )),
       );
@@ -885,44 +900,43 @@ export class SmsService {
     }
 
     const contributors = await this.contributorRepo.find({ where });
-    const hashedByContributorId =
-      await this.getLatestHashedMobileByContributor(
-        churchId,
-        contributors.map((contributor) => contributor.id),
-      );
+    return this.mapContributorsToBulkRecipients(churchId, contributors);
+  }
 
-    return contributors
-      .map((contributor) => {
-        const hashedMobile = hashedByContributorId.get(contributor.id);
-        if (hashedMobile) {
-          const normalizedContributorPhone = this.normalizeKenyanPhone(
-            contributor.phone || '',
-          );
-          return {
-            contributorId: contributor.id,
-            name: contributor.name,
-            firstName: this.extractFirstName(contributor.name),
-            mobile: hashedMobile,
-            isHashedRecipient: true,
-            dedupeKey: normalizedContributorPhone || `hashed:${hashedMobile}`,
-          };
-        }
+  private async resolveFundAccountRecipients(
+    churchId: string,
+    fundAccountIds: string[],
+    genderFilter: ContributorGender | null = null,
+  ): Promise<BulkRecipient[]> {
+    if (fundAccountIds.length === 0) {
+      return [];
+    }
 
-        const mobile = this.formatPhone(contributor.phone || '');
-        if (!this.isValidKenyanMobile(mobile)) {
-          return null;
-        }
+    const qb = this.contributorRepo
+      .createQueryBuilder('contributor')
+      .innerJoin(
+        'contributor.contributions',
+        'contribution',
+        [
+          'contribution.churchId = :churchId',
+          'contribution.fundAccountId IN (:...fundAccountIds)',
+          'contribution.status = :status',
+        ].join(' AND '),
+        {
+          churchId,
+          fundAccountIds,
+          status: ContributionStatus.CONFIRMED,
+        },
+      )
+      .where('contributor.churchId = :churchId', { churchId })
+      .distinct(true);
 
-        return {
-          contributorId: contributor.id,
-          name: contributor.name,
-          firstName: this.extractFirstName(contributor.name),
-          mobile,
-          isHashedRecipient: false,
-          dedupeKey: mobile,
-        };
-      })
-      .filter(Boolean) as BulkRecipient[];
+    if (genderFilter) {
+      qb.andWhere('contributor.gender = :genderFilter', { genderFilter });
+    }
+
+    const contributors = await qb.getMany();
+    return this.mapContributorsToBulkRecipients(churchId, contributors);
   }
 
   private async resolveAddressBookRecipients(
@@ -1087,14 +1101,24 @@ export class SmsService {
     audience?: SmsBatchAudience;
     audiences?: SmsBatchAudience[];
     addressBookIds?: string[];
+    fundAccountIds?: string[];
     pastedContacts?: string;
   }) {
     const audiences = this.resolveBulkAudiences(body);
+    const selectedTargetGroups =
+      audiences.length +
+      (body.fundAccountIds?.length ? 1 : 0) +
+      (body.addressBookIds?.length ? 1 : 0) +
+      (body.pastedContacts?.trim() ? 1 : 0);
+
+    if (selectedTargetGroups > 1) {
+      return SmsBatchAudience.MULTIPLE;
+    }
     if (audiences.length === 1) {
       return audiences[0];
     }
-    if (audiences.length > 1) {
-      return 'multiple';
+    if (body.fundAccountIds?.length) {
+      return SmsBatchAudience.FUND_ACCOUNTS;
     }
     if (body.addressBookIds?.length) {
       return SmsBatchAudience.ADDRESS_BOOKS;
@@ -1103,6 +1127,50 @@ export class SmsService {
       return SmsBatchAudience.PASTED_CONTACTS;
     }
     return SmsBatchAudience.ALL_CONTRIBUTORS;
+  }
+
+  private async mapContributorsToBulkRecipients(
+    churchId: string,
+    contributors: Contributor[],
+  ): Promise<BulkRecipient[]> {
+    const hashedByContributorId =
+      await this.getLatestHashedMobileByContributor(
+        churchId,
+        contributors.map((contributor) => contributor.id),
+      );
+
+    return contributors
+      .map((contributor) => {
+        const hashedMobile = hashedByContributorId.get(contributor.id);
+        if (hashedMobile) {
+          const normalizedContributorPhone = this.normalizeKenyanPhone(
+            contributor.phone || '',
+          );
+          return {
+            contributorId: contributor.id,
+            name: contributor.name,
+            firstName: this.extractFirstName(contributor.name),
+            mobile: hashedMobile,
+            isHashedRecipient: true,
+            dedupeKey: normalizedContributorPhone || `hashed:${hashedMobile}`,
+          };
+        }
+
+        const mobile = this.formatPhone(contributor.phone || '');
+        if (!this.isValidKenyanMobile(mobile)) {
+          return null;
+        }
+
+        return {
+          contributorId: contributor.id,
+          name: contributor.name,
+          firstName: this.extractFirstName(contributor.name),
+          mobile,
+          isHashedRecipient: false,
+          dedupeKey: mobile,
+        };
+      })
+      .filter(Boolean) as BulkRecipient[];
   }
 
   private renderBulkMessage(template: string, recipient: BulkRecipient) {

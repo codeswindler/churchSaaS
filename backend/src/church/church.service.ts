@@ -20,6 +20,7 @@ import { ContributionsService } from '../contributions/contributions.service';
 import {
   ChurchCongregationPage,
   CongregationEvent,
+  CongregationFundDisplay,
   CongregationGalleryImage,
   CongregationDailyVerse,
   CongregationMassProgram,
@@ -459,6 +460,9 @@ export class ChurchService {
       addressBookIds: Array.isArray(body.addressBookIds)
         ? body.addressBookIds
         : [],
+      fundAccountIds: Array.isArray(body.fundAccountIds)
+        ? body.fundAccountIds
+        : [],
       smsShortcode: body.smsShortcode,
     });
   }
@@ -472,6 +476,7 @@ export class ChurchService {
     return {
       defaultSmsShortcode: church.smsShortcode,
       smsShortcodes: this.smsService.getAvailableSmsShortcodes(church),
+      fundAccounts: await this.listFundAccounts(churchId),
     };
   }
 
@@ -793,6 +798,7 @@ export class ChurchService {
     existing.events = this.normalizeEvents(body.events);
     existing.massPrograms = this.normalizeMassPrograms(body.massPrograms);
     existing.sermons = this.normalizeSermons(body.sermons);
+    existing.fundDisplays = this.normalizeFundDisplays(body.fundDisplays);
     existing.galleryImages = this.normalizeGalleryImages(body.galleryImages);
     existing.updatedByUserId = userId;
 
@@ -868,6 +874,7 @@ export class ChurchService {
       events: [],
       massPrograms: [],
       sermons: [],
+      fundDisplays: [],
       galleryImages: DEFAULT_CONGREGATION_GALLERY_IMAGES,
       contactNote:
         church.contactPhone || church.contactEmail
@@ -957,6 +964,38 @@ export class ChurchService {
       .filter((item) => item.title) as CongregationSermon[];
   }
 
+  private normalizeFundDisplays(value: unknown): CongregationFundDisplay[] {
+    return this.normalizeJsonList(value, 12)
+      .map((item) => {
+        const endMode = item.endMode === 'static' ? 'static' : 'to_date';
+        const startDate = this.normalizeDateText(item.startDate);
+        const endDate =
+          endMode === 'static' ? this.normalizeDateText(item.endDate) : null;
+
+        return {
+          id: this.normalizeOptionalText(item.id, 80) || randomUUID(),
+          title: this.normalizeOptionalText(item.title, 180),
+          description: this.normalizeOptionalText(item.description, 700),
+          fundAccountId: this.normalizeOptionalText(item.fundAccountId, 36),
+          startDate,
+          endMode,
+          endDate,
+          isActive: item.isActive === false ? false : true,
+        };
+      })
+      .filter((item) => {
+        if (!item.fundAccountId || !item.startDate) {
+          return false;
+        }
+
+        if (item.endMode === 'static' && !item.endDate) {
+          return false;
+        }
+
+        return true;
+      }) as CongregationFundDisplay[];
+  }
+
   private normalizeGalleryImages(value: unknown): CongregationGalleryImage[] {
     return this.normalizeJsonList(value, 16)
       .map((item) => {
@@ -989,6 +1028,19 @@ export class ChurchService {
     }
 
     return value.filter((item) => item && typeof item === 'object');
+  }
+
+  private normalizeDateText(value: unknown) {
+    const normalized = this.normalizeOptionalText(value, 40);
+    if (!normalized) {
+      return null;
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+      throw new BadRequestException('Date values must use YYYY-MM-DD format.');
+    }
+
+    return normalized;
   }
 
   private async ensureAddressBook(churchId: string, addressBookId: string) {

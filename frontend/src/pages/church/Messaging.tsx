@@ -14,11 +14,12 @@ import toast from 'react-hot-toast';
 import api from '../../services/api';
 
 const initialMessageForm = {
-  audiences: ['all_contributors'] as string[],
+  audiences: [] as string[],
   genderFilter: '',
   message: '',
   pastedContacts: '',
   addressBookIds: [] as string[],
+  fundAccountIds: [] as string[],
   smsShortcode: '',
 };
 
@@ -165,6 +166,9 @@ export default function ChurchMessaging() {
   });
 
   const shortcodes = messagingConfig?.smsShortcodes || [];
+  const fundAccounts = (messagingConfig?.fundAccounts || []).filter(
+    (fundAccount: any) => fundAccount.isActive !== false,
+  );
   const defaultShortcode =
     messagingConfig?.defaultSmsShortcode || shortcodes[0] || '';
   const outboxRows = outbox || [];
@@ -201,6 +205,7 @@ export default function ChurchMessaging() {
     mutationFn: async () => {
       const hasAudience =
         form.audiences.length > 0 ||
+        form.fundAccountIds.length > 0 ||
         form.addressBookIds.length > 0 ||
         form.pastedContacts.trim().length > 0;
       if (!hasAudience) {
@@ -359,6 +364,18 @@ export default function ChurchMessaging() {
         selected.add(bookId);
       }
       return { ...current, addressBookIds: Array.from(selected) };
+    });
+  };
+
+  const toggleFundAccount = (fundAccountId: string) => {
+    setForm((current) => {
+      const selected = new Set(current.fundAccountIds);
+      if (selected.has(fundAccountId)) {
+        selected.delete(fundAccountId);
+      } else {
+        selected.add(fundAccountId);
+      }
+      return { ...current, fundAccountIds: Array.from(selected) };
     });
   };
 
@@ -530,6 +547,41 @@ export default function ChurchMessaging() {
                       </button>
                     );
                   })}
+                </div>
+              </div>
+
+              <div className="lg:col-span-2">
+                <label className="label">Fund account contributors</label>
+                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                  {fundAccounts.map((fundAccount: any) => {
+                    const isSelected = form.fundAccountIds.includes(
+                      fundAccount.id,
+                    );
+                    return (
+                      <button
+                        key={fundAccount.id}
+                        className={`rounded-2xl border px-4 py-3 text-left transition ${
+                          isSelected
+                            ? 'border-emerald-300/50 bg-emerald-300/15 text-white'
+                            : 'border-white/10 bg-black/10 text-stone-300 hover:bg-white/5 hover:text-white'
+                        }`}
+                        type="button"
+                        onClick={() => toggleFundAccount(fundAccount.id)}
+                      >
+                        <span className="block font-semibold">
+                          {fundAccount.name}
+                        </span>
+                        <span className="text-xs text-stone-400">
+                          People who contributed to {fundAccount.code}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {fundAccounts.length === 0 ? (
+                    <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-sm text-stone-400">
+                      Active fund accounts will appear here.
+                    </div>
+                  ) : null}
                 </div>
               </div>
 

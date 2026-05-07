@@ -50,6 +50,17 @@ export interface CongregationSermon {
   imageUrl?: string | null;
 }
 
+export interface CongregationFundDisplay {
+  id?: string;
+  title?: string | null;
+  description?: string | null;
+  fundAccountId: string;
+  startDate: string;
+  endMode?: 'to_date' | 'static' | null;
+  endDate?: string | null;
+  isActive?: boolean | null;
+}
+
 export interface CongregationGalleryImage {
   id?: string;
   title?: string | null;
@@ -102,6 +113,9 @@ export class ChurchCongregationPage {
 
   @Column({ type: 'simple-json', nullable: true })
   sermons: CongregationSermon[] | null;
+
+  @Column({ type: 'simple-json', nullable: true })
+  fundDisplays: CongregationFundDisplay[] | null;
 
   @Column({ type: 'simple-json', nullable: true })
   galleryImages: CongregationGalleryImage[] | null;

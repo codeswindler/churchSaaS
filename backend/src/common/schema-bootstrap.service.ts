@@ -428,6 +428,7 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
             \`events\` text NULL,
             \`massPrograms\` text NULL,
             \`sermons\` text NULL,
+            \`fundDisplays\` text NULL,
             \`galleryImages\` text NULL,
             \`contactNote\` text NULL,
             \`updatedByUserId\` varchar(36) NULL,
@@ -491,9 +492,12 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
       if (!table.findColumnByName('sermons')) {
         statements.push('ADD COLUMN `sermons` text NULL AFTER `massPrograms`');
       }
+      if (!table.findColumnByName('fundDisplays')) {
+        statements.push('ADD COLUMN `fundDisplays` text NULL AFTER `sermons`');
+      }
       if (!table.findColumnByName('galleryImages')) {
         statements.push(
-          'ADD COLUMN `galleryImages` text NULL AFTER `sermons`',
+          'ADD COLUMN `galleryImages` text NULL AFTER `fundDisplays`',
         );
       }
       if (!table.findColumnByName('contactNote')) {
