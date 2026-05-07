@@ -251,7 +251,7 @@ export default function Login() {
                       <button
                         className="btn-secondary justify-center sm:min-w-[220px]"
                         type="button"
-                        onClick={() => setShowEnquiryModal(true)}
+                        onClick={() => navigate('/signup')}
                       >
                         Create account with us
                       </button>

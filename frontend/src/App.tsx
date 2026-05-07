@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AppShell } from './layouts/AppShell';
+import ChurchSignup from './pages/auth/ChurchSignup';
 import Login from './pages/auth/Login';
 import ChurchContributions from './pages/church/Contributions';
 import ChurchCongregation from './pages/church/Congregation';
@@ -33,6 +34,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<PublicEntry />} />
       <Route path="/login" element={<PublicEntry />} />
+      <Route path="/signup" element={<ChurchSignup />} />
       <Route path="/c/:slug" element={<PublicCongregation />} />
       <Route path="/c/:slug/give" element={<PublicGive />} />
 
