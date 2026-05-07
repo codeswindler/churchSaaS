@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Clock3,
   Download,
   FileSpreadsheet,
   Inbox,
+  RotateCcw,
   Send,
   SlidersHorizontal,
   Upload,
@@ -44,6 +46,8 @@ const initialOutboxFilters = {
   sendStatus: '',
   deliveryStatus: '',
 };
+
+const undoSeconds = 6;
 
 type Workspace = 'compose' | 'addressBooks' | 'upload' | 'outbox';
 
@@ -109,6 +113,10 @@ export default function ChurchMessaging() {
   const [uploadForm, setUploadForm] = useState(initialUploadForm);
   const [selectedAddressBookId, setSelectedAddressBookId] = useState('');
   const [filters, setFilters] = useState(initialOutboxFilters);
+  const [pendingSend, setPendingSend] = useState<null | {
+    seconds: number;
+    payload: typeof initialMessageForm;
+  }>(null);
   const queryString = useMemo(() => toQueryString(filters), [filters]);
   const currentPageUsage = form.message.length % 160;
   const remainingCharacters =
@@ -203,17 +211,17 @@ export default function ChurchMessaging() {
   }, [selectedBook?.id, uploadForm.addressBookId]);
 
   const sendMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (payload: typeof initialMessageForm) => {
       const hasAudience =
-        form.fundAccountIds.length > 0 ||
-        form.addressBookIds.length > 0 ||
-        form.pastedContacts.trim().length > 0;
+        payload.fundAccountIds.length > 0 ||
+        payload.addressBookIds.length > 0 ||
+        payload.pastedContacts.trim().length > 0;
       if (!hasAudience) {
         throw new Error(
           'Select at least one fund account, address book, or pasted contact',
         );
       }
-      const response = await api.post('/church/messaging/bulk', form);
+      const response = await api.post('/church/messaging/bulk', payload);
       return response.data;
     },
     onSuccess: (data) => {
@@ -236,6 +244,27 @@ export default function ChurchMessaging() {
       );
     },
   });
+
+  useEffect(() => {
+    if (!pendingSend) {
+      return;
+    }
+
+    if (pendingSend.seconds <= 0) {
+      const payload = pendingSend.payload;
+      setPendingSend(null);
+      sendMutation.mutate(payload);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setPendingSend((current) =>
+        current ? { ...current, seconds: current.seconds - 1 } : current,
+      );
+    }, 1000);
+
+    return () => window.clearTimeout(timer);
+  }, [pendingSend, sendMutation]);
 
   const createAddressBookMutation = useMutation({
     mutationFn: async () => {
@@ -354,6 +383,43 @@ export default function ChurchMessaging() {
       );
     },
   });
+
+  const queueSend = () => {
+    const hasAudience =
+      form.fundAccountIds.length > 0 ||
+      form.addressBookIds.length > 0 ||
+      form.pastedContacts.trim().length > 0;
+
+    if (!hasAudience) {
+      toast.error(
+        'Select at least one fund account, address book, or pasted contact',
+      );
+      return;
+    }
+    if (!form.message.trim()) {
+      toast.error('Write the message before sending');
+      return;
+    }
+    if (pendingSend) {
+      toast.error('A message is already waiting for the undo window');
+      return;
+    }
+
+    setPendingSend({
+      seconds: undoSeconds,
+      payload: {
+        ...form,
+        addressBookIds: [...form.addressBookIds],
+        fundAccountIds: [...form.fundAccountIds],
+      },
+    });
+    toast.success(`Bulk SMS will send in ${undoSeconds} seconds`);
+  };
+
+  const cancelPendingSend = () => {
+    setPendingSend(null);
+    toast.success('SMS send cancelled');
+  };
 
   const toggleAddressBook = (bookId: string) => {
     setForm((current) => {
@@ -498,7 +564,7 @@ export default function ChurchMessaging() {
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              sendMutation.mutate();
+              queueSend();
             }}
           >
             <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
@@ -677,13 +743,44 @@ export default function ChurchMessaging() {
                 />
               </div>
 
+              {pendingSend ? (
+                <div className="lg:col-span-2 rounded-3xl border border-amber-200/30 bg-amber-200/10 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-start gap-3">
+                      <Clock3 className="mt-1 text-amber-200" size={18} />
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-100">
+                          Undo window
+                        </p>
+                        <p className="mt-1 text-sm text-stone-300">
+                          Sending in {pendingSend.seconds}s. Cancel now if the
+                          audience or message needs a change.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      className="btn-secondary justify-center"
+                      type="button"
+                      onClick={cancelPendingSend}
+                    >
+                      <RotateCcw size={16} />
+                      Undo send
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
               <button
                 className="btn-primary w-full justify-center lg:col-span-2"
-                disabled={sendMutation.isPending}
+                disabled={sendMutation.isPending || Boolean(pendingSend)}
                 type="submit"
               >
                 <Send size={16} />
-                {sendMutation.isPending ? 'Sending...' : 'Send bulk message'}
+                {sendMutation.isPending
+                  ? 'Sending...'
+                  : pendingSend
+                    ? `Sending in ${pendingSend.seconds}s`
+                    : 'Send bulk message'}
               </button>
             </div>
           </form>

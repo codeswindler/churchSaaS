@@ -14,6 +14,7 @@ import PlatformChurches from './pages/platform/Churches';
 import PlatformCollections from './pages/platform/Collections';
 import PlatformDashboard from './pages/platform/Dashboard';
 import PlatformEnquiries from './pages/platform/Enquiries';
+import PlatformMessaging from './pages/platform/Messaging';
 import PlatformUsers from './pages/platform/Users';
 import PublicCongregation from './pages/public/Congregation';
 import PublicGive from './pages/public/Give';
@@ -49,6 +50,7 @@ export default function App() {
         <Route path="dashboard" element={<PlatformDashboard />} />
         <Route path="churches" element={<PlatformChurches />} />
         <Route path="collections" element={<PlatformCollections />} />
+        <Route path="messaging" element={<PlatformMessaging />} />
         <Route path="enquiries" element={<PlatformEnquiries />} />
         <Route path="users" element={<PlatformUsers />} />
         <Route index element={<Navigate to="/platform/dashboard" replace />} />

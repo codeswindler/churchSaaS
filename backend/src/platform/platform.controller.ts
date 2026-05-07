@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -41,6 +42,21 @@ export class PlatformController {
     return this.platformService.getPlatformSmsUsage(query);
   }
 
+  @Get('messaging/config')
+  getPlatformMessagingConfig() {
+    return this.platformService.getPlatformMessagingConfig();
+  }
+
+  @Post('messaging/bulk')
+  sendPlatformChurchMessage(@Body() body: any) {
+    return this.platformService.sendPlatformChurchMessage(body);
+  }
+
+  @Get('messaging/outbox')
+  listPlatformMessagingOutbox(@Query() query: any) {
+    return this.platformService.listPlatformMessagingOutbox(query);
+  }
+
   @Get('churches/:churchId')
   getChurchDetails(@Param('churchId') churchId: string) {
     return this.platformService.getChurchDetails(churchId);
@@ -76,6 +92,11 @@ export class PlatformController {
   @Patch('churches/:churchId')
   updateChurch(@Param('churchId') churchId: string, @Body() body: any) {
     return this.platformService.updateChurch(churchId, body);
+  }
+
+  @Delete('churches/:churchId')
+  deleteChurch(@Param('churchId') churchId: string, @Body() body: any) {
+    return this.platformService.deleteChurch(churchId, body);
   }
 
   @Get('users')

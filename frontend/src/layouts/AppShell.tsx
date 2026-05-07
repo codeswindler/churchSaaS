@@ -40,6 +40,7 @@ const platformLinks = [
   { to: '/platform/dashboard', label: 'Overview', icon: Landmark },
   { to: '/platform/churches', label: 'Churches', icon: Building2 },
   { to: '/platform/collections', label: 'Collections', icon: WalletCards },
+  { to: '/platform/messaging', label: 'Messaging', icon: Send },
   { to: '/platform/enquiries', label: 'Enquiries', icon: MessageSquareText },
   { to: '/platform/users', label: 'Platform Users', icon: Users },
 ];
@@ -107,6 +108,11 @@ const pageMeta = {
     {
       prefix: '/platform/collections',
       title: 'Collections',
+      variant: 'compact',
+    },
+    {
+      prefix: '/platform/messaging',
+      title: 'Client messaging',
       variant: 'compact',
     },
     {

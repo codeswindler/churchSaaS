@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   buildChurchIntegrationSummary,
 } from '../common/church.utils';
@@ -26,7 +26,12 @@ import {
   PlatformUser,
   PlatformUserRole,
 } from '../entities/platform-user.entity';
-import { SmsOutbox, SmsSendStatus } from '../entities/sms-outbox.entity';
+import {
+  SmsMessageType,
+  SmsOutbox,
+  SmsSendStatus,
+} from '../entities/sms-outbox.entity';
+import { SmsService } from '../sms/sms.service';
 import { ChurchSubscriptionsService } from '../subscriptions/church-subscriptions.service';
 
 @Injectable()
@@ -48,6 +53,7 @@ export class PlatformService {
     private readonly smsOutboxRepo: Repository<SmsOutbox>,
     private readonly churchSubscriptionsService: ChurchSubscriptionsService,
     private readonly contributionsService: ContributionsService,
+    private readonly smsService: SmsService,
   ) {}
 
   async createPlatformUser(body: any) {
@@ -566,6 +572,186 @@ export class PlatformService {
     };
   }
 
+  async deleteChurch(churchId: string, body: any = {}) {
+    const church = await this.churchRepo.findOne({
+      where: { id: churchId },
+    });
+    if (!church) {
+      throw new BadRequestException('Church not found');
+    }
+
+    const confirmName = this.normalizeOptionalText(body.confirmName);
+    if (confirmName !== church.name) {
+      throw new BadRequestException(
+        `Type "${church.name}" to confirm this church deletion`,
+      );
+    }
+
+    await this.churchRepo.remove(church);
+    return {
+      id: churchId,
+      name: church.name,
+      deleted: true,
+    };
+  }
+
+  async getPlatformMessagingConfig() {
+    const churches = await this.churchRepo.find({
+      relations: ['users'],
+      order: { name: 'ASC' },
+    });
+
+    return {
+      churches: churches.map((church) =>
+        this.buildPlatformMessagingChurch(church),
+      ),
+    };
+  }
+
+  async sendPlatformChurchMessage(body: any) {
+    const message = this.normalizeOptionalText(body.message);
+    if (!message) {
+      throw new BadRequestException('Message is required');
+    }
+
+    const selectedChurchIds = Array.isArray(body.churchIds)
+      ? body.churchIds
+          .map((item: unknown) => this.normalizeOptionalText(item))
+          .filter(Boolean)
+      : [];
+    const audience = body.audience === 'selected' ? 'selected' : 'all';
+
+    if (audience === 'selected' && selectedChurchIds.length === 0) {
+      throw new BadRequestException('Select at least one church');
+    }
+
+    const churches = await this.churchRepo.find({
+      relations: ['users'],
+      where:
+        audience === 'selected'
+          ? { id: In(selectedChurchIds) }
+          : { status: ChurchStatus.ACTIVE },
+      order: { name: 'ASC' },
+    });
+
+    if (churches.length === 0) {
+      throw new BadRequestException('No churches matched this audience');
+    }
+
+    let accepted = 0;
+    let failed = 0;
+    let skipped = 0;
+    const recipients: Array<{
+      churchId: string;
+      churchName: string;
+      name: string | null;
+      phone: string;
+      status: 'accepted' | 'failed' | 'skipped';
+    }> = [];
+    const sentPhones = new Set<string>();
+
+    for (const church of churches) {
+      const contacts = this.getPlatformMessagingContacts(church);
+      if (contacts.length === 0) {
+        skipped += 1;
+        recipients.push({
+          churchId: church.id,
+          churchName: church.name,
+          name: null,
+          phone: '',
+          status: 'skipped',
+        });
+        continue;
+      }
+
+      for (const contact of contacts) {
+        const normalizedPhone = this.normalizePhoneForSms(contact.phone);
+        if (!normalizedPhone || sentPhones.has(normalizedPhone)) {
+          skipped += 1;
+          continue;
+        }
+        sentPhones.add(normalizedPhone);
+
+        const ok = await this.smsService.sendSms(
+          normalizedPhone,
+          message,
+          {
+            churchId: church.id,
+            smsPartnerId: church.smsPartnerId || undefined,
+            smsApiKey: church.smsApiKey || undefined,
+            smsShortcode: church.smsShortcode || undefined,
+            smsBaseUrl: church.smsBaseUrl || undefined,
+          },
+          {
+            messageType: SmsMessageType.BULK,
+            recipientName: `Church: ${church.name}${
+              contact.name ? ` - ${contact.name}` : ''
+            }`,
+          },
+        );
+
+        if (ok) {
+          accepted += 1;
+        } else {
+          failed += 1;
+        }
+
+        recipients.push({
+          churchId: church.id,
+          churchName: church.name,
+          name: contact.name,
+          phone: normalizedPhone,
+          status: ok ? 'accepted' : 'failed',
+        });
+      }
+    }
+
+    return {
+      churchCount: churches.length,
+      recipientCount: accepted + failed,
+      accepted,
+      failed,
+      skipped,
+      recipients,
+    };
+  }
+
+  async listPlatformMessagingOutbox(query: any = {}) {
+    const qb = this.smsOutboxRepo
+      .createQueryBuilder('message')
+      .leftJoinAndSelect('message.church', 'church')
+      .where('message.messageType = :messageType', {
+        messageType: SmsMessageType.BULK,
+      })
+      .andWhere('message.createdByUserId IS NULL')
+      .andWhere('message.recipientName LIKE :recipientName', {
+        recipientName: 'Church:%',
+      })
+      .orderBy('message.createdAt', 'DESC');
+
+    if (query.churchId) {
+      qb.andWhere('message.churchId = :churchId', { churchId: query.churchId });
+    }
+    if (query.from) {
+      qb.andWhere('message.createdAt >= :from', { from: new Date(query.from) });
+    }
+    if (query.to) {
+      qb.andWhere('message.createdAt <= :to', { to: new Date(query.to) });
+    }
+    if (query.sendStatus) {
+      qb.andWhere('message.sendStatus = :sendStatus', {
+        sendStatus: query.sendStatus,
+      });
+    }
+    if (query.deliveryStatus) {
+      qb.andWhere('message.deliveryStatus = :deliveryStatus', {
+        deliveryStatus: query.deliveryStatus,
+      });
+    }
+
+    return qb.getMany();
+  }
+
   async getDashboardSummary() {
     const churches = await this.listChurches();
     const totalConfirmed = await this.contributionRepo
@@ -942,6 +1128,103 @@ export class PlatformService {
       throw new BadRequestException('Church not found');
     }
     return church;
+  }
+
+  private buildPlatformMessagingChurch(church: Church) {
+    const contacts = this.getPlatformMessagingContacts(church);
+    return {
+      id: church.id,
+      name: church.name,
+      slug: church.slug,
+      status: church.status,
+      contactEmail: church.contactEmail,
+      contactPhone: church.contactPhone,
+      address: church.address,
+      smsReady: Boolean(church.smsPartnerId && church.smsApiKey),
+      contacts: contacts.map((contact) => ({
+        name: contact.name,
+        email: contact.email,
+        phone: contact.phone,
+        role: contact.role,
+        source: contact.source,
+      })),
+      primaryContact: contacts[0] || null,
+      adminCount: (church.users || []).filter((user) => user.isActive).length,
+    };
+  }
+
+  private getPlatformMessagingContacts(church: Church) {
+    const contacts: Array<{
+      name: string | null;
+      email: string | null;
+      phone: string | null;
+      role: string | null;
+      source: string;
+    }> = [];
+
+    if (church.contactPhone) {
+      contacts.push({
+        name: church.name,
+        email: church.contactEmail,
+        phone: church.contactPhone,
+        role: null,
+        source: 'church_profile',
+      });
+    }
+
+    const activeUsers = (church.users || [])
+      .filter((user) => user.isActive && user.phone)
+      .sort((a, b) => {
+        if (a.role === ChurchUserRole.PRIEST && b.role !== ChurchUserRole.PRIEST) {
+          return -1;
+        }
+        if (a.role !== ChurchUserRole.PRIEST && b.role === ChurchUserRole.PRIEST) {
+          return 1;
+        }
+        return a.createdAt.getTime() - b.createdAt.getTime();
+      });
+
+    activeUsers.forEach((user) => {
+      contacts.push({
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        source: 'church_user',
+      });
+    });
+
+    const seenPhones = new Set<string>();
+    return contacts.filter((contact) => {
+      const normalizedPhone = this.normalizePhoneForSms(contact.phone);
+      if (!normalizedPhone || seenPhones.has(normalizedPhone)) {
+        return false;
+      }
+      seenPhones.add(normalizedPhone);
+      return true;
+    });
+  }
+
+  private normalizePhoneForSms(value?: string | null) {
+    const raw = `${value || ''}`.trim();
+    if (!raw) {
+      return null;
+    }
+
+    const digits = raw.replace(/[^\d]/g, '');
+    if (!digits) {
+      return null;
+    }
+    if (digits.startsWith('254') && digits.length >= 12) {
+      return digits;
+    }
+    if (digits.startsWith('0') && digits.length >= 10) {
+      return `254${digits.slice(1)}`;
+    }
+    if (digits.length === 9 && /^[17]/.test(digits)) {
+      return `254${digits}`;
+    }
+    return digits.length >= 10 ? digits : null;
   }
 
   private sanitizeChurchUser(user: ChurchUser) {

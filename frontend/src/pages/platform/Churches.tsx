@@ -11,6 +11,7 @@ import {
   PencilLine,
   RotateCcw,
   ShieldAlert,
+  Trash2,
   Users,
   X,
 } from 'lucide-react';
@@ -116,6 +117,12 @@ interface SubscriptionActionDialogState {
   tone: 'primary' | 'danger';
 }
 
+interface DeleteDialogState {
+  churchId: string;
+  churchName: string;
+  confirmation: string;
+}
+
 export default function PlatformChurches() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<ChurchFormState>(() => createInitialForm());
@@ -134,6 +141,9 @@ export default function PlatformChurches() {
   const subscriptionDaysInputRef = useRef<HTMLInputElement | null>(null);
   const [subscriptionDialog, setSubscriptionDialog] =
     useState<SubscriptionActionDialogState | null>(null);
+  const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(
+    null,
+  );
 
   const { data: churches, isLoading } = useQuery({
     queryKey: ['platform-churches'],
@@ -228,6 +238,33 @@ export default function PlatformChurches() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async (dialog: DeleteDialogState) => {
+      const response = await api.delete(`/platform/churches/${dialog.churchId}`, {
+        data: {
+          confirmName: dialog.confirmation,
+        },
+      });
+      return response.data;
+    },
+    onSuccess: (data, dialog) => {
+      toast.success(`${data?.name || 'Church'} deleted`);
+      const deletedChurchId = dialog.churchId;
+      setDeleteDialog(null);
+      if (selectedChurchId === deletedChurchId) {
+        setSelectedChurchId(null);
+      }
+      if (detailChurchId === deletedChurchId) {
+        setDetailChurchId(null);
+      }
+      queryClient.invalidateQueries({ queryKey: ['platform-churches'] });
+      queryClient.invalidateQueries({ queryKey: ['platform-dashboard'] });
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Unable to delete church');
+    },
+  });
+
   const churchesList = useMemo(() => churches || [], [churches]);
   const detailChurchSnapshot = useMemo(
     () =>
@@ -294,6 +331,28 @@ export default function PlatformChurches() {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [subscriptionDialog, actionMutation.isPending]);
+
+  useEffect(() => {
+    if (!deleteDialog) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !deleteMutation.isPending) {
+        setDeleteDialog(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [deleteDialog, deleteMutation.isPending]);
 
   const updateForm = <K extends keyof ChurchFormState>(
     key: K,
@@ -538,8 +597,37 @@ export default function PlatformChurches() {
           }
         : {
             reason: subscriptionDialog.reason || undefined,
-          },
+        },
     });
+  };
+
+  const openDeleteDialog = (churchId: string, churchName: string) => {
+    setDeleteDialog({
+      churchId,
+      churchName,
+      confirmation: '',
+    });
+  };
+
+  const closeDeleteDialog = () => {
+    if (deleteMutation.isPending) {
+      return;
+    }
+
+    setDeleteDialog(null);
+  };
+
+  const submitDeleteDialog = () => {
+    if (!deleteDialog) {
+      return;
+    }
+
+    if (deleteDialog.confirmation !== deleteDialog.churchName) {
+      toast.error(`Type ${deleteDialog.churchName} to confirm deletion`);
+      return;
+    }
+
+    deleteMutation.mutate(deleteDialog);
   };
 
   return (
@@ -776,6 +864,16 @@ export default function PlatformChurches() {
                           }
                         >
                           Suspend
+                        </button>
+                        <button
+                          className="btn-danger px-3 py-2"
+                          type="button"
+                          onClick={() =>
+                            openDeleteDialog(church.id, church.name)
+                          }
+                        >
+                          <Trash2 size={14} />
+                          Delete
                         </button>
                         <button
                           className="btn-secondary px-3 py-2"
@@ -1184,6 +1282,99 @@ export default function PlatformChurches() {
                   </div>
                 </form>
               )}
+            </section>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteDialog ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={closeDeleteDialog}
+        >
+          <div className="modal-shell">
+            <section
+              aria-labelledby="delete-church-title"
+              aria-modal="true"
+              className="panel modal-card max-w-2xl p-6 sm:p-7"
+              role="dialog"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-4">
+                  <div className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-rose-300/20 bg-rose-500/10 text-rose-100">
+                    <Trash2 size={20} />
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+                      Delete church
+                    </p>
+                    <h3
+                      id="delete-church-title"
+                      className="mt-2 text-2xl font-semibold text-white"
+                    >
+                      Permanently delete {deleteDialog.churchName}
+                    </h3>
+                    <p className="mt-2 text-sm leading-6 text-stone-300">
+                      This removes the church workspace and its linked users,
+                      subscriptions, contributions, fund accounts, SMS outbox,
+                      address books, and public page records. This cannot be
+                      undone from the app.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  aria-label="Close delete church dialog"
+                  className="btn-secondary px-3 py-2"
+                  type="button"
+                  onClick={closeDeleteDialog}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="mt-6 rounded-3xl border border-white/10 bg-black/10 p-5">
+                <label className="label">
+                  Type {deleteDialog.churchName} to confirm
+                </label>
+                <input
+                  className="input"
+                  value={deleteDialog.confirmation}
+                  onChange={(event) =>
+                    setDeleteDialog((current) =>
+                      current
+                        ? {
+                            ...current,
+                            confirmation: event.target.value,
+                          }
+                        : current,
+                    )
+                  }
+                />
+              </div>
+
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                <button
+                  className="btn-secondary flex-1 justify-center"
+                  type="button"
+                  onClick={closeDeleteDialog}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn-danger flex-1 justify-center"
+                  disabled={deleteMutation.isPending}
+                  type="button"
+                  onClick={submitDeleteDialog}
+                >
+                  <Trash2 size={16} />
+                  {deleteMutation.isPending
+                    ? 'Deleting...'
+                    : 'Delete church'}
+                </button>
+              </div>
             </section>
           </div>
         </div>
