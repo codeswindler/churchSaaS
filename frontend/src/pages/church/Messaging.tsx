@@ -14,7 +14,6 @@ import toast from 'react-hot-toast';
 import api from '../../services/api';
 
 const initialMessageForm = {
-  audiences: [] as string[],
   genderFilter: '',
   message: '',
   pastedContacts: '',
@@ -48,39 +47,21 @@ const initialOutboxFilters = {
 
 type Workspace = 'compose' | 'addressBooks' | 'upload' | 'outbox';
 
-const contributorAudienceOptions = [
-  {
-    id: 'all_contributors',
-    title: 'All contributors',
-    description: 'Every contributor saved from payment records.',
-  },
-  {
-    id: 'male_contributors',
-    title: 'Male contributors',
-    description: 'Only contributors tagged as male.',
-  },
-  {
-    id: 'female_contributors',
-    title: 'Female contributors',
-    description: 'Only contributors tagged as female.',
-  },
-] as const;
-
-const genderFilterOptions = [
+const audienceFilterOptions = [
   {
     id: '',
-    title: 'All genders',
-    description: 'Send to every selected recipient.',
+    title: 'All recipients',
+    description: 'No tag filter on selected sources.',
   },
   {
     id: 'male',
-    title: 'Male only',
-    description: 'Only contacts tagged male.',
+    title: 'Men',
+    description: 'Selected contributors or contacts tagged male.',
   },
   {
     id: 'female',
-    title: 'Female only',
-    description: 'Only contacts tagged female.',
+    title: 'Women',
+    description: 'Selected contributors or contacts tagged female.',
   },
 ] as const;
 
@@ -110,6 +91,13 @@ function formatCount(value: unknown) {
   return Number(value || 0).toLocaleString();
 }
 
+const selectableTileClass =
+  'rounded-2xl border px-4 py-3 text-left transition';
+const selectedTileClass =
+  'border-emerald-300/60 bg-emerald-300/15 text-white shadow-[0_0_0_1px_rgba(110,231,183,0.14)]';
+const idleTileClass =
+  'border-white/10 bg-black/10 text-stone-300 hover:border-emerald-300/35 hover:bg-emerald-300/10 hover:text-white';
+
 export default function ChurchMessaging() {
   const queryClient = useQueryClient();
   const messageTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -126,7 +114,7 @@ export default function ChurchMessaging() {
   const remainingCharacters =
     currentPageUsage === 0 ? 160 : 160 - currentPageUsage;
 
-  const { data: messagingConfig } = useQuery({
+  const { data: messagingConfig, isLoading: messagingConfigLoading } = useQuery({
     queryKey: ['church-messaging-config'],
     queryFn: () =>
       api.get('/church/messaging/config').then((response) => response.data),
@@ -144,6 +132,13 @@ export default function ChurchMessaging() {
       api
         .get('/church/messaging/address-books')
         .then((response) => response.data),
+  });
+
+  const { data: fundAccountList, isLoading: fundAccountsLoading } = useQuery({
+    queryKey: ['church-messaging-fund-accounts'],
+    queryFn: () =>
+      api.get('/church/fund-accounts').then((response) => response.data),
+    retry: false,
   });
 
   const { data: addressBookContacts, isLoading: contactsLoading } = useQuery({
@@ -166,7 +161,13 @@ export default function ChurchMessaging() {
   });
 
   const shortcodes = messagingConfig?.smsShortcodes || [];
-  const fundAccounts = (messagingConfig?.fundAccounts || []).filter(
+  const isLoadingFundAccounts =
+    messagingConfigLoading || fundAccountsLoading;
+  const resolvedFundAccounts =
+    Array.isArray(fundAccountList) && fundAccountList.length > 0
+      ? fundAccountList
+      : messagingConfig?.fundAccounts || fundAccountList || [];
+  const fundAccounts = resolvedFundAccounts.filter(
     (fundAccount: any) => fundAccount.isActive !== false,
   );
   const defaultShortcode =
@@ -204,13 +205,12 @@ export default function ChurchMessaging() {
   const sendMutation = useMutation({
     mutationFn: async () => {
       const hasAudience =
-        form.audiences.length > 0 ||
         form.fundAccountIds.length > 0 ||
         form.addressBookIds.length > 0 ||
         form.pastedContacts.trim().length > 0;
       if (!hasAudience) {
         throw new Error(
-          'Select at least one audience, address book, or pasted contact',
+          'Select at least one fund account, address book, or pasted contact',
         );
       }
       const response = await api.post('/church/messaging/bulk', form);
@@ -379,23 +379,10 @@ export default function ChurchMessaging() {
     });
   };
 
-  const toggleContributorAudience = (audienceId: string) => {
+  const setAudienceFilter = (gender: string) => {
     setForm((current) => {
-      const selected = new Set(current.audiences);
-      if (selected.has(audienceId)) {
-        selected.delete(audienceId);
-      } else {
-        selected.add(audienceId);
-      }
-      return { ...current, audiences: Array.from(selected) };
+      return { ...current, genderFilter: gender };
     });
-  };
-
-  const setGenderFilter = (gender: string) => {
-    setForm((current) => ({
-      ...current,
-      genderFilter: gender,
-    }));
   };
 
   const loadUploadFile = (file?: File) => {
@@ -525,18 +512,16 @@ export default function ChurchMessaging() {
               <div className="lg:col-span-2">
                 <label className="label">Audience</label>
                 <div className="grid gap-2 md:grid-cols-3">
-                  {contributorAudienceOptions.map((audience) => {
-                    const isSelected = form.audiences.includes(audience.id);
+                  {audienceFilterOptions.map((audience) => {
+                    const isSelected = form.genderFilter === audience.id;
                     return (
                       <button
                         key={audience.id}
-                        className={`rounded-2xl border px-4 py-3 text-left transition ${
-                          isSelected
-                            ? 'border-amber-200/50 bg-amber-200/15 text-white'
-                            : 'border-white/10 bg-black/10 text-stone-300 hover:bg-white/5 hover:text-white'
+                        className={`${selectableTileClass} ${
+                          isSelected ? selectedTileClass : idleTileClass
                         }`}
                         type="button"
-                        onClick={() => toggleContributorAudience(audience.id)}
+                        onClick={() => setAudienceFilter(audience.id)}
                       >
                         <span className="block font-semibold">
                           {audience.title}
@@ -560,10 +545,8 @@ export default function ChurchMessaging() {
                     return (
                       <button
                         key={fundAccount.id}
-                        className={`rounded-2xl border px-4 py-3 text-left transition ${
-                          isSelected
-                            ? 'border-emerald-300/50 bg-emerald-300/15 text-white'
-                            : 'border-white/10 bg-black/10 text-stone-300 hover:bg-white/5 hover:text-white'
+                        className={`${selectableTileClass} ${
+                          isSelected ? selectedTileClass : idleTileClass
                         }`}
                         type="button"
                         onClick={() => toggleFundAccount(fundAccount.id)}
@@ -579,37 +562,11 @@ export default function ChurchMessaging() {
                   })}
                   {fundAccounts.length === 0 ? (
                     <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-sm text-stone-400">
-                      Active fund accounts will appear here.
+                      {isLoadingFundAccounts
+                        ? 'Loading fund accounts...'
+                        : 'No active fund accounts found for this church.'}
                     </div>
                   ) : null}
-                </div>
-              </div>
-
-              <div className="lg:col-span-2">
-                <label className="label">Optional gender filter</label>
-                <div className="grid gap-2 md:grid-cols-3">
-                  {genderFilterOptions.map((option) => {
-                    const isSelected = form.genderFilter === option.id;
-                    return (
-                      <button
-                        key={option.title}
-                        className={`rounded-2xl border px-4 py-3 text-left transition ${
-                          isSelected
-                            ? 'border-emerald-300/50 bg-emerald-300/15 text-white'
-                            : 'border-white/10 bg-black/10 text-stone-300 hover:bg-white/5 hover:text-white'
-                        }`}
-                        type="button"
-                        onClick={() => setGenderFilter(option.id)}
-                      >
-                        <span className="block font-semibold">
-                          {option.title}
-                        </span>
-                        <span className="text-xs text-stone-400">
-                          {option.description}
-                        </span>
-                      </button>
-                    );
-                  })}
                 </div>
               </div>
 
@@ -645,10 +602,8 @@ export default function ChurchMessaging() {
                     return (
                       <button
                         key={book.id}
-                        className={`rounded-2xl border px-4 py-3 text-left transition ${
-                          isSelected
-                            ? 'border-amber-200/50 bg-amber-200/15 text-white'
-                            : 'border-white/10 bg-black/10 text-stone-300 hover:bg-white/5 hover:text-white'
+                        className={`${selectableTileClass} ${
+                          isSelected ? selectedTileClass : idleTileClass
                         }`}
                         type="button"
                         onClick={() => toggleAddressBook(book.id)}
@@ -791,9 +746,7 @@ export default function ChurchMessaging() {
                   <button
                     key={book.id}
                     className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition ${
-                      isOpen
-                        ? 'border-amber-200/50 bg-amber-200/15 text-white'
-                        : 'border-white/10 bg-black/10 text-stone-300 hover:bg-white/5 hover:text-white'
+                      isOpen ? selectedTileClass : idleTileClass
                     }`}
                     type="button"
                     onClick={() => {

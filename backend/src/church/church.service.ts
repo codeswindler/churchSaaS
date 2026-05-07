@@ -33,7 +33,6 @@ import { Contributor } from '../entities/contributor.entity';
 import { FundAccount } from '../entities/fund-account.entity';
 import { SmsAddressBookContact } from '../entities/sms-address-book-contact.entity';
 import { SmsAddressBook } from '../entities/sms-address-book.entity';
-import { SmsBatchAudience } from '../entities/sms-batch.entity';
 import { SmsService } from '../sms/sms.service';
 import { ChurchSubscriptionsService } from '../subscriptions/church-subscriptions.service';
 
@@ -435,26 +434,11 @@ export class ChurchService {
   }
 
   async sendBulkMessage(churchId: string, userId: string, body: any) {
-    const rawAudiences = Array.isArray(body.audiences)
-      ? body.audiences
-      : body.audience
-        ? [body.audience]
-        : [];
-    const audiences = Array.from(
-      new Set(
-        rawAudiences.filter((audience: string) =>
-          [
-            SmsBatchAudience.ALL_CONTRIBUTORS,
-            SmsBatchAudience.MALE_CONTRIBUTORS,
-            SmsBatchAudience.FEMALE_CONTRIBUTORS,
-          ].includes(audience as SmsBatchAudience),
-        ),
-      ),
-    ) as SmsBatchAudience[];
-
     return this.smsService.sendBulkMessages(churchId, userId, {
-      audiences,
-      genderFilter: this.smsService.normalizeGender(body.genderFilter || ''),
+      audiences: [],
+      genderFilter: this.smsService.normalizeGender(
+        body.genderFilter || body.contributorTag || body.audienceTag || '',
+      ),
       message: body.message,
       pastedContacts: body.pastedContacts,
       addressBookIds: Array.isArray(body.addressBookIds)

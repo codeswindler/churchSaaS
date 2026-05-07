@@ -334,6 +334,11 @@ export class PublicController {
     };
   }
 
+  @Post('church-signup')
+  createChurchSignupAlias(@Body() body: any) {
+    return this.createChurchSignup(body);
+  }
+
   @Post('church-signups/mpesa-onboarding')
   async submitSignupMpesaOnboarding(@Body() body: any) {
     const churchId = this.normalizeRequiredText(
