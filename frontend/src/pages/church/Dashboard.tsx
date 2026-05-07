@@ -185,7 +185,33 @@ function TrendChart({
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [pinnedIndex, setPinnedIndex] = useState<number | null>(null);
   const isMobileChart = useMediaQuery('(max-width: 768px)');
+  const chartFrameRef = useRef<HTMLDivElement | null>(null);
   const chartScrollRef = useRef<HTMLDivElement | null>(null);
+  const [chartFrameWidth, setChartFrameWidth] = useState(0);
+
+  useEffect(() => {
+    const frame = chartFrameRef.current;
+    if (!frame) return undefined;
+
+    const updateFrameWidth = (width: number) => {
+      setChartFrameWidth((current) =>
+        Math.abs(current - width) > 1 ? width : current,
+      );
+    };
+
+    updateFrameWidth(frame.clientWidth);
+    if (typeof ResizeObserver === 'undefined') {
+      return undefined;
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      updateFrameWidth(Math.floor(entry?.contentRect.width || frame.clientWidth));
+    });
+    observer.observe(frame);
+
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const scrollElement = chartScrollRef.current;
@@ -204,28 +230,30 @@ function TrendChart({
     );
   }
 
-  const height = isMobileChart ? 224 : 320;
-  const paddingLeft = isMobileChart ? 62 : 104;
-  const paddingRight = isMobileChart ? 18 : 48;
-  const paddingTop = isMobileChart ? 28 : 34;
-  const paddingBottom = isMobileChart ? 30 : 34;
+  const height = isMobileChart ? 248 : 330;
+  const paddingLeft = isMobileChart ? 78 : 98;
+  const paddingRight = isMobileChart ? 30 : 44;
+  const paddingTop = isMobileChart ? 34 : 44;
+  const paddingBottom = isMobileChart ? 48 : 50;
   const pointGap =
     granularity === 'daily'
       ? isMobileChart
-        ? 42
-        : 44
+        ? 40
+        : 32
       : isMobileChart
-        ? 84
-        : 96;
-  const minPlotWidth = isMobileChart ? 250 : 760;
+        ? 76
+        : 88;
+  const frameWidth = Math.max(
+    isMobileChart ? 320 : 620,
+    Math.floor(chartFrameWidth || (isMobileChart ? 360 : 920)),
+  );
+  const visiblePlotWidth = Math.max(1, frameWidth - paddingLeft - paddingRight);
   const naturalPlotWidth = Math.max(1, Math.max(data.length - 1, 1) * pointGap);
-  const plotWidth = Math.max(minPlotWidth, naturalPlotWidth);
-  const width = paddingLeft + paddingRight + plotWidth;
+  const plotWidth = isMobileChart
+    ? Math.max(visiblePlotWidth, naturalPlotWidth)
+    : visiblePlotWidth;
+  const width = Math.ceil(paddingLeft + paddingRight + plotWidth);
   const baselineY = height - paddingBottom;
-  const plotOffsetX =
-    data.length > 1 && naturalPlotWidth <= plotWidth
-      ? Math.max(0, (plotWidth - naturalPlotWidth) / 2)
-      : 0;
   const maxAmount = Math.max(
     1,
     ...data.map((item) => Number(item.totalAmount || 0)),
@@ -235,7 +263,7 @@ function TrendChart({
       return paddingLeft + plotWidth / 2;
     }
 
-    return paddingLeft + plotOffsetX + index * pointGap;
+    return paddingLeft + (index / (data.length - 1)) * plotWidth;
   };
   const yFor = (amount: number) =>
     height -
@@ -286,7 +314,8 @@ function TrendChart({
 
   return (
     <div
-      className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/10 p-4"
+      ref={chartFrameRef}
+      className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/10 p-4 md:p-5"
       onMouseLeave={() => setHoveredIndex(null)}
     >
       <Link
@@ -301,13 +330,16 @@ function TrendChart({
 
       <div
         ref={chartScrollRef}
-        className="trend-chart-scroll -mx-1 overflow-x-auto pb-1"
+        className="trend-chart-scroll overflow-x-hidden overflow-y-hidden pb-1"
       >
         <svg
           aria-label="Contribution trend chart"
-          className="trend-chart-svg h-[340px] max-w-none"
+          className="trend-chart-svg block max-w-none"
           preserveAspectRatio="none"
-          style={{ width: `${width}px` }}
+          style={{
+            height: `${height}px`,
+            width: isMobileChart ? `${width}px` : '100%',
+          }}
           viewBox={`0 0 ${width} ${height}`}
         >
         <defs>
@@ -326,7 +358,7 @@ function TrendChart({
         {yTicks.map((tick) => (
           <g key={tick.label}>
             <line
-              stroke="rgba(255,255,255,0.08)"
+              stroke="var(--trend-grid-color)"
               strokeDasharray="5 8"
               x1={paddingLeft}
               x2={width - paddingRight}
@@ -334,7 +366,7 @@ function TrendChart({
               y2={tick.y}
             />
             <text
-              fill="rgba(231,229,228,0.48)"
+              fill="var(--trend-axis-color)"
               fontSize="10"
               textAnchor="end"
               x={paddingLeft - 12}
@@ -367,16 +399,16 @@ function TrendChart({
         ) : null}
         <g>
           <rect
-            fill="rgba(19,31,27,0.94)"
+            fill="var(--trend-tooltip-bg)"
             height={isMobileChart ? '44' : '48'}
             rx="10"
-            stroke="rgba(52,211,153,0.36)"
+            stroke="rgba(52,211,153,0.42)"
             width={tooltipWidth}
             x={tooltipX}
             y={tooltipY}
           />
           <text
-            fill="rgba(231,229,228,0.66)"
+            fill="var(--trend-tooltip-muted)"
             fontSize={isMobileChart ? '9' : '10'}
             textAnchor="middle"
             x={tooltipX + tooltipWidth / 2}
@@ -402,7 +434,9 @@ function TrendChart({
             key={item.key}
             cx={item.x}
             cy={item.y}
-            fill={activeIndex === index ? trendColor : '#0f172a'}
+            fill={
+              activeIndex === index ? trendColor : 'var(--trend-point-fill)'
+            }
             r={activeIndex === index ? '7' : '5'}
             stroke={trendColor}
             strokeWidth="3"
@@ -431,21 +465,21 @@ function TrendChart({
           />
         ))}
         <text
-          fill="rgba(231,229,228,0.56)"
+          fill="var(--trend-axis-color)"
           fontSize="11"
           textAnchor="start"
           x={points[0].x}
-          y={height - 7}
+          y={height - 12}
         >
           {data[0].shortLabel}
         </text>
         {points.length > 1 ? (
           <text
-            fill="rgba(231,229,228,0.56)"
+            fill="var(--trend-axis-color)"
             fontSize="11"
             textAnchor="end"
             x={points[points.length - 1].x}
-            y={height - 7}
+            y={height - 12}
           >
             {data[data.length - 1].shortLabel}
           </text>
