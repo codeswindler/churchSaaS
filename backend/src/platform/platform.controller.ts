@@ -90,8 +90,17 @@ export class PlatformController {
   }
 
   @Patch('churches/:churchId')
-  updateChurch(@Param('churchId') churchId: string, @Body() body: any) {
-    return this.platformService.updateChurch(churchId, body);
+  updateChurch(
+    @Param('churchId') churchId: string,
+    @Body() body: any,
+    @Request() req: any,
+  ) {
+    return this.platformService.updateChurch(churchId, body, req.user.id);
+  }
+
+  @Post('churches/billing-model/batch')
+  updateChurchBillingBatch(@Body() body: any, @Request() req: any) {
+    return this.platformService.updateChurchBillingBatch(body, req.user.id);
   }
 
   @Delete('churches/:churchId')

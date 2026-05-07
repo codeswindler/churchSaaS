@@ -195,15 +195,23 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
             'ADD COLUMN `commissionRatePct` decimal(5,2) NOT NULL DEFAULT 0 AFTER `mpesaCallbackUrl`',
           );
         }
+        if (!churches.findColumnByName('billingModel')) {
+          statements.push(
+            "ADD COLUMN `billingModel` varchar(40) NOT NULL DEFAULT 'subscription' AFTER `commissionRatePct`",
+          );
+        }
         if (!churches.findColumnByName('enabledFeatures')) {
           statements.push(
-            'ADD COLUMN `enabledFeatures` text NULL AFTER `commissionRatePct`',
+            'ADD COLUMN `enabledFeatures` text NULL AFTER `billingModel`',
           );
         }
 
         if (statements.length > 0) {
           await queryRunner.query(
             `ALTER TABLE \`churches\` ${statements.join(', ')}`,
+          );
+          await queryRunner.query(
+            "UPDATE `churches` SET `billingModel` = 'commission' WHERE COALESCE(`commissionRatePct`, 0) > 0",
           );
           this.logger.log(
             `Applied church revenue/access schema bootstrap with ${statements.length} column updates.`,

@@ -11,7 +11,11 @@ import {
   computeCountdown,
   GRACE_PERIOD_DAYS,
 } from '../common/subscription.utils';
-import { Church, ChurchStatus } from '../entities/church.entity';
+import {
+  Church,
+  ChurchBillingModel,
+  ChurchStatus,
+} from '../entities/church.entity';
 import {
   ChurchSubscriptionAdjustment,
   ChurchSubscriptionAdjustmentAction,
@@ -79,6 +83,14 @@ export class ChurchSubscriptionsService {
   }
 
   async getChurchSubscriptionStatus(churchId: string) {
+    const church = await this.churchRepo.findOne({ where: { id: churchId } });
+    if (!church) {
+      throw new NotFoundException('Church not found');
+    }
+    if (church.billingModel === ChurchBillingModel.COMMISSION) {
+      return this.buildCommissionSnapshot(church);
+    }
+
     const subscription = await this.getCurrentSubscription(churchId);
     return this.buildSnapshot(subscription);
   }
@@ -93,6 +105,10 @@ export class ChurchSubscriptionsService {
       throw new ForbiddenException('Church account is inactive');
     }
 
+    if (church.billingModel === ChurchBillingModel.COMMISSION) {
+      return this.buildCommissionSnapshot(church);
+    }
+
     const subscription = await this.getChurchSubscriptionStatus(churchId);
     if (subscription.status === ChurchSubscriptionStatus.SUSPENDED) {
       throw new ForbiddenException(
@@ -101,6 +117,40 @@ export class ChurchSubscriptionsService {
     }
 
     return subscription;
+  }
+
+  async ensureSubscriptionForBilling(
+    churchId: string,
+    days = 30,
+    performedByPlatformUserId?: string,
+    reason?: string,
+  ) {
+    try {
+      const subscription = await this.getCurrentSubscription(churchId);
+      if (
+        subscription.status === ChurchSubscriptionStatus.SUSPENDED ||
+        subscription.graceEndsAt <= new Date()
+      ) {
+        return this.reactivate(
+          churchId,
+          days,
+          performedByPlatformUserId,
+          reason || 'Switched to subscription billing',
+        );
+      }
+
+      return this.buildSnapshot(subscription);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return this.initializeSubscription(
+          churchId,
+          days,
+          performedByPlatformUserId,
+          'Standard Plan',
+        );
+      }
+      throw error;
+    }
   }
 
   async addDays(
@@ -300,6 +350,7 @@ export class ChurchSubscriptionsService {
     const countdown = computeCountdown(target);
 
     return {
+      billingModel: ChurchBillingModel.SUBSCRIPTION,
       id: subscription.id,
       startsAt: subscription.startsAt,
       expiresAt: subscription.expiresAt,
@@ -322,6 +373,22 @@ export class ChurchSubscriptionsService {
               ? 'Suspended'
               : 'Subscription ends in',
       },
+    };
+  }
+
+  private buildCommissionSnapshot(church: Church) {
+    return {
+      billingModel: ChurchBillingModel.COMMISSION,
+      id: null,
+      startsAt: null,
+      expiresAt: null,
+      graceEndsAt: null,
+      planCode: 'commission',
+      planName: 'Commission billing',
+      notes: null,
+      status: 'commission',
+      commissionRatePct: Number(church.commissionRatePct || 0),
+      countdown: null,
     };
   }
 

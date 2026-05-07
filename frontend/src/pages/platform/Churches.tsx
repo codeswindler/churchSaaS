@@ -65,6 +65,7 @@ function createInitialForm() {
     mpesaPasskey: '',
     mpesaShortcode: '',
     mpesaCallbackUrl: getDefaultMpesaCallbackUrl(),
+    billingModel: 'subscription',
     commissionRatePct: 0,
     enabledFeatures: [
       'finance',
@@ -123,6 +124,13 @@ interface DeleteDialogState {
   confirmation: string;
 }
 
+interface BatchBillingDialogState {
+  billingModel: 'subscription' | 'commission';
+  commissionRatePct: number;
+  subscriptionDays: number;
+  reason: string;
+}
+
 export default function PlatformChurches() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<ChurchFormState>(() => createInitialForm());
@@ -144,6 +152,9 @@ export default function PlatformChurches() {
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(
     null,
   );
+  const [selectedChurchIds, setSelectedChurchIds] = useState<string[]>([]);
+  const [batchBillingDialog, setBatchBillingDialog] =
+    useState<BatchBillingDialogState | null>(null);
 
   const { data: churches, isLoading } = useQuery({
     queryKey: ['platform-churches'],
@@ -265,6 +276,33 @@ export default function PlatformChurches() {
     },
   });
 
+  const batchBillingMutation = useMutation({
+    mutationFn: async (dialog: BatchBillingDialogState) => {
+      const response = await api.post('/platform/churches/billing-model/batch', {
+        churchIds: selectedChurchIds,
+        billingModel: dialog.billingModel,
+        commissionRatePct: dialog.commissionRatePct,
+        subscriptionDays: dialog.subscriptionDays,
+        reason: dialog.reason,
+      });
+      return response.data;
+    },
+    onSuccess: (data) => {
+      toast.success(
+        `Updated ${Number(data?.updated || 0).toLocaleString()} churches`,
+      );
+      setBatchBillingDialog(null);
+      setSelectedChurchIds([]);
+      queryClient.invalidateQueries({ queryKey: ['platform-churches'] });
+      queryClient.invalidateQueries({ queryKey: ['platform-dashboard'] });
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message || 'Unable to update church billing',
+      );
+    },
+  });
+
   const churchesList = useMemo(() => churches || [], [churches]);
   const detailChurchSnapshot = useMemo(
     () =>
@@ -354,6 +392,28 @@ export default function PlatformChurches() {
     };
   }, [deleteDialog, deleteMutation.isPending]);
 
+  useEffect(() => {
+    if (!batchBillingDialog) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !batchBillingMutation.isPending) {
+        setBatchBillingDialog(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [batchBillingDialog, batchBillingMutation.isPending]);
+
   const updateForm = <K extends keyof ChurchFormState>(
     key: K,
     value: ChurchFormState[K],
@@ -424,6 +484,7 @@ export default function PlatformChurches() {
         mpesaPasskey: response.data.mpesaPasskey || '',
         mpesaShortcode: response.data.mpesaShortcode || '',
         mpesaCallbackUrl: response.data.mpesaCallbackUrl || defaultCallbackUrl,
+        billingModel: response.data.billingModel || 'subscription',
         commissionRatePct: Number(response.data.commissionRatePct || 0),
         enabledFeatures:
           response.data.enabledFeatures || createInitialForm().enabledFeatures,
@@ -630,6 +691,71 @@ export default function PlatformChurches() {
     deleteMutation.mutate(deleteDialog);
   };
 
+  const toggleChurchSelection = (churchId: string) => {
+    setSelectedChurchIds((current) =>
+      current.includes(churchId)
+        ? current.filter((id) => id !== churchId)
+        : [...current, churchId],
+    );
+  };
+
+  const allVisibleChurchesSelected =
+    churchesList.length > 0 &&
+    churchesList.every((church: any) => selectedChurchIds.includes(church.id));
+
+  const toggleAllVisibleChurches = () => {
+    if (allVisibleChurchesSelected) {
+      setSelectedChurchIds([]);
+      return;
+    }
+
+    setSelectedChurchIds(churchesList.map((church: any) => church.id));
+  };
+
+  const openBatchBillingDialog = (
+    billingModel: BatchBillingDialogState['billingModel'],
+  ) => {
+    if (selectedChurchIds.length === 0) {
+      toast.error('Select at least one church');
+      return;
+    }
+
+    setBatchBillingDialog({
+      billingModel,
+      commissionRatePct: billingModel === 'commission' ? 0.5 : 0,
+      subscriptionDays: 30,
+      reason:
+        billingModel === 'commission'
+          ? 'Batch switched to commission billing'
+          : 'Batch switched to subscription billing',
+    });
+  };
+
+  const closeBatchBillingDialog = () => {
+    if (batchBillingMutation.isPending) {
+      return;
+    }
+
+    setBatchBillingDialog(null);
+  };
+
+  const submitBatchBillingDialog = () => {
+    if (!batchBillingDialog) {
+      return;
+    }
+
+    if (
+      batchBillingDialog.billingModel === 'subscription' &&
+      (!Number.isFinite(batchBillingDialog.subscriptionDays) ||
+        batchBillingDialog.subscriptionDays < 1)
+    ) {
+      toast.error('Enter valid subscription days');
+      return;
+    }
+
+    batchBillingMutation.mutate(batchBillingDialog);
+  };
+
   return (
     <div className="space-y-6">
       <section className="panel p-6">
@@ -697,6 +823,37 @@ export default function PlatformChurches() {
               Create church
             </button>
           </div>
+
+          <div className="mt-4 flex flex-col gap-3 rounded-3xl border border-white/10 bg-black/10 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
+                Batch billing
+              </p>
+              <p className="mt-1 text-sm text-stone-300">
+                {selectedChurchIds.length.toLocaleString()} selected. Switch
+                churches between subscription timers and commission percentage
+                billing.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                className="btn-secondary justify-center px-3 py-2"
+                disabled={selectedChurchIds.length === 0}
+                type="button"
+                onClick={() => openBatchBillingDialog('subscription')}
+              >
+                Set subscription
+              </button>
+              <button
+                className="btn-secondary justify-center px-3 py-2"
+                disabled={selectedChurchIds.length === 0}
+                type="button"
+                onClick={() => openBatchBillingDialog('commission')}
+              >
+                Set %
+              </button>
+            </div>
+          </div>
         </div>
 
         {isLoading ? (
@@ -706,9 +863,17 @@ export default function PlatformChurches() {
             <table>
               <thead>
                 <tr>
+                  <th>
+                    <input
+                      aria-label="Select all churches"
+                      checked={allVisibleChurchesSelected}
+                      type="checkbox"
+                      onChange={toggleAllVisibleChurches}
+                    />
+                  </th>
                   <th>Church</th>
-                  <th>Subscription</th>
-                  <th>Countdown</th>
+                  <th>Billing</th>
+                  <th>Timer</th>
                   <th>Direct M-Pesa</th>
                   <th>Commission</th>
                   <th>Revenue</th>
@@ -724,6 +889,14 @@ export default function PlatformChurches() {
                       selectedChurchId === church.id ? 'bg-amber-200/5' : ''
                     }
                   >
+                    <td>
+                      <input
+                        aria-label={`Select ${church.name}`}
+                        checked={selectedChurchIds.includes(church.id)}
+                        type="checkbox"
+                        onChange={() => toggleChurchSelection(church.id)}
+                      />
+                    </td>
                     <td>
                       <button
                         className="text-left font-medium text-white transition hover:text-amber-100"
@@ -756,13 +929,24 @@ export default function PlatformChurches() {
                     </td>
                     <td>
                       <div className="badge border-white/10 bg-white/5 text-stone-100">
-                        {church.subscription?.status || 'unknown'}
+                        {church.billingModel === 'commission'
+                          ? 'Commission'
+                          : church.subscription?.status || 'subscription'}
                       </div>
+                      {church.billingModel === 'commission' ? (
+                        <div className="mt-2 text-xs text-stone-400">
+                          Percentage billing
+                        </div>
+                      ) : null}
                     </td>
                     <td className="mono text-sm">
-                      {church.subscription?.countdown?.days || 0}d{' '}
-                      {church.subscription?.countdown?.hours || 0}h{' '}
-                      {church.subscription?.countdown?.minutes || 0}m
+                      {church.billingModel === 'commission'
+                        ? 'No timer'
+                        : `${church.subscription?.countdown?.days || 0}d ${
+                            church.subscription?.countdown?.hours || 0
+                          }h ${
+                            church.subscription?.countdown?.minutes || 0
+                          }m`}
                     </td>
                     <td>
                       <Link
@@ -821,50 +1005,58 @@ export default function PlatformChurches() {
                           <PencilLine size={14} />
                           Edit
                         </button>
-                        <button
-                          className="btn-secondary px-3 py-2"
-                          type="button"
-                          onClick={() =>
-                            openSubscriptionDialog(
-                              church.id,
-                              church.name,
-                              'add-days',
-                              30,
-                            )
-                          }
-                        >
-                          <CirclePlus size={14} />
-                          Add days
-                        </button>
-                        <button
-                          className="btn-secondary px-3 py-2"
-                          type="button"
-                          onClick={() =>
-                            openSubscriptionDialog(
-                              church.id,
-                              church.name,
-                              'subtract-days',
-                              7,
-                            )
-                          }
-                        >
-                          <CircleMinus size={14} />
-                          Subtract days
-                        </button>
-                        <button
-                          className="btn-danger px-3 py-2"
-                          type="button"
-                          onClick={() =>
-                            openSubscriptionDialog(
-                              church.id,
-                              church.name,
-                              'suspend',
-                              0,
-                            )
-                          }
-                        >
-                          Suspend
-                        </button>
+                        {church.billingModel === 'subscription' ? (
+                          <>
+                            <button
+                              className="btn-secondary px-3 py-2"
+                              type="button"
+                              onClick={() =>
+                                openSubscriptionDialog(
+                                  church.id,
+                                  church.name,
+                                  'add-days',
+                                  30,
+                                )
+                              }
+                            >
+                              <CirclePlus size={14} />
+                              Add days
+                            </button>
+                            <button
+                              className="btn-secondary px-3 py-2"
+                              type="button"
+                              onClick={() =>
+                                openSubscriptionDialog(
+                                  church.id,
+                                  church.name,
+                                  'subtract-days',
+                                  7,
+                                )
+                              }
+                            >
+                              <CircleMinus size={14} />
+                              Subtract days
+                            </button>
+                            <button
+                              className="btn-danger px-3 py-2"
+                              type="button"
+                              onClick={() =>
+                                openSubscriptionDialog(
+                                  church.id,
+                                  church.name,
+                                  'suspend',
+                                  0,
+                                )
+                              }
+                            >
+                              Suspend
+                            </button>
+                          </>
+                        ) : (
+                          <span className="badge border-emerald-300/20 bg-emerald-300/10 text-emerald-100">
+                            No subscription timer
+                          </span>
+                        )}
                         <button
                           className="btn-danger px-3 py-2"
                           type="button"
@@ -875,21 +1067,23 @@ export default function PlatformChurches() {
                           <Trash2 size={14} />
                           Delete
                         </button>
-                        <button
-                          className="btn-secondary px-3 py-2"
-                          type="button"
-                          onClick={() =>
-                            openSubscriptionDialog(
-                              church.id,
-                              church.name,
-                              'reactivate',
-                              30,
-                            )
-                          }
-                        >
-                          <RotateCcw size={14} />
-                          Reactivate
-                        </button>
+                        {church.billingModel === 'subscription' ? (
+                          <button
+                            className="btn-secondary px-3 py-2"
+                            type="button"
+                            onClick={() =>
+                              openSubscriptionDialog(
+                                church.id,
+                                church.name,
+                                'reactivate',
+                                30,
+                              )
+                            }
+                          >
+                            <RotateCcw size={14} />
+                            Reactivate
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -1026,27 +1220,81 @@ export default function PlatformChurches() {
                     <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
                       Revenue and feature access
                     </p>
-                    <div className="mt-4 grid gap-4 md:grid-cols-[240px_1fr]">
-                      <div>
-                        <label className="label">Commission rate (%)</label>
-                        <input
-                          className="input"
-                          min={0}
-                          max={100}
-                          step="0.01"
-                          type="number"
-                          value={form.commissionRatePct}
-                          onChange={(event) =>
-                            updateForm(
-                              'commissionRatePct',
-                              Number(event.target.value || 0),
-                            )
-                          }
-                        />
-                        <p className="mt-2 text-xs text-stone-400">
-                          Applied only to direct M-Pesa callbacks. Manual
-                          church records are excluded from platform revenue.
-                        </p>
+                    <div className="mt-4 grid gap-4 md:grid-cols-[minmax(280px,0.75fr)_1fr]">
+                      <div className="space-y-4">
+                        <div>
+                          <label className="label">Billing model</label>
+                          <div className="grid gap-2">
+                            {[
+                              {
+                                value: 'subscription',
+                                label: 'Subscription',
+                                description:
+                                  'Use access days and countdown timers.',
+                              },
+                              {
+                                value: 'commission',
+                                label: 'Commission rate',
+                                description:
+                                  'No timer. Platform revenue is a percentage of direct M-Pesa collections.',
+                              },
+                            ].map((option) => {
+                              const isSelected =
+                                form.billingModel === option.value;
+                              return (
+                                <button
+                                  key={option.value}
+                                  className={`rounded-2xl border px-4 py-3 text-left transition ${
+                                    isSelected
+                                      ? 'border-emerald-300/60 bg-emerald-300/15 text-white'
+                                      : 'border-white/10 bg-white/5 text-stone-300 hover:border-emerald-300/35'
+                                  }`}
+                                  type="button"
+                                  onClick={() =>
+                                    updateForm(
+                                      'billingModel',
+                                      option.value as never,
+                                    )
+                                  }
+                                >
+                                  <span className="block font-semibold">
+                                    {option.label}
+                                  </span>
+                                  <span className="text-xs text-stone-400">
+                                    {option.description}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {form.billingModel === 'commission' ? (
+                          <div>
+                            <label className="label">
+                              Commission rate (%)
+                            </label>
+                            <input
+                              className="input"
+                              min={0}
+                              max={100}
+                              step="0.01"
+                              type="number"
+                              value={form.commissionRatePct}
+                              onChange={(event) =>
+                                updateForm(
+                                  'commissionRatePct',
+                                  Number(event.target.value || 0),
+                                )
+                              }
+                            />
+                            <p className="mt-2 text-xs text-stone-400">
+                              Applied only to direct M-Pesa callbacks. Churches
+                              on commission billing do not show subscription
+                              countdown timers.
+                            </p>
+                          </div>
+                        ) : null}
                       </div>
 
                       <div>
@@ -1118,9 +1366,10 @@ export default function PlatformChurches() {
                         'First admin password',
                       )}
 
-                      <div>
-                        <label className="label">
-                          Initial subscription days
+                      {form.billingModel === 'subscription' ? (
+                        <div>
+                          <label className="label">
+                            Initial subscription days
                           </label>
                           <input
                             className="input"
@@ -1135,6 +1384,7 @@ export default function PlatformChurches() {
                             }
                           />
                         </div>
+                      ) : null}
                       </div>
                     </section>
                   ) : null}
@@ -1380,6 +1630,142 @@ export default function PlatformChurches() {
         </div>
       ) : null}
 
+      {batchBillingDialog ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={closeBatchBillingDialog}
+        >
+          <div className="modal-shell">
+            <section
+              aria-labelledby="batch-billing-title"
+              aria-modal="true"
+              className="panel modal-card max-w-2xl p-6 sm:p-7"
+              role="dialog"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+                    Batch billing
+                  </p>
+                  <h3
+                    id="batch-billing-title"
+                    className="mt-2 text-2xl font-semibold text-white"
+                  >
+                    Set {selectedChurchIds.length.toLocaleString()} churches to{' '}
+                    {batchBillingDialog.billingModel === 'commission'
+                      ? 'commission billing'
+                      : 'subscription billing'}
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-stone-300">
+                    Commission churches do not use countdown timers.
+                    Subscription churches get an active timer window.
+                  </p>
+                </div>
+
+                <button
+                  aria-label="Close batch billing dialog"
+                  className="btn-secondary px-3 py-2"
+                  type="button"
+                  onClick={closeBatchBillingDialog}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="mt-6 grid gap-4">
+                {batchBillingDialog.billingModel === 'commission' ? (
+                  <div className="rounded-3xl border border-white/10 bg-black/10 p-5">
+                    <label className="label">Commission rate (%)</label>
+                    <input
+                      className="input"
+                      min={0}
+                      max={100}
+                      step="0.01"
+                      type="number"
+                      value={batchBillingDialog.commissionRatePct}
+                      onChange={(event) =>
+                        setBatchBillingDialog((current) =>
+                          current
+                            ? {
+                                ...current,
+                                commissionRatePct: Number(
+                                  event.target.value || 0,
+                                ),
+                              }
+                            : current,
+                        )
+                      }
+                    />
+                  </div>
+                ) : (
+                  <div className="rounded-3xl border border-white/10 bg-black/10 p-5">
+                    <label className="label">Subscription days</label>
+                    <input
+                      className="input"
+                      min={1}
+                      type="number"
+                      value={batchBillingDialog.subscriptionDays}
+                      onChange={(event) =>
+                        setBatchBillingDialog((current) =>
+                          current
+                            ? {
+                                ...current,
+                                subscriptionDays: Number(
+                                  event.target.value || 0,
+                                ),
+                              }
+                            : current,
+                        )
+                      }
+                    />
+                  </div>
+                )}
+
+                <div className="rounded-3xl border border-white/10 bg-black/10 p-5">
+                  <label className="label">Reason</label>
+                  <textarea
+                    className="input min-h-24 resize-y"
+                    value={batchBillingDialog.reason}
+                    onChange={(event) =>
+                      setBatchBillingDialog((current) =>
+                        current
+                          ? {
+                              ...current,
+                              reason: event.target.value,
+                            }
+                          : current,
+                      )
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                <button
+                  className="btn-secondary flex-1 justify-center"
+                  type="button"
+                  onClick={closeBatchBillingDialog}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn-primary flex-1 justify-center"
+                  disabled={batchBillingMutation.isPending}
+                  type="button"
+                  onClick={submitBatchBillingDialog}
+                >
+                  {batchBillingMutation.isPending
+                    ? 'Updating...'
+                    : 'Apply billing model'}
+                </button>
+              </div>
+            </section>
+          </div>
+        </div>
+      ) : null}
+
       {subscriptionDialog ? (
         <div
           className="modal-backdrop"
@@ -1536,7 +1922,9 @@ function buildUpdatePayload(form: ChurchFormState) {
     mpesaPasskey: form.mpesaPasskey,
     mpesaShortcode: form.mpesaShortcode,
     mpesaCallbackUrl: form.mpesaCallbackUrl,
+    billingModel: form.billingModel,
     commissionRatePct: form.commissionRatePct,
+    initialSubscriptionDays: form.initialSubscriptionDays,
     enabledFeatures: form.enabledFeatures,
   };
 }

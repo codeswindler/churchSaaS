@@ -11,7 +11,11 @@ import { Response } from 'express';
 import { Repository } from 'typeorm';
 import { formatCurrency } from '../common/subscription.utils';
 import { ChurchSmsConfig } from '../common/church.utils';
-import { Church, ChurchStatus } from '../entities/church.entity';
+import {
+  Church,
+  ChurchBillingModel,
+  ChurchStatus,
+} from '../entities/church.entity';
 import { ChurchUser } from '../entities/church-user.entity';
 import {
   Contribution,
@@ -954,7 +958,10 @@ export class ContributionsService {
   }
 
   private calculateCommissionFields(church: Church | null, amount: number) {
-    const rate = Number(church?.commissionRatePct || 0);
+    const rate =
+      church?.billingModel === ChurchBillingModel.COMMISSION
+        ? Number(church?.commissionRatePct || 0)
+        : 0;
     if (!rate || rate < 0) {
       return {
         commissionRatePctApplied: 0,

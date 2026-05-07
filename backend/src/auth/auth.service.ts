@@ -354,6 +354,7 @@ export class AuthService {
         id: user.church.id,
         name: user.church.name,
         slug: user.church.slug,
+        billingModel: user.church.billingModel,
       },
       subscription,
     });

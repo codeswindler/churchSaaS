@@ -12,7 +12,11 @@ import {
   normalizeFeatureList,
 } from '../common/access-control';
 import { ContributionsService } from '../contributions/contributions.service';
-import { Church, ChurchStatus } from '../entities/church.entity';
+import {
+  Church,
+  ChurchBillingModel,
+  ChurchStatus,
+} from '../entities/church.entity';
 import { ChurchUser, ChurchUserRole } from '../entities/church-user.entity';
 import { ClientEnquiry } from '../entities/client-enquiry.entity';
 import {
@@ -126,6 +130,11 @@ export class PlatformService {
 
     const baseSlug = this.slugify(body.slug || body.name);
     const slug = await this.resolveUniqueChurchSlug(baseSlug);
+    const billingModel = this.normalizeBillingModel(body.billingModel);
+    const commissionRatePct =
+      billingModel === ChurchBillingModel.COMMISSION
+        ? this.normalizeCommissionRate(body.commissionRatePct)
+        : 0;
 
     const church = await this.churchRepo.save(
       this.churchRepo.create({
@@ -150,9 +159,8 @@ export class PlatformService {
         mpesaPasskey: this.normalizeOptionalText(body.mpesaPasskey),
         mpesaShortcode: this.normalizeOptionalText(body.mpesaShortcode),
         mpesaCallbackUrl: this.normalizeOptionalText(body.mpesaCallbackUrl),
-        commissionRatePct: this.normalizeCommissionRate(
-          body.commissionRatePct,
-        ),
+        commissionRatePct,
+        billingModel,
         enabledFeatures: this.normalizeChurchFeatures(body.enabledFeatures),
         status: ChurchStatus.ACTIVE,
       }),
@@ -171,12 +179,15 @@ export class PlatformService {
       }),
     );
 
-    await this.churchSubscriptionsService.initializeSubscription(
-      church.id,
-      Number(body.initialSubscriptionDays || 30),
-      performedByPlatformUserId,
-      body.planName || 'Standard Plan',
-    );
+    let subscription: any = null;
+    if (billingModel === ChurchBillingModel.SUBSCRIPTION) {
+      subscription = await this.churchSubscriptionsService.initializeSubscription(
+        church.id,
+        Number(body.initialSubscriptionDays || 30),
+        performedByPlatformUserId,
+        body.planName || 'Standard Plan',
+      );
+    }
 
     if (body.seedDefaultFundAccounts !== false) {
       await this.seedDefaultFundAccounts(church.id);
@@ -190,10 +201,7 @@ export class PlatformService {
         email: adminUser.email,
         role: adminUser.role,
       },
-      subscription:
-        await this.churchSubscriptionsService.getChurchSubscriptionStatus(
-          church.id,
-        ),
+      subscription,
     };
   }
 
@@ -251,29 +259,38 @@ export class PlatformService {
       smsUsage.map((item) => [item.churchId, Number(item.units || 0)]),
     );
 
-    return churches.map((church) => ({
-      id: church.id,
-      name: church.name,
-      slug: church.slug,
-      contactEmail: church.contactEmail,
-      contactPhone: church.contactPhone,
-      address: church.address,
-      logoUrl: church.logoUrl,
-      notes: church.notes,
-      status: church.status,
-      createdAt: church.createdAt,
-      updatedAt: church.updatedAt,
-      userCount: church.users?.length || 0,
-      subscription: subscriptionByChurchId.get(church.id) || null,
-      integrations: buildChurchIntegrationSummary(church),
-      commissionRatePct: Number(church.commissionRatePct || 0),
-      enabledFeatures: normalizeFeatureList(church.enabledFeatures),
-      contributionTotals: this.decorateRevenueTotals(
-        totalsByChurchId.get(church.id),
-        church,
-      ),
-      smsUnitsConsumed: smsUsageByChurchId.get(church.id) || 0,
-    }));
+    return churches.map((church) => {
+      const billingModel =
+        church.billingModel || this.inferBillingModel(church.commissionRatePct);
+
+      return {
+        id: church.id,
+        name: church.name,
+        slug: church.slug,
+        contactEmail: church.contactEmail,
+        contactPhone: church.contactPhone,
+        address: church.address,
+        logoUrl: church.logoUrl,
+        notes: church.notes,
+        status: church.status,
+        billingModel,
+        createdAt: church.createdAt,
+        updatedAt: church.updatedAt,
+        userCount: church.users?.length || 0,
+        subscription:
+          billingModel === ChurchBillingModel.SUBSCRIPTION
+            ? subscriptionByChurchId.get(church.id) || null
+            : null,
+        integrations: buildChurchIntegrationSummary(church),
+        commissionRatePct: Number(church.commissionRatePct || 0),
+        enabledFeatures: normalizeFeatureList(church.enabledFeatures),
+        contributionTotals: this.decorateRevenueTotals(
+          totalsByChurchId.get(church.id),
+          church,
+        ),
+        smsUnitsConsumed: smsUsageByChurchId.get(church.id) || 0,
+      };
+    });
   }
 
   async getChurchDetails(churchId: string) {
@@ -282,8 +299,12 @@ export class PlatformService {
       throw new BadRequestException('Church not found');
     }
 
+    const billingModel =
+      church.billingModel || this.inferBillingModel(church.commissionRatePct);
     const [subscription, userCount, fundAccountCount] = await Promise.all([
-      this.churchSubscriptionsService.getChurchSubscriptionStatus(church.id),
+      billingModel === ChurchBillingModel.SUBSCRIPTION
+        ? this.churchSubscriptionsService.getChurchSubscriptionStatus(church.id)
+        : Promise.resolve(null),
       this.churchUserRepo.count({ where: { churchId: church.id } }),
       this.fundAccountRepo.count({ where: { churchId: church.id } }),
     ]);
@@ -298,6 +319,7 @@ export class PlatformService {
       logoUrl: church.logoUrl,
       notes: church.notes,
       status: church.status,
+      billingModel,
       smsPartnerId: church.smsPartnerId,
       smsApiKey: church.smsApiKey,
       smsShortcode: church.smsShortcode,
@@ -463,11 +485,17 @@ export class PlatformService {
     return this.sanitizeChurchUser(saved);
   }
 
-  async updateChurch(churchId: string, body: any) {
+  async updateChurch(
+    churchId: string,
+    body: any,
+    performedByPlatformUserId?: string,
+  ) {
     const church = await this.churchRepo.findOne({ where: { id: churchId } });
     if (!church) {
       throw new BadRequestException('Church not found');
     }
+    let nextBillingModel =
+      church.billingModel || this.inferBillingModel(church.commissionRatePct);
 
     if (body.name !== undefined) {
       const name = this.normalizeOptionalText(body.name);
@@ -559,16 +587,93 @@ export class PlatformService {
         body.commissionRatePct,
       );
     }
+    if (body.billingModel !== undefined) {
+      nextBillingModel = this.normalizeBillingModel(body.billingModel);
+      church.billingModel = nextBillingModel;
+      if (nextBillingModel === ChurchBillingModel.SUBSCRIPTION) {
+        church.commissionRatePct = 0;
+      } else if (body.commissionRatePct !== undefined) {
+        church.commissionRatePct = this.normalizeCommissionRate(
+          body.commissionRatePct,
+        );
+      }
+    }
     if (body.enabledFeatures !== undefined) {
       church.enabledFeatures = this.normalizeChurchFeatures(
         body.enabledFeatures,
       );
     }
+    if (nextBillingModel === ChurchBillingModel.SUBSCRIPTION) {
+      church.commissionRatePct = 0;
+    }
 
     const saved = await this.churchRepo.save(church);
+    if (nextBillingModel === ChurchBillingModel.SUBSCRIPTION) {
+      await this.churchSubscriptionsService.ensureSubscriptionForBilling(
+        church.id,
+        Number(body.initialSubscriptionDays || 30),
+        performedByPlatformUserId,
+        'Switched to subscription billing',
+      );
+    }
     return {
       ...this.buildChurchSummary(saved),
       integrations: buildChurchIntegrationSummary(saved),
+    };
+  }
+
+  async updateChurchBillingBatch(
+    body: any,
+    performedByPlatformUserId?: string,
+  ) {
+    const churchIds = Array.isArray(body.churchIds)
+      ? body.churchIds
+          .map((item: unknown) => this.normalizeOptionalText(item))
+          .filter(Boolean)
+      : [];
+    if (churchIds.length === 0) {
+      throw new BadRequestException('Select at least one church');
+    }
+
+    const billingModel = this.normalizeBillingModel(body.billingModel);
+    const commissionRatePct =
+      billingModel === ChurchBillingModel.COMMISSION
+        ? this.normalizeCommissionRate(body.commissionRatePct)
+        : 0;
+    const subscriptionDays = Number(body.subscriptionDays || 30);
+    if (
+      billingModel === ChurchBillingModel.SUBSCRIPTION &&
+      (!Number.isFinite(subscriptionDays) || subscriptionDays < 1)
+    ) {
+      throw new BadRequestException('Subscription days must be at least 1');
+    }
+
+    const churches = await this.churchRepo.find({
+      where: { id: In(churchIds) },
+    });
+    if (churches.length === 0) {
+      throw new BadRequestException('No churches matched this batch');
+    }
+
+    for (const church of churches) {
+      church.billingModel = billingModel;
+      church.commissionRatePct = commissionRatePct;
+      await this.churchRepo.save(church);
+
+      if (billingModel === ChurchBillingModel.SUBSCRIPTION) {
+        await this.churchSubscriptionsService.ensureSubscriptionForBilling(
+          church.id,
+          subscriptionDays,
+          performedByPlatformUserId,
+          body.reason || 'Batch switched to subscription billing',
+        );
+      }
+    }
+
+    return {
+      updated: churches.length,
+      billingModel,
+      commissionRatePct,
     };
   }
 
@@ -787,6 +892,10 @@ export class PlatformService {
 
     const statusCounts = churches.reduce(
       (acc, church) => {
+        if (church.billingModel !== ChurchBillingModel.SUBSCRIPTION) {
+          acc.commission = (acc.commission || 0) + 1;
+          return acc;
+        }
         const status = church.subscription?.status || 'unknown';
         acc[status] = (acc[status] || 0) + 1;
         return acc;
@@ -807,6 +916,7 @@ export class PlatformService {
         activeChurches: statusCounts.active || 0,
         graceChurches: statusCounts.grace || 0,
         suspendedChurches: statusCounts.suspended || 0,
+        commissionChurches: statusCounts.commission || 0,
         totalCollections: Number(totalConfirmed?.total || 0),
         last30DayCollections: Number(last30Summary?.total || 0),
       },
@@ -826,6 +936,7 @@ export class PlatformService {
     platformUserId: string,
     reason?: string,
   ) {
+    await this.ensureSubscriptionBillingChurch(churchId);
     return this.churchSubscriptionsService.addDays(
       churchId,
       days,
@@ -840,6 +951,7 @@ export class PlatformService {
     platformUserId: string,
     reason?: string,
   ) {
+    await this.ensureSubscriptionBillingChurch(churchId);
     return this.churchSubscriptionsService.subtractDays(
       churchId,
       days,
@@ -853,6 +965,7 @@ export class PlatformService {
     platformUserId: string,
     reason?: string,
   ) {
+    await this.ensureSubscriptionBillingChurch(churchId);
     return this.churchSubscriptionsService.suspend(
       churchId,
       platformUserId,
@@ -866,6 +979,7 @@ export class PlatformService {
     platformUserId: string,
     reason?: string,
   ) {
+    await this.ensureSubscriptionBillingChurch(churchId);
     return this.churchSubscriptionsService.reactivate(
       churchId,
       days,
@@ -1061,6 +1175,8 @@ export class PlatformService {
       status: church.status,
       createdAt: church.createdAt,
       updatedAt: church.updatedAt,
+      billingModel:
+        church.billingModel || this.inferBillingModel(church.commissionRatePct),
       commissionRatePct: Number(church.commissionRatePct || 0),
       enabledFeatures: normalizeFeatureList(church.enabledFeatures),
       smsShortcodes: church.smsShortcodes || [],
@@ -1079,8 +1195,13 @@ export class PlatformService {
     church: Church,
   ) {
     const base = totals || { total: 0, revenue: 0, count: 0 };
+    const billingModel =
+      church.billingModel || this.inferBillingModel(church.commissionRatePct);
     const fallbackRevenue =
-      base.revenue || (base.total * Number(church.commissionRatePct || 0)) / 100;
+      billingModel === ChurchBillingModel.COMMISSION
+        ? base.revenue ||
+          (base.total * Number(church.commissionRatePct || 0)) / 100
+        : 0;
 
     return {
       total: base.total,
@@ -1099,6 +1220,18 @@ export class PlatformService {
       throw new BadRequestException('Commission rate must be between 0 and 100');
     }
     return Number(rate.toFixed(2));
+  }
+
+  private normalizeBillingModel(value: unknown) {
+    return value === ChurchBillingModel.COMMISSION
+      ? ChurchBillingModel.COMMISSION
+      : ChurchBillingModel.SUBSCRIPTION;
+  }
+
+  private inferBillingModel(value: unknown) {
+    return Number(value || 0) > 0
+      ? ChurchBillingModel.COMMISSION
+      : ChurchBillingModel.SUBSCRIPTION;
   }
 
   private normalizeChurchFeatures(value: unknown) {
@@ -1126,6 +1259,18 @@ export class PlatformService {
     const church = await this.churchRepo.findOne({ where: { id: churchId } });
     if (!church) {
       throw new BadRequestException('Church not found');
+    }
+    return church;
+  }
+
+  private async ensureSubscriptionBillingChurch(churchId: string) {
+    const church = await this.ensureChurchExists(churchId);
+    const billingModel =
+      church.billingModel || this.inferBillingModel(church.commissionRatePct);
+    if (billingModel !== ChurchBillingModel.SUBSCRIPTION) {
+      throw new BadRequestException(
+        'This church is billed by commission and does not use subscription timers',
+      );
     }
     return church;
   }

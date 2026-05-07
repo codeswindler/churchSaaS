@@ -31,6 +31,11 @@ export default function PlatformDashboard() {
             icon: ArrowRightLeft,
           },
           {
+            label: 'Commission Churches',
+            value: totals.commissionChurches || 0,
+            icon: Wallet,
+          },
+          {
             label: 'In Grace Period',
             value: totals.graceChurches || 0,
             icon: AlertTriangle,
@@ -165,12 +170,16 @@ export default function PlatformDashboard() {
                         {church.name}
                       </h4>
                       <p className="truncate text-xs text-stone-400">
-                        {church.subscription?.status || 'unknown'}
+                        {church.billingModel === 'commission'
+                          ? `${Number(church.commissionRatePct || 0)}% commission`
+                          : church.subscription?.status || 'unknown'}
                       </p>
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-semibold text-amber-100">
-                        {church.subscription?.countdown?.days || 0}d
+                        {church.billingModel === 'commission'
+                          ? 'No timer'
+                          : `${church.subscription?.countdown?.days || 0}d`}
                       </p>
                       <p className="text-xs text-stone-400">
                         {church.userCount || 0} users
@@ -220,19 +229,27 @@ export default function PlatformDashboard() {
                       </p>
                     </div>
                     <span className="badge border-white/10 bg-white/5 text-stone-100">
-                      {church.subscription?.status || 'unknown'}
+                      {church.billingModel === 'commission'
+                        ? 'Commission'
+                        : church.subscription?.status || 'unknown'}
                     </span>
                   </div>
 
                   <div className="mt-5 grid gap-4 sm:grid-cols-3">
                     <div>
                       <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400">
-                        Countdown
+                        {church.billingModel === 'commission'
+                          ? 'Billing rate'
+                          : 'Countdown'}
                       </p>
                       <p className="mt-2 mono text-sm text-amber-100">
-                        {church.subscription?.countdown?.days || 0}d{' '}
-                        {church.subscription?.countdown?.hours || 0}h{' '}
-                        {church.subscription?.countdown?.minutes || 0}m
+                        {church.billingModel === 'commission'
+                          ? `${Number(church.commissionRatePct || 0)}%`
+                          : `${church.subscription?.countdown?.days || 0}d ${
+                              church.subscription?.countdown?.hours || 0
+                            }h ${
+                              church.subscription?.countdown?.minutes || 0
+                            }m`}
                       </p>
                     </div>
                     <div>

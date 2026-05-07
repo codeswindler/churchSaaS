@@ -26,6 +26,7 @@ export interface ChurchIdentity {
   address?: string | null;
   notes?: string | null;
   status?: string | null;
+  billingModel?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -45,6 +46,7 @@ export function sanitizeChurchForTenant(church: ChurchIdentity | null) {
     address: church.address ?? null,
     notes: church.notes ?? null,
     status: church.status ?? null,
+    billingModel: church.billingModel ?? null,
     createdAt: church.createdAt,
     updatedAt: church.updatedAt,
   };

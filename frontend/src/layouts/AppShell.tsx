@@ -470,7 +470,8 @@ export function AppShell({ userType }: AppShellProps) {
                 </h2>
               </div>
 
-              {userType === 'church' && subscription ? (
+              {userType === 'church' &&
+              subscription?.billingModel === 'subscription' ? (
                 <CountdownBadge
                   status={subscription.status}
                   expiresAt={subscription.expiresAt}

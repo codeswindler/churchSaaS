@@ -191,6 +191,7 @@ function TrendChart({
 
   useEffect(() => {
     const frame = chartFrameRef.current;
+    const scrollElement = chartScrollRef.current;
     if (!frame) return undefined;
 
     const updateFrameWidth = (width: number) => {
@@ -199,16 +200,22 @@ function TrendChart({
       );
     };
 
-    updateFrameWidth(frame.clientWidth);
+    updateFrameWidth(scrollElement?.clientWidth || frame.clientWidth);
     if (typeof ResizeObserver === 'undefined') {
       return undefined;
     }
 
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
-      updateFrameWidth(Math.floor(entry?.contentRect.width || frame.clientWidth));
+      updateFrameWidth(
+        Math.floor(
+          scrollElement?.clientWidth ||
+            entry?.contentRect.width ||
+            frame.clientWidth,
+        ),
+      );
     });
-    observer.observe(frame);
+    observer.observe(scrollElement || frame);
 
     return () => observer.disconnect();
   }, []);
@@ -330,7 +337,7 @@ function TrendChart({
 
       <div
         ref={chartScrollRef}
-        className="trend-chart-scroll overflow-x-hidden overflow-y-hidden pb-1"
+        className="trend-chart-scroll overflow-y-hidden pb-1"
       >
         <svg
           aria-label="Contribution trend chart"
@@ -624,6 +631,8 @@ export default function ChurchDashboard() {
   const totals = data?.reportSummary?.totals || {};
   const accountKpis = data?.reportSummary?.accountKpis || [];
   const financeEnabled = data?.financeEnabled !== false;
+  const usesSubscriptionBilling =
+    data?.subscription?.billingModel === 'subscription';
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
   const buildLedgerPath = (overrides: Partial<DashboardFilters> = {}) => {
     const params = new URLSearchParams({
@@ -861,13 +870,15 @@ export default function ChurchDashboard() {
         </section>
 
         <section className="space-y-5 xl:col-span-5">
-          <CountdownBadge
-            status={data.subscription.status}
-            expiresAt={data.subscription.expiresAt}
-            graceEndsAt={data.subscription.graceEndsAt}
-            label={data.subscription.countdown?.label}
-            variant="card"
-          />
+          {usesSubscriptionBilling ? (
+            <CountdownBadge
+              status={data.subscription.status}
+              expiresAt={data.subscription.expiresAt}
+              graceEndsAt={data.subscription.graceEndsAt}
+              label={data.subscription.countdown?.label}
+              variant="card"
+            />
+          ) : null}
 
           <div className="panel overview-panel-tall p-6">
             <p className="text-xs uppercase tracking-[0.24em] text-stone-400">

@@ -17,6 +17,11 @@ export enum ChurchStatus {
   INACTIVE = 'inactive',
 }
 
+export enum ChurchBillingModel {
+  SUBSCRIPTION = 'subscription',
+  COMMISSION = 'commission',
+}
+
 @Entity('churches')
 export class Church {
   @PrimaryGeneratedColumn('uuid')
@@ -78,6 +83,13 @@ export class Church {
 
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
   commissionRatePct: number;
+
+  @Column({
+    type: 'varchar',
+    length: 40,
+    default: ChurchBillingModel.SUBSCRIPTION,
+  })
+  billingModel: ChurchBillingModel;
 
   @Column({ type: 'simple-json', nullable: true })
   enabledFeatures: string[] | null;

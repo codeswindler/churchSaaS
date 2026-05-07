@@ -405,9 +405,17 @@ export default function ChurchDetailsModal({
                 <>
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     <MetricTile
-                      label="Subscription"
-                      value={church?.subscription?.status || 'unknown'}
-                      detail={formatCountdown(church?.subscription)}
+                      label="Billing"
+                      value={
+                        church?.billingModel === 'commission'
+                          ? 'Commission'
+                          : church?.subscription?.status || 'subscription'
+                      }
+                      detail={
+                        church?.billingModel === 'commission'
+                          ? 'No subscription timer'
+                          : formatCountdown(church?.subscription)
+                      }
                     />
                     <MetricTile
                       label="Direct M-Pesa"
@@ -423,7 +431,11 @@ export default function ChurchDetailsModal({
                       value={formatCurrency(
                         church?.contributionTotals?.revenue || 0,
                       )}
-                      detail={`${Number(church?.commissionRatePct || 0)}% commission`}
+                      detail={
+                        church?.billingModel === 'commission'
+                          ? `${Number(church?.commissionRatePct || 0)}% commission`
+                          : 'Subscription billing'
+                      }
                     />
                     <MetricTile
                       label="SMS Units"
