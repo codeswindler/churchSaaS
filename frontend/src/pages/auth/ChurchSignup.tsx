@@ -5,7 +5,6 @@ import {
   Church,
   HandCoins,
   Landmark,
-  LifeBuoy,
   LockKeyhole,
   PhoneCall,
   Send,
@@ -45,11 +44,9 @@ const initialMpesaForm = {
   shortcodeType: 'paybill',
   mpesaShortcode: '',
   g2AdminUsername: '',
-  bankName: '',
   contactName: '',
   email: '',
   callbackPhone: '',
-  message: '',
 };
 
 export default function ChurchSignup() {
@@ -123,6 +120,11 @@ export default function ChurchSignup() {
       ? 'Callback requested'
       : 'Details submitted';
   }, [signupResult, submittedMode]);
+  const isTillSetup = mpesaForm.shortcodeType === 'till';
+  const mpesaNumberLabel = isTillSetup ? 'Till store number' : 'Paybill number';
+  const mpesaNumberPlaceholder = isTillSetup
+    ? 'Enter the till store number'
+    : 'Enter the paybill number';
 
   if (session?.user) {
     return <Navigate to="/" replace />;
@@ -154,12 +156,12 @@ export default function ChurchSignup() {
           <aside className="panel p-5 md:p-6">
             <p className="eyebrow-pill w-fit">{statusText}</p>
             <h2 className="mt-5 text-2xl font-semibold text-white">
-              Open the workspace and prepare payments onboarding.
+              Account created first, payment details collected next.
             </h2>
             <p className="mt-3 text-sm leading-6 text-stone-300">
-              The first admin receives temporary credentials by SMS after the
-              account is created. The next step sends M-Pesa setup details or a
-              callback request to the enquiries desk.
+              Once the account is created, the church appears in the Churches
+              section for the platform admin. The next step only captures the
+              M-Pesa details needed to complete setup.
             </p>
 
             <div className="mt-6 space-y-3">
@@ -172,12 +174,12 @@ export default function ChurchSignup() {
                 {
                   icon: UserRound,
                   title: 'First admin',
-                  text: 'The first user who receives login credentials.',
+                  text: 'The first admin details are attached to the new church.',
                 },
                 {
                   icon: HandCoins,
                   title: 'M-Pesa readiness',
-                  text: 'Paybill, till, G2 portal username, or callback request.',
+                  text: 'Paybill or till store number, plus the portal username.',
                 },
               ].map((item) => (
                 <div
@@ -206,12 +208,11 @@ export default function ChurchSignup() {
                   />
                   <div>
                     <p className="font-semibold text-white">
-                      {signupResult.churchName} is ready
+                      {signupResult.churchName} has been created
                     </p>
                     <p className="mt-1 text-sm leading-6 text-stone-300">
-                      {signupResult.credentialsSent
-                        ? 'Credentials were sent to the first admin phone.'
-                        : 'Account created. Support will follow up on credentials.'}
+                      It now appears in the Churches section. The platform admin
+                      can complete the remaining setup credentials there.
                     </p>
                     <p className="mt-2 text-xs uppercase tracking-[0.2em] text-emerald-200">
                       Workspace: /c/{signupResult.slug}
@@ -382,16 +383,18 @@ export default function ChurchSignup() {
                   <div className="flex items-start gap-3">
                     <Landmark className="mt-1 shrink-0 text-amber-200" size={18} />
                     <p className="text-sm leading-6 text-stone-300">
-                      Use this form when the church already has a paybill, till,
-                      or shortcode linked to a bank account. If the church needs
-                      guidance on Safaricom G2 access, request a callback.
+                      Select whether the church uses a Paybill or Till. For a
+                      Paybill, enter the paybill number. For a Till, enter the
+                      store number used for collections. The username is the
+                      user who signs in to the M-Pesa portal or Safaricom G2
+                      portal.
                     </p>
                   </div>
                 </div>
 
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
                   <div>
-                    <label className="label">Shortcode type</label>
+                    <label className="label">M-Pesa account type</label>
                     <select
                       className="input"
                       value={mpesaForm.shortcodeType}
@@ -399,17 +402,17 @@ export default function ChurchSignup() {
                         setMpesaForm((current) => ({
                           ...current,
                           shortcodeType: event.target.value,
+                          mpesaShortcode: '',
                         }))
                       }
                     >
                       <option value="paybill">Paybill</option>
                       <option value="till">Till</option>
-                      <option value="shortcode">Shortcode</option>
                     </select>
                   </div>
 
                   <div>
-                    <label className="label">Paybill, till, or shortcode</label>
+                    <label className="label">{mpesaNumberLabel}</label>
                     <input
                       className="input"
                       value={mpesaForm.mpesaShortcode}
@@ -419,12 +422,12 @@ export default function ChurchSignup() {
                           mpesaShortcode: event.target.value,
                         }))
                       }
-                      placeholder="123456"
+                      placeholder={mpesaNumberPlaceholder}
                     />
                   </div>
 
-                  <div>
-                    <label className="label">G2 admin username</label>
+                  <div className="md:col-span-2">
+                    <label className="label">M-Pesa portal / G2 username</label>
                     <input
                       className="input"
                       value={mpesaForm.g2AdminUsername}
@@ -434,83 +437,7 @@ export default function ChurchSignup() {
                           g2AdminUsername: event.target.value,
                         }))
                       }
-                      placeholder="G2 portal username"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label">Linked bank</label>
-                    <input
-                      className="input"
-                      value={mpesaForm.bankName}
-                      onChange={(event) =>
-                        setMpesaForm((current) => ({
-                          ...current,
-                          bankName: event.target.value,
-                        }))
-                      }
-                      placeholder="Bank name"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label">Contact name</label>
-                    <input
-                      className="input"
-                      value={mpesaForm.contactName}
-                      onChange={(event) =>
-                        setMpesaForm((current) => ({
-                          ...current,
-                          contactName: event.target.value,
-                        }))
-                      }
-                      placeholder="Full name"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label">Contact email</label>
-                    <input
-                      className="input"
-                      type="email"
-                      value={mpesaForm.email}
-                      onChange={(event) =>
-                        setMpesaForm((current) => ({
-                          ...current,
-                          email: event.target.value,
-                        }))
-                      }
-                      placeholder="admin@example.org"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label">Callback phone</label>
-                    <input
-                      className="input"
-                      value={mpesaForm.callbackPhone}
-                      onChange={(event) =>
-                        setMpesaForm((current) => ({
-                          ...current,
-                          callbackPhone: event.target.value,
-                        }))
-                      }
-                      placeholder="0712 345 678"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="label">Notes</label>
-                    <textarea
-                      className="input min-h-28 resize-y"
-                      value={mpesaForm.message}
-                      onChange={(event) =>
-                        setMpesaForm((current) => ({
-                          ...current,
-                          message: event.target.value,
-                        }))
-                      }
-                      placeholder="Any timing, bank, shortcode, or access notes for onboarding."
+                      placeholder="Username used to log in to the portal"
                     />
                   </div>
                 </div>
@@ -551,10 +478,10 @@ export default function ChurchSignup() {
                 </div>
 
                 <div className="mt-4 flex items-start gap-3 text-sm leading-6 text-stone-400">
-                  <LifeBuoy className="mt-0.5 shrink-0" size={16} />
+                  <PhoneCall className="mt-0.5 shrink-0" size={16} />
                   <p>
-                    Callback requests include the contact number so platform
-                    admins can follow up from the enquiries section.
+                    Callback requests use the first admin phone or email from
+                    the account creation step.
                   </p>
                 </div>
               </form>

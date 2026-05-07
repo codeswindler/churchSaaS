@@ -350,10 +350,7 @@ export class PublicController {
       throw new NotFoundException('Church signup was not found');
     }
 
-    const contactName = this.normalizeRequiredText(
-      body.contactName,
-      'Contact name is required',
-    );
+    const contactName = this.normalizeOptionalText(body.contactName) || church.name;
     const email = this.normalizeEmail(body.email || church.contactEmail);
     const callbackPhone = this.normalizeOptionalText(
       body.callbackPhone || body.phone || church.contactPhone,
@@ -362,23 +359,27 @@ export class PublicController {
     const mpesaShortcode = this.normalizeOptionalText(
       body.mpesaShortcode || body.shortcode,
     );
-    const shortcodeType = this.normalizeOptionalText(body.shortcodeType);
+    const rawShortcodeType = (
+      this.normalizeOptionalText(body.shortcodeType) || 'paybill'
+    ).toLowerCase();
+    if (!['paybill', 'till'].includes(rawShortcodeType)) {
+      throw new BadRequestException('Select either Paybill or Till.');
+    }
+    const shortcodeType = rawShortcodeType as 'paybill' | 'till';
     const g2AdminUsername = this.normalizeOptionalText(body.g2AdminUsername);
-    const bankName = this.normalizeOptionalText(body.bankName);
     const message = this.normalizeOptionalText(body.message);
+    const mpesaNumberLabel =
+      shortcodeType === 'till' ? 'Till store number' : 'Paybill number';
 
     if (!requestCallback && !mpesaShortcode) {
       throw new BadRequestException(
-        'Enter paybill/till details or request a callback.',
+        `Enter the ${mpesaNumberLabel.toLowerCase()} or request a callback.`,
       );
     }
-
-    if (mpesaShortcode) {
-      church.mpesaShortcode = mpesaShortcode;
-      church.notes = [church.notes, 'M-Pesa onboarding details submitted.']
-        .filter(Boolean)
-        .join('\n');
-      await this.churchRepo.save(church);
+    if (!requestCallback && !g2AdminUsername) {
+      throw new BadRequestException(
+        'Enter the M-Pesa portal / G2 username or request a callback.',
+      );
     }
 
     await this.createSystemEnquiry({
@@ -395,10 +396,9 @@ export class PublicController {
         `Slug: ${church.slug}`,
         `Church ID: ${church.id}`,
         `Callback phone: ${callbackPhone || 'Not provided'}`,
-        `Shortcode / Paybill / Till: ${mpesaShortcode || 'Not provided'}`,
-        `Type: ${shortcodeType || 'Not specified'}`,
-        `G2 portal admin username: ${g2AdminUsername || 'Not provided'}`,
-        `Linked bank: ${bankName || 'Not provided'}`,
+        `M-Pesa account type: ${shortcodeType === 'till' ? 'Till' : 'Paybill'}`,
+        `${mpesaNumberLabel}: ${mpesaShortcode || 'Not provided'}`,
+        `M-Pesa portal / G2 username: ${g2AdminUsername || 'Not provided'}`,
         message ? `Notes: ${message}` : null,
       ]
         .filter(Boolean)
@@ -408,7 +408,7 @@ export class PublicController {
       church.id,
       requestCallback
         ? `Callback requested by ${church.name}: ${callbackPhone || email}.`
-        : `M-Pesa setup submitted by ${church.name}. Shortcode: ${mpesaShortcode}.`,
+        : `M-Pesa setup submitted by ${church.name}. ${mpesaNumberLabel}: ${mpesaShortcode}.`,
     );
 
     return { status: requestCallback ? 'callback_requested' : 'submitted' };

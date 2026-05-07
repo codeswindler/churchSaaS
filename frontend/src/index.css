@@ -258,11 +258,26 @@ textarea {
 
 :root[data-color-mode='light'] .text-sky-50,
 :root[data-color-mode='light'] .text-sky-100,
+:root[data-color-mode='light'] .text-sky-200,
 :root[data-color-mode='light'] .text-sky-300,
+:root[data-color-mode='light'] .text-sky-400,
 :root[data-color-mode='light'] .text-cyan-50,
 :root[data-color-mode='light'] .text-cyan-100,
-:root[data-color-mode='light'] .text-cyan-300 {
+:root[data-color-mode='light'] .text-cyan-200,
+:root[data-color-mode='light'] .text-cyan-300,
+:root[data-color-mode='light'] .text-cyan-400,
+:root[data-color-mode='light'] .text-blue-50,
+:root[data-color-mode='light'] .text-blue-100,
+:root[data-color-mode='light'] .text-blue-200,
+:root[data-color-mode='light'] .text-blue-300,
+:root[data-color-mode='light'] .text-blue-400 {
   color: #075985 !important;
+}
+
+:root[data-color-mode='light'] .text-cyan-500,
+:root[data-color-mode='light'] .text-sky-500,
+:root[data-color-mode='light'] .text-blue-500 {
+  color: #03657f !important;
 }
 
 :root[data-color-mode='light'] .text-white\/60,
