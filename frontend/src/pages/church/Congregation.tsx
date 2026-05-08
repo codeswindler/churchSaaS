@@ -107,17 +107,6 @@ function isPastInputDate(value?: string | null) {
   return Boolean(date && date < getTodayInputDate());
 }
 
-function formatInputDate(value?: string | null) {
-  const date = toInputDate(value);
-  if (!date) return '';
-
-  return new Date(`${date}T00:00:00`).toLocaleDateString('en-KE', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
-
 function createDailyVerse(date = getTodayInputDate()) {
   return {
     id: createId(),
@@ -338,15 +327,6 @@ export default function ChurchCongregation() {
     },
   });
 
-  const pastDailyVerses = useMemo(
-    () =>
-      form.dailyVerses
-        .map((item, index) => ({ ...item, originalIndex: index }))
-        .filter((item) => item.text && isPastInputDate(item.date))
-        .sort((a, b) => toInputDate(b.date).localeCompare(toInputDate(a.date))),
-    [form.dailyVerses],
-  );
-
   const currentDailyVerses = useMemo(
     () =>
       form.dailyVerses
@@ -359,13 +339,12 @@ export default function ChurchCongregation() {
     () => [
       { label: 'Service Times', value: form.serviceTimes.length },
       { label: 'Current Verses', value: currentDailyVerses.length },
-      { label: 'Past Verses', value: pastDailyVerses.length },
       { label: 'Events', value: form.events.length },
       { label: 'Programs', value: form.massPrograms.length },
       { label: 'Fund Displays', value: form.fundDisplays.length },
       { label: 'Gallery Images', value: form.galleryImages.length },
     ],
-    [form, currentDailyVerses.length, pastDailyVerses.length],
+    [form, currentDailyVerses.length],
   );
 
   const updateListItem = (
@@ -1110,58 +1089,6 @@ export default function ChurchCongregation() {
             </div>
           </section>
 
-          <section className="panel p-6">
-            <div>
-              <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-                Past Verses
-              </p>
-              <h3 className="mt-2 text-2xl font-semibold text-white">
-                Past verse library
-              </h3>
-              <p className="mt-2 text-sm text-stone-300">
-                Verses move here automatically after their date passes.
-              </p>
-            </div>
-
-            <div className="mt-5 space-y-4">
-              {pastDailyVerses.length === 0 ? (
-                <div className="rounded-3xl border border-dashed border-white/15 bg-black/10 p-6 text-sm text-stone-300">
-                  Past verses will appear here automatically.
-                </div>
-              ) : null}
-
-              {pastDailyVerses.map((item) => (
-                <article
-                  key={`past-verse-${item.id || item.originalIndex}`}
-                  className="rounded-3xl border border-emerald-300/15 bg-emerald-400/10 p-4"
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200">
-                        {formatInputDate(item.date)}
-                      </p>
-                      <h4 className="mt-2 text-lg font-semibold text-white">
-                        {item.reference || 'Daily verse'}
-                      </h4>
-                    </div>
-                    <button
-                      aria-label="Remove verse"
-                      className="btn-secondary justify-center px-3 py-2"
-                      type="button"
-                      onClick={() =>
-                        removeListItem('dailyVerses', item.originalIndex)
-                      }
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-stone-200">
-                    {item.text}
-                  </p>
-                </article>
-              ))}
-            </div>
-          </section>
         </div>
 
         <aside className="space-y-5">
