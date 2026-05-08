@@ -220,15 +220,6 @@ function TrendChart({
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    const scrollElement = chartScrollRef.current;
-
-    if (!isMobileChart || !scrollElement) return;
-
-    scrollElement.scrollLeft =
-      scrollElement.scrollWidth - scrollElement.clientWidth;
-  }, [data.length, granularity, isMobileChart]);
-
   if (!data.length) {
     return (
       <div className="flex min-h-[280px] items-center justify-center rounded-3xl border border-white/10 bg-black/10 p-6 text-center text-sm text-stone-300">
@@ -237,11 +228,11 @@ function TrendChart({
     );
   }
 
-  const height = isMobileChart ? 248 : 330;
-  const paddingLeft = isMobileChart ? 78 : 98;
-  const paddingRight = isMobileChart ? 30 : 44;
-  const paddingTop = isMobileChart ? 34 : 44;
-  const paddingBottom = isMobileChart ? 48 : 50;
+  const height = isMobileChart ? 222 : 330;
+  const paddingLeft = isMobileChart ? 64 : 98;
+  const paddingRight = isMobileChart ? 18 : 44;
+  const paddingTop = isMobileChart ? 30 : 44;
+  const paddingBottom = isMobileChart ? 42 : 50;
   const pointGap =
     granularity === 'daily'
       ? isMobileChart
@@ -251,14 +242,11 @@ function TrendChart({
         ? 76
         : 88;
   const frameWidth = Math.max(
-    isMobileChart ? 320 : 620,
-    Math.floor(chartFrameWidth || (isMobileChart ? 360 : 920)),
+    isMobileChart ? 1 : 620,
+    Math.floor(chartFrameWidth || (isMobileChart ? 1 : 920)),
   );
   const visiblePlotWidth = Math.max(1, frameWidth - paddingLeft - paddingRight);
-  const naturalPlotWidth = Math.max(1, Math.max(data.length - 1, 1) * pointGap);
-  const plotWidth = isMobileChart
-    ? Math.max(visiblePlotWidth, naturalPlotWidth)
-    : visiblePlotWidth;
+  const plotWidth = visiblePlotWidth;
   const width = Math.ceil(paddingLeft + paddingRight + plotWidth);
   const baselineY = height - paddingBottom;
   const maxAmount = Math.max(
@@ -298,8 +286,10 @@ function TrendChart({
     hoveredIndex === null ? null : Math.min(hoveredIndex, points.length - 1);
   const activeIndex = safeHoveredIndex ?? safePinnedIndex;
   const activePoint = points[activeIndex];
-  const hitWidth = Math.max(isMobileChart ? 28 : 24, pointGap);
-  const tooltipWidth = isMobileChart ? 112 : 154;
+  const hitWidth = isMobileChart
+    ? Math.max(24, visiblePlotWidth / Math.max(points.length, 1))
+    : Math.max(24, pointGap);
+  const tooltipWidth = isMobileChart ? 96 : 154;
   const tooltipX = Math.min(
     Math.max(activePoint.x - tooltipWidth / 2, paddingLeft),
     width - paddingRight - tooltipWidth,
@@ -345,7 +335,7 @@ function TrendChart({
           preserveAspectRatio="none"
           style={{
             height: `${height}px`,
-            width: isMobileChart ? `${width}px` : '100%',
+            width: '100%',
           }}
           viewBox={`0 0 ${width} ${height}`}
         >
