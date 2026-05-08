@@ -14,6 +14,10 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import {
+  BibleSelector,
+  type SelectedBibleVerse,
+} from '../../components/BibleSelector';
 import api from '../../services/api';
 
 const PUBLIC_THEME_STORAGE_KEY = 'church_public_theme';
@@ -88,6 +92,8 @@ function formatDateRange(item: any) {
 export default function PublicCongregation() {
   const { slug = '' } = useParams();
   const [activeVerseIndex, setActiveVerseIndex] = useState(0);
+  const [selectedBibleVerse, setSelectedBibleVerse] =
+    useState<SelectedBibleVerse | null>(null);
   const [publicTheme, setPublicTheme] = useState(() => {
     if (typeof window === 'undefined') return 'day';
     return localStorage.getItem(PUBLIC_THEME_STORAGE_KEY) || 'day';
@@ -209,6 +215,15 @@ export default function PublicCongregation() {
   const actionButtonClass = isNightMode
     ? 'inline-flex items-center gap-2 rounded-full bg-amber-200 px-4 py-2 text-sm font-semibold text-[#10241f] transition hover:bg-amber-100'
     : 'inline-flex items-center gap-2 rounded-full bg-[#143f34] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#215e4e]';
+  const bibleInputClass = isNightMode
+    ? 'mt-1.5 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-3.5 py-2.5 text-sm text-stone-50 outline-none transition focus:border-amber-200/45 focus:ring-2 focus:ring-amber-200/15'
+    : 'mt-1.5 w-full rounded-2xl border border-stone-200 bg-white px-3.5 py-2.5 text-sm text-stone-900 outline-none transition focus:border-[#143f34]/40 focus:ring-2 focus:ring-[#143f34]/10';
+  const bibleButtonClass = isNightMode
+    ? 'inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-amber-200/25 bg-amber-200 px-4 py-2.5 text-sm font-semibold text-[#10241f] transition hover:bg-amber-100'
+    : 'inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-[#143f34]/10 bg-[#143f34] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#215e4e]';
+  const bibleLabelClass = isNightMode
+    ? 'text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-400'
+    : 'text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500';
 
   const showPreviousVerse = () => {
     setActiveVerseIndex((current) =>
@@ -405,6 +420,44 @@ export default function PublicCongregation() {
                 ) : null}
               </div>
             </div>
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+          <div className={panelClass}>
+            <p className={sectionEyebrowClass}>Bible Lookup</p>
+            <h2 className="mt-3 text-3xl font-semibold">Find a verse</h2>
+            <p className={`mt-2 max-w-3xl text-sm ${bodyTextClass}`}>
+              Select a book, chapter, and verse to read a passage while you
+              browse the church page.
+            </p>
+            <BibleSelector
+              buttonClassName={bibleButtonClass}
+              className="mt-5"
+              defaultReference={
+                selectedBibleVerse?.reference || activeVerse?.reference
+              }
+              inputClassName={bibleInputClass}
+              labelClassName={bibleLabelClass}
+              onSelect={(verse) => setSelectedBibleVerse(verse)}
+            />
+            {selectedBibleVerse ? (
+              <div
+                className={`mt-5 rounded-3xl border p-5 ${
+                  isNightMode
+                    ? 'border-white/10 bg-white/[0.05]'
+                    : 'border-stone-200 bg-[#fbfaf6]'
+                }`}
+              >
+                <p className={sectionEyebrowClass}>
+                  {selectedBibleVerse.reference}
+                </p>
+                <blockquote className="mt-3 text-lg font-semibold leading-8">
+                  {selectedBibleVerse.text ||
+                    'The reference is selected. The verse text could not be fetched right now.'}
+                </blockquote>
+              </div>
+            ) : null}
           </div>
         </section>
 

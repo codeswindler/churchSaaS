@@ -11,6 +11,10 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
+import {
+  BibleSelector,
+  type SelectedBibleVerse,
+} from '../../components/BibleSelector';
 import api, { getSession } from '../../services/api';
 
 const emptyForm = {
@@ -385,6 +389,21 @@ export default function ChurchCongregation() {
     });
   };
 
+  const applyBibleVerse = (
+    index: number,
+    selectedVerse: SelectedBibleVerse,
+  ) => {
+    setForm((current) => {
+      const dailyVerses = [...current.dailyVerses];
+      dailyVerses[index] = {
+        ...dailyVerses[index],
+        reference: selectedVerse.reference,
+        text: selectedVerse.text || dailyVerses[index]?.text || '',
+      };
+      return { ...current, dailyVerses };
+    });
+  };
+
   const removeListItem = (
     key:
       | 'dailyVerses'
@@ -649,6 +668,13 @@ export default function ChurchCongregation() {
                       >
                         <Trash2 size={16} />
                       </button>
+                      <BibleSelector
+                        className="md:col-span-4"
+                        defaultReference={item.reference}
+                        onSelect={(selectedVerse) =>
+                          applyBibleVerse(item.originalIndex, selectedVerse)
+                        }
+                      />
                     </div>
                   ))}
                 </div>
