@@ -5,7 +5,7 @@ export type SelectedBibleVerse = {
   text: string;
 };
 
-const bibleBooks = [
+export const bibleBooks = [
   ['Genesis', 50],
   ['Exodus', 40],
   ['Leviticus', 27],
@@ -76,7 +76,7 @@ const bibleBooks = [
 
 const chapterVerseCountCache = new Map<string, number>();
 
-function parseReference(reference?: string | null) {
+export function parseBibleReference(reference?: string | null) {
   const cleanReference = `${reference || ''}`.trim();
   const lowerReference = cleanReference.toLowerCase();
   const matchedBook = [...bibleBooks]
@@ -103,7 +103,7 @@ function parseReference(reference?: string | null) {
       : matchedBook[0].length;
   const rest = cleanReference.slice(matchedLength).trim();
   const match = rest.match(/^(\d+)(?::(\d+))?(?:\s*-\s*(?:(\d+):)?(\d+))?/);
-  const chapterCount = getChapterCount(matchedBook[0]);
+  const chapterCount = getBibleChapterCount(matchedBook[0]);
   const startChapter = Math.min(
     chapterCount,
     Math.max(1, Number(match?.[1] || 1)),
@@ -128,7 +128,7 @@ function parseReference(reference?: string | null) {
   };
 }
 
-function getChapterCount(book: string) {
+export function getBibleChapterCount(book: string) {
   return bibleBooks.find(([name]) => name === book)?.[1] || 1;
 }
 
@@ -189,7 +189,7 @@ export function BibleSelector({
   onSelect,
 }: BibleSelectorProps) {
   const parsedReference = useMemo(
-    () => parseReference(defaultReference),
+    () => parseBibleReference(defaultReference),
     [defaultReference],
   );
   const [book, setBook] = useState(parsedReference.book);
@@ -205,7 +205,7 @@ export function BibleSelector({
   const [isLoading, setIsLoading] = useState(false);
   const [validationError, setValidationError] = useState('');
   const [lookupError, setLookupError] = useState('');
-  const chapterCount = getChapterCount(book);
+  const chapterCount = getBibleChapterCount(book);
   const endVerseMinimum = endChapter === startChapter ? startVerse : 1;
   const reference =
     startChapter === endChapter && startVerse === endVerse

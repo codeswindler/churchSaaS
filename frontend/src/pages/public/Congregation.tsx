@@ -14,10 +14,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import {
-  BibleSelector,
-  type SelectedBibleVerse,
-} from '../../components/BibleSelector';
+import { BibleReader } from '../../components/BibleReader';
 import api from '../../services/api';
 
 const PUBLIC_THEME_STORAGE_KEY = 'church_public_theme';
@@ -92,8 +89,6 @@ function formatDateRange(item: any) {
 export default function PublicCongregation() {
   const { slug = '' } = useParams();
   const [activeVerseIndex, setActiveVerseIndex] = useState(0);
-  const [selectedBibleVerse, setSelectedBibleVerse] =
-    useState<SelectedBibleVerse | null>(null);
   const [publicTheme, setPublicTheme] = useState(() => {
     if (typeof window === 'undefined') return 'day';
     return localStorage.getItem(PUBLIC_THEME_STORAGE_KEY) || 'day';
@@ -424,41 +419,14 @@ export default function PublicCongregation() {
         </section>
 
         <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-          <div className={panelClass}>
-            <p className={sectionEyebrowClass}>Bible Lookup</p>
-            <h2 className="mt-3 text-3xl font-semibold">Find a verse</h2>
-            <p className={`mt-2 max-w-3xl text-sm ${bodyTextClass}`}>
-              Select a book, chapter, and verse to read a passage while you
-              browse the church page.
-            </p>
-            <BibleSelector
-              buttonClassName={bibleButtonClass}
-              className="mt-5"
-              defaultReference={
-                selectedBibleVerse?.reference || activeVerse?.reference
-              }
-              inputClassName={bibleInputClass}
-              labelClassName={bibleLabelClass}
-              onSelect={(verse) => setSelectedBibleVerse(verse)}
-            />
-            {selectedBibleVerse ? (
-              <div
-                className={`mt-5 rounded-3xl border p-5 ${
-                  isNightMode
-                    ? 'border-white/10 bg-white/[0.05]'
-                    : 'border-stone-200 bg-[#fbfaf6]'
-                }`}
-              >
-                <p className={sectionEyebrowClass}>
-                  {selectedBibleVerse.reference}
-                </p>
-                <blockquote className="mt-3 text-lg font-semibold leading-8">
-                  {selectedBibleVerse.text ||
-                    'The reference is selected. The verse text could not be fetched right now.'}
-                </blockquote>
-              </div>
-            ) : null}
-          </div>
+          <BibleReader
+            buttonClassName={bibleButtonClass}
+            defaultReference={activeVerse?.reference}
+            inputClassName={bibleInputClass}
+            isNightMode={isNightMode}
+            labelClassName={bibleLabelClass}
+            panelClassName={panelClass}
+          />
         </section>
 
         <section className="mx-auto grid max-w-7xl gap-6 px-4 py-10 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
