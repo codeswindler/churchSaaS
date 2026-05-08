@@ -84,6 +84,14 @@ export class PlatformController {
     return this.platformService.updateChurchUser(churchId, userId, body);
   }
 
+  @Post('churches/:churchId/users/:userId/resend-credentials')
+  resendChurchUserCredentials(
+    @Param('churchId') churchId: string,
+    @Param('userId') userId: string,
+  ) {
+    return this.platformService.resendChurchUserCredentials(churchId, userId);
+  }
+
   @Post('churches')
   createChurch(@Body() body: any, @Request() req: any) {
     return this.platformService.createChurch(body, req.user.id);

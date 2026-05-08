@@ -669,6 +669,49 @@ export class SmsService {
     return this.sanitizeGsm7(text).length;
   }
 
+  public async resolveSystemSmsConfig(
+    churchId: string,
+  ): Promise<ChurchSmsConfig> {
+    const envSmsConfig = this.getSystemSmsConfigFromEnv(churchId);
+    if (envSmsConfig) {
+      return envSmsConfig;
+    }
+
+    const pinnedSenderChurchId =
+      this.configService.get<string>('SYSTEM_SMS_SENDER_CHURCH_ID') ||
+      this.configService.get<string>('PLATFORM_SMS_SENDER_CHURCH_ID');
+
+    const senderChurch = await this.churchRepo
+      .createQueryBuilder('church')
+      .where("NULLIF(church.smsPartnerId, '') IS NOT NULL")
+      .andWhere("NULLIF(church.smsApiKey, '') IS NOT NULL")
+      .andWhere("NULLIF(church.smsShortcode, '') IS NOT NULL")
+      .andWhere(
+        pinnedSenderChurchId ? 'church.id = :pinnedSenderChurchId' : '1 = 1',
+        { pinnedSenderChurchId },
+      )
+      .orderBy(
+        "CASE WHEN church.status = 'active' THEN 0 ELSE 1 END",
+        'ASC',
+      )
+      .addOrderBy('church.updatedAt', 'DESC')
+      .addOrderBy('church.createdAt', 'DESC')
+      .getOne();
+
+    if (!senderChurch) {
+      return { churchId };
+    }
+
+    return {
+      churchId,
+      smsPartnerId: senderChurch.smsPartnerId,
+      smsApiKey: senderChurch.smsApiKey,
+      smsShortcode: senderChurch.smsShortcode,
+      smsShortcodes: senderChurch.smsShortcodes,
+      smsBaseUrl: senderChurch.smsBaseUrl,
+    };
+  }
+
   /**
    * Ensure the message only contains GSM-7 compatible characters
    * to avoid Advanta delivery failures.
@@ -696,6 +739,39 @@ export class SmsService {
       apiKey: config.smsApiKey || this.apiKey,
       shortCode: config.smsShortcode || this.shortCode,
       baseUrl: (config.smsBaseUrl || this.baseUrl).replace(/\/$/, ''),
+    };
+  }
+
+  private getSystemSmsConfigFromEnv(
+    churchId: string,
+  ): ChurchSmsConfig | null {
+    const smsPartnerId =
+      this.configService.get<string>('SYSTEM_SMS_PARTNER_ID') ||
+      this.configService.get<string>('PLATFORM_SMS_PARTNER_ID') ||
+      this.configService.get<string>('ADVANTA_PARTNER_ID');
+    const smsApiKey =
+      this.configService.get<string>('SYSTEM_SMS_API_KEY') ||
+      this.configService.get<string>('PLATFORM_SMS_API_KEY') ||
+      this.configService.get<string>('ADVANTA_API_KEY');
+    const smsShortcode =
+      this.configService.get<string>('SYSTEM_SMS_SHORTCODE') ||
+      this.configService.get<string>('PLATFORM_SMS_SHORTCODE') ||
+      this.configService.get<string>('ADVANTA_SHORTCODE');
+
+    if (!smsPartnerId || !smsApiKey || !smsShortcode) {
+      return null;
+    }
+
+    return {
+      churchId,
+      smsPartnerId,
+      smsApiKey,
+      smsShortcode,
+      smsBaseUrl:
+        this.configService.get<string>('SYSTEM_SMS_BASE_URL') ||
+        this.configService.get<string>('PLATFORM_SMS_BASE_URL') ||
+        this.configService.get<string>('ADVANTA_BASE_URL') ||
+        undefined,
     };
   }
 

@@ -284,7 +284,9 @@ export class PublicController {
       `Password: ${temporaryPassword}`,
       'Sign in and complete M-Pesa onboarding.',
     ].join(' ');
-    const systemSmsConfig = await this.resolveSystemSmsConfig(church.id);
+    const systemSmsConfig = await this.smsService.resolveSystemSmsConfig(
+      church.id,
+    );
     const credentialsSent = adminPhone
       ? await this.smsService.sendSms(
           adminPhone,
@@ -409,7 +411,9 @@ export class PublicController {
         .filter(Boolean)
         .join('\n'),
     });
-    const systemSmsConfig = await this.resolveSystemSmsConfig(church.id);
+    const systemSmsConfig = await this.smsService.resolveSystemSmsConfig(
+      church.id,
+    );
     await this.notifyPlatformAdmins(
       church.id,
       requestCallback
@@ -639,7 +643,7 @@ export class PublicController {
       where: { isActive: true },
     });
     const resolvedSmsConfig =
-      smsConfig || (await this.resolveSystemSmsConfig(churchId));
+      smsConfig || (await this.smsService.resolveSystemSmsConfig(churchId));
 
     await Promise.allSettled(
       admins
@@ -656,31 +660,6 @@ export class PublicController {
           ),
         ),
     );
-  }
-
-  private async resolveSystemSmsConfig(
-    churchId: string,
-  ): Promise<ChurchSmsConfig> {
-    const senderChurch = await this.churchRepo
-      .createQueryBuilder('church')
-      .where("NULLIF(church.smsPartnerId, '') IS NOT NULL")
-      .andWhere("NULLIF(church.smsApiKey, '') IS NOT NULL")
-      .andWhere("NULLIF(church.smsShortcode, '') IS NOT NULL")
-      .orderBy('church.createdAt', 'ASC')
-      .getOne();
-
-    if (!senderChurch) {
-      return { churchId };
-    }
-
-    return {
-      churchId,
-      smsPartnerId: senderChurch.smsPartnerId,
-      smsApiKey: senderChurch.smsApiKey,
-      smsShortcode: senderChurch.smsShortcode,
-      smsShortcodes: senderChurch.smsShortcodes,
-      smsBaseUrl: senderChurch.smsBaseUrl,
-    };
   }
 
   private async ensureChurchSignupIdentityAvailable(

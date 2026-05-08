@@ -485,6 +485,52 @@ export class PlatformService {
     return this.sanitizeChurchUser(saved);
   }
 
+  async resendChurchUserCredentials(churchId: string, userId: string) {
+    const church = await this.ensureChurchExists(churchId);
+    const user = await this.churchUserRepo.findOne({
+      where: { id: userId, churchId },
+    });
+    if (!user) {
+      throw new BadRequestException('Church user not found');
+    }
+    if (!user.phone) {
+      throw new BadRequestException('This church user has no phone number');
+    }
+
+    const temporaryPassword = this.generateTemporaryPassword();
+    const login = user.username || user.email;
+    const message = [
+      `Church SaaS login for ${church.name}.`,
+      `Login: ${login}`,
+      `Password: ${temporaryPassword}`,
+      'Please sign in and change your password.',
+    ].join(' ');
+
+    const sent = await this.smsService.sendSms(
+      user.phone,
+      message,
+      await this.smsService.resolveSystemSmsConfig(church.id),
+      {
+        messageType: SmsMessageType.SYSTEM,
+        recipientName: `Church user: ${user.name}`,
+      },
+    );
+
+    if (!sent) {
+      throw new BadRequestException(
+        'Unable to send credentials SMS. Check the platform SMS outbox for the provider error.',
+      );
+    }
+
+    user.passwordHash = await bcrypt.hash(temporaryPassword, 10);
+    await this.churchUserRepo.save(user);
+
+    return {
+      sent: true,
+      user: this.sanitizeChurchUser(user),
+    };
+  }
+
   async updateChurch(
     churchId: string,
     body: any,
@@ -827,10 +873,10 @@ export class PlatformService {
       .leftJoinAndSelect('message.church', 'church')
       .where('message.createdByUserId IS NULL')
       .andWhere(
-        '(message.recipientName LIKE :clientRecipient OR message.recipientName LIKE :platformAdminRecipient)',
+        '(message.messageType = :systemType OR message.recipientName LIKE :clientRecipient)',
         {
+          systemType: SmsMessageType.SYSTEM,
           clientRecipient: 'Church:%',
-          platformAdminRecipient: 'Platform admin:%',
         },
       )
       .orderBy('message.createdAt', 'DESC');
@@ -1376,6 +1422,12 @@ export class PlatformService {
   private sanitizeChurchUser(user: ChurchUser) {
     const { passwordHash, ...result } = user;
     return result;
+  }
+
+  private generateTemporaryPassword() {
+    const first = Math.random().toString(36).slice(2, 6).toUpperCase();
+    const second = Math.random().toString(36).slice(2, 6).toUpperCase();
+    return `CS-${first}-${second}`;
   }
 
   private normalizePermissionOverrides(value: unknown) {
