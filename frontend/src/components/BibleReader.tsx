@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { BookOpen, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   bibleBooks,
@@ -59,6 +59,7 @@ export function BibleReader({
   const [chapter, setChapter] = useState(parsedReference.startChapter);
   const [chapterReference, setChapterReference] = useState('');
   const [verses, setVerses] = useState<BibleChapterVerse[]>([]);
+  const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -75,6 +76,8 @@ export function BibleReader({
   }, [parsedReference]);
 
   useEffect(() => {
+    if (!isOpen) return undefined;
+
     let isActive = true;
 
     const loadChapter = async () => {
@@ -104,7 +107,7 @@ export function BibleReader({
     return () => {
       isActive = false;
     };
-  }, [book, chapter]);
+  }, [book, chapter, isOpen]);
 
   const moveChapter = (direction: -1 | 1) => {
     const bookIndex = bibleBooks.findIndex(([name]) => name === book);
@@ -137,118 +140,149 @@ export function BibleReader({
 
   return (
     <div className={panelClassName}>
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p
-            className={
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <div
+            className={`mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${
               isNightMode
-                ? 'text-xs font-semibold uppercase tracking-[0.24em] text-amber-200'
-                : 'text-xs font-semibold uppercase tracking-[0.24em] text-[#9b6b19]'
-            }
-          >
-            Bible
-          </p>
-          <h2 className="mt-3 text-3xl font-semibold">Read the Bible</h2>
-          <p
-            className={`mt-2 max-w-3xl text-sm ${
-              isNightMode ? 'text-stone-300' : 'text-stone-700'
+                ? 'border-amber-200/20 bg-amber-200/10 text-amber-100'
+                : 'border-[#143f34]/15 bg-[#143f34]/10 text-[#143f34]'
             }`}
           >
-            Open a book and chapter, then scroll through the full passage.
-          </p>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-[minmax(180px,1fr)_110px] lg:min-w-[460px]">
-          <div>
-            <label className={labelClassName}>Book</label>
-            <select
-              className={inputClassName}
-              value={book}
-              onChange={(event) => {
-                setBook(event.target.value);
-                setChapter(1);
-              }}
-            >
-              {bibleBooks.map(([bookName]) => (
-                <option key={bookName} value={bookName}>
-                  {bookName}
-                </option>
-              ))}
-            </select>
+            <BookOpen size={20} />
           </div>
           <div>
-            <label className={labelClassName}>Chapter</label>
-            <select
-              className={inputClassName}
-              value={chapter}
-              onChange={(event) => setChapter(Number(event.target.value))}
+            <p
+              className={
+                isNightMode
+                  ? 'text-xs font-semibold uppercase tracking-[0.24em] text-amber-200'
+                  : 'text-xs font-semibold uppercase tracking-[0.24em] text-[#9b6b19]'
+              }
             >
-              {Array.from({ length: chapterCount }, (_, index) => index + 1).map(
-                (chapterNumber) => (
+              Bible
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold">Read the Bible</h2>
+            <p
+              className={`mt-1 max-w-3xl text-sm ${
+                isNightMode ? 'text-stone-300' : 'text-stone-700'
+              }`}
+            >
+              Open to read a full book chapter in a scrollable Bible reader.
+            </p>
+          </div>
+        </div>
+        <button
+          className={buttonClassName}
+          type="button"
+          onClick={() => setIsOpen((current) => !current)}
+        >
+          <BookOpen size={16} />
+          {isOpen ? 'Close Bible' : 'Open to read'}
+        </button>
+      </div>
+
+      {isOpen ? (
+        <>
+          <div className="mt-5 grid gap-3 sm:grid-cols-[minmax(180px,1fr)_110px] lg:max-w-[520px]">
+            <div>
+              <label className={labelClassName}>Book</label>
+              <select
+                className={inputClassName}
+                value={book}
+                onChange={(event) => {
+                  setBook(event.target.value);
+                  setChapter(1);
+                }}
+              >
+                {bibleBooks.map(([bookName]) => (
+                  <option key={bookName} value={bookName}>
+                    {bookName}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={labelClassName}>Chapter</label>
+              <select
+                className={inputClassName}
+                value={chapter}
+                onChange={(event) => setChapter(Number(event.target.value))}
+              >
+                {Array.from(
+                  { length: chapterCount },
+                  (_, index) => index + 1,
+                ).map((chapterNumber) => (
                   <option key={chapterNumber} value={chapterNumber}>
                     {chapterNumber}
                   </option>
-                ),
-              )}
-            </select>
+                ))}
+              </select>
+            </div>
           </div>
-        </div>
-      </div>
 
-      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="text-xl font-semibold">{chapterReference}</h3>
-        <div className="grid grid-cols-2 gap-2 sm:flex">
-          <button
-            className={buttonClassName}
-            disabled={!canGoPrevious || isLoading}
-            type="button"
-            onClick={() => moveChapter(-1)}
-          >
-            <ChevronLeft size={16} />
-            Previous
-          </button>
-          <button
-            className={buttonClassName}
-            disabled={!canGoNext || isLoading}
-            type="button"
-            onClick={() => moveChapter(1)}
-          >
-            Next
-            <ChevronRight size={16} />
-          </button>
-        </div>
-      </div>
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h3 className="text-xl font-semibold">
+              {chapterReference || `${book} ${chapter}`}
+            </h3>
+            <div className="grid grid-cols-2 gap-2 sm:flex">
+              <button
+                className={buttonClassName}
+                disabled={!canGoPrevious || isLoading}
+                type="button"
+                onClick={() => moveChapter(-1)}
+              >
+                <ChevronLeft size={16} />
+                Previous
+              </button>
+              <button
+                className={buttonClassName}
+                disabled={!canGoNext || isLoading}
+                type="button"
+                onClick={() => moveChapter(1)}
+              >
+                Next
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
 
-      <div
-        ref={contentRef}
-        className={`mt-4 max-h-[520px] overflow-y-auto rounded-[24px] border p-5 leading-8 ${
-          isNightMode
-            ? 'border-white/10 bg-white/[0.05] text-stone-100'
-            : 'border-stone-200 bg-[#fbfaf6] text-stone-800'
-        }`}
-      >
-        {isLoading ? (
-          <p className={isNightMode ? 'text-stone-300' : 'text-stone-600'}>
-            Opening chapter...
-          </p>
-        ) : null}
-        {!isLoading && errorMessage ? (
-          <p className="text-sm font-semibold text-amber-500">{errorMessage}</p>
-        ) : null}
-        {!isLoading && !errorMessage
-          ? verses.map((item) => (
-              <p key={item.verse} className="mb-4 last:mb-0">
-                <sup
-                  className={`mr-2 text-xs font-semibold ${
-                    isNightMode ? 'text-amber-200' : 'text-[#9b6b19]'
-                  }`}
-                >
-                  {item.verse}
-                </sup>
-                {item.text}
+          <div
+            ref={contentRef}
+            className={`mt-4 max-h-[520px] overflow-y-auto rounded-[24px] border p-5 leading-8 ${
+              isNightMode
+                ? 'border-white/10 bg-white/[0.05] text-stone-100'
+                : 'border-stone-200 bg-[#fbfaf6] text-stone-800'
+            }`}
+          >
+            {isLoading ? (
+              <p
+                className={isNightMode ? 'text-stone-300' : 'text-stone-600'}
+              >
+                Opening chapter...
               </p>
-            ))
-          : null}
-      </div>
+            ) : null}
+            {!isLoading && errorMessage ? (
+              <p className="text-sm font-semibold text-amber-500">
+                {errorMessage}
+              </p>
+            ) : null}
+            {!isLoading && !errorMessage
+              ? verses.map((item) => (
+                  <p key={item.verse} className="mb-4 last:mb-0">
+                    <sup
+                      className={`mr-2 text-xs font-semibold ${
+                        isNightMode ? 'text-amber-200' : 'text-[#9b6b19]'
+                      }`}
+                    >
+                      {item.verse}
+                    </sup>
+                    {item.text}
+                  </p>
+                ))
+              : null}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
