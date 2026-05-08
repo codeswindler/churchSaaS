@@ -1007,8 +1007,8 @@ select.input-compact option:checked {
     margin-right: 0;
     width: 100%;
     max-width: 100%;
-    padding: 0;
-    overflow-x: hidden;
+    padding: 0 0 0.55rem;
+    overflow-x: auto;
     overflow-y: hidden;
     overscroll-behavior-x: contain;
     scrollbar-color: rgba(52, 211, 153, 0.42) rgba(255, 255, 255, 0.08);
@@ -1040,10 +1040,9 @@ select.input-compact option:checked {
   }
 
   .trend-chart-svg {
-    width: 100% !important;
     height: 222px;
     min-width: 0;
-    max-width: 100%;
+    max-width: none;
   }
 
   .overview-shell-grid .panel p,
