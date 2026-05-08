@@ -16,6 +16,7 @@ import { SmsBatch } from './sms-batch.entity';
 export enum SmsMessageType {
   RECEIPT = 'receipt',
   BULK = 'bulk',
+  SYSTEM = 'system',
 }
 
 export enum SmsSendStatus {

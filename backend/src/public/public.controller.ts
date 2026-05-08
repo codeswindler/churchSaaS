@@ -11,7 +11,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
 import { Repository } from 'typeorm';
 import { DEFAULT_CHURCH_FEATURES } from '../common/access-control';
-import { buildChurchIntegrationSummary } from '../common/church.utils';
+import {
+  buildChurchIntegrationSummary,
+  ChurchSmsConfig,
+} from '../common/church.utils';
 import { ContributionsService } from '../contributions/contributions.service';
 import { ChurchCongregationPage } from '../entities/church-congregation-page.entity';
 import { ChurchUser, ChurchUserRole } from '../entities/church-user.entity';
@@ -281,14 +284,15 @@ export class PublicController {
       `Password: ${temporaryPassword}`,
       'Sign in and complete M-Pesa onboarding.',
     ].join(' ');
+    const systemSmsConfig = await this.resolveSystemSmsConfig(church.id);
     const credentialsSent = adminPhone
       ? await this.smsService.sendSms(
           adminPhone,
           credentialMessage,
-          { churchId: church.id },
+          systemSmsConfig,
           {
-            messageType: SmsMessageType.BULK,
-            recipientName: adminName,
+            messageType: SmsMessageType.SYSTEM,
+            recipientName: `First admin: ${adminName}`,
           },
         )
       : false;
@@ -316,6 +320,7 @@ export class PublicController {
     await this.notifyPlatformAdmins(
       church.id,
       `New church signup: ${churchName}. Admin: ${adminName} ${adminPhone || adminEmail}.`,
+      systemSmsConfig,
     );
 
     return {
@@ -404,11 +409,13 @@ export class PublicController {
         .filter(Boolean)
         .join('\n'),
     });
+    const systemSmsConfig = await this.resolveSystemSmsConfig(church.id);
     await this.notifyPlatformAdmins(
       church.id,
       requestCallback
         ? `Callback requested by ${church.name}: ${callbackPhone || email}.`
         : `M-Pesa setup submitted by ${church.name}. ${mpesaNumberLabel}: ${mpesaShortcode}.`,
+      systemSmsConfig,
     );
 
     return { status: requestCallback ? 'callback_requested' : 'submitted' };
@@ -623,10 +630,16 @@ export class PublicController {
     );
   }
 
-  private async notifyPlatformAdmins(churchId: string, message: string) {
+  private async notifyPlatformAdmins(
+    churchId: string,
+    message: string,
+    smsConfig?: ChurchSmsConfig,
+  ) {
     const admins = await this.platformUserRepo.find({
       where: { isActive: true },
     });
+    const resolvedSmsConfig =
+      smsConfig || (await this.resolveSystemSmsConfig(churchId));
 
     await Promise.allSettled(
       admins
@@ -635,14 +648,39 @@ export class PublicController {
           this.smsService.sendSms(
             admin.phone!,
             message,
-            { churchId },
+            resolvedSmsConfig,
             {
-              messageType: SmsMessageType.BULK,
-              recipientName: admin.name,
+              messageType: SmsMessageType.SYSTEM,
+              recipientName: `Platform admin: ${admin.name}`,
             },
           ),
         ),
     );
+  }
+
+  private async resolveSystemSmsConfig(
+    churchId: string,
+  ): Promise<ChurchSmsConfig> {
+    const senderChurch = await this.churchRepo
+      .createQueryBuilder('church')
+      .where("NULLIF(church.smsPartnerId, '') IS NOT NULL")
+      .andWhere("NULLIF(church.smsApiKey, '') IS NOT NULL")
+      .andWhere("NULLIF(church.smsShortcode, '') IS NOT NULL")
+      .orderBy('church.createdAt', 'ASC')
+      .getOne();
+
+    if (!senderChurch) {
+      return { churchId };
+    }
+
+    return {
+      churchId,
+      smsPartnerId: senderChurch.smsPartnerId,
+      smsApiKey: senderChurch.smsApiKey,
+      smsShortcode: senderChurch.smsShortcode,
+      smsShortcodes: senderChurch.smsShortcodes,
+      smsBaseUrl: senderChurch.smsBaseUrl,
+    };
   }
 
   private async ensureChurchSignupIdentityAvailable(

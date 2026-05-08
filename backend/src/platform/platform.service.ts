@@ -825,13 +825,14 @@ export class PlatformService {
     const qb = this.smsOutboxRepo
       .createQueryBuilder('message')
       .leftJoinAndSelect('message.church', 'church')
-      .where('message.messageType = :messageType', {
-        messageType: SmsMessageType.BULK,
-      })
-      .andWhere('message.createdByUserId IS NULL')
-      .andWhere('message.recipientName LIKE :recipientName', {
-        recipientName: 'Church:%',
-      })
+      .where('message.createdByUserId IS NULL')
+      .andWhere(
+        '(message.recipientName LIKE :clientRecipient OR message.recipientName LIKE :platformAdminRecipient)',
+        {
+          clientRecipient: 'Church:%',
+          platformAdminRecipient: 'Platform admin:%',
+        },
+      )
       .orderBy('message.createdAt', 'DESC');
 
     if (query.churchId) {

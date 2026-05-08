@@ -154,6 +154,46 @@ export class SmsService {
     const cleanPhone = this.formatPhone(phone);
     const url = `${resolved.baseUrl}/api/services/sendsms`;
     const messageBody = this.sanitizeGsm7(message);
+    const outboxBase = {
+      churchId: config.churchId || null,
+      batchId: options.batchId || null,
+      contributorId: options.contributorId || null,
+      createdByUserId: options.createdByUserId || null,
+      recipientName: options.recipientName || null,
+      isHashedRecipient: false,
+      messageType: options.messageType || SmsMessageType.RECEIPT,
+      messageBody,
+      estimatedUnits: this.estimateGsm7Units(messageBody),
+    };
+
+    if (!this.isValidKenyanMobile(cleanPhone)) {
+      await this.recordOutboxMessage({
+        ...outboxBase,
+        recipientMobile: `${phone || ''}`,
+        sendStatus: SmsSendStatus.FAILED,
+        providerCode: 'invalid_phone',
+        providerDescription: 'Invalid recipient phone number',
+      });
+      this.logger.error(
+        `[SMS] Invalid recipient phone for notification | ${this.formatDiagnostics(diagnostics)}`,
+      );
+      return false;
+    }
+
+    if (!resolved.partnerId || !resolved.apiKey || !resolved.shortCode) {
+      await this.recordOutboxMessage({
+        ...outboxBase,
+        recipientMobile: cleanPhone,
+        sendStatus: SmsSendStatus.FAILED,
+        providerCode: 'missing_sms_config',
+        providerDescription: 'SMS sender credentials are not configured',
+      });
+      this.logger.error(
+        `[SMS] Missing notification sender credentials | ${this.formatDiagnostics(diagnostics)}`,
+      );
+      return false;
+    }
+
     const data = {
       apikey: resolved.apiKey,
       partnerID: resolved.partnerId,
@@ -173,16 +213,8 @@ export class SmsService {
         response.data?.responses?.[0]?.['response-code'] == 200;
       if (success) {
         await this.recordOutboxMessage({
-          churchId: config.churchId || null,
-          batchId: options.batchId || null,
-          contributorId: options.contributorId || null,
-          createdByUserId: options.createdByUserId || null,
-          recipientName: options.recipientName || null,
+          ...outboxBase,
           recipientMobile: cleanPhone,
-          isHashedRecipient: false,
-          messageType: options.messageType || SmsMessageType.RECEIPT,
-          messageBody,
-          estimatedUnits: this.estimateGsm7Units(messageBody),
           providerResponse: response.data,
           sendStatus: SmsSendStatus.ACCEPTED,
         });
@@ -193,16 +225,8 @@ export class SmsService {
       }
 
       await this.recordOutboxMessage({
-        churchId: config.churchId || null,
-        batchId: options.batchId || null,
-        contributorId: options.contributorId || null,
-        createdByUserId: options.createdByUserId || null,
-        recipientName: options.recipientName || null,
+        ...outboxBase,
         recipientMobile: cleanPhone,
-        isHashedRecipient: false,
-        messageType: options.messageType || SmsMessageType.RECEIPT,
-        messageBody,
-        estimatedUnits: this.estimateGsm7Units(messageBody),
         providerResponse: response.data,
         sendStatus: SmsSendStatus.FAILED,
       });
@@ -212,16 +236,8 @@ export class SmsService {
       return false;
     } catch (e) {
       await this.recordOutboxMessage({
-        churchId: config.churchId || null,
-        batchId: options.batchId || null,
-        contributorId: options.contributorId || null,
-        createdByUserId: options.createdByUserId || null,
-        recipientName: options.recipientName || null,
+        ...outboxBase,
         recipientMobile: cleanPhone,
-        isHashedRecipient: false,
-        messageType: options.messageType || SmsMessageType.RECEIPT,
-        messageBody,
-        estimatedUnits: this.estimateGsm7Units(messageBody),
         sendStatus: SmsSendStatus.FAILED,
         providerCode: axios.isAxiosError(e)
           ? `${e.response?.status || 'error'}`

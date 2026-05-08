@@ -2,13 +2,10 @@ import { useMutation } from '@tanstack/react-query';
 import {
   ArrowLeft,
   CheckCircle2,
-  Church,
-  HandCoins,
   Landmark,
   LockKeyhole,
   PhoneCall,
   Send,
-  UserRound,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
@@ -72,7 +69,11 @@ export default function ChurchSignup() {
         callbackPhone:
           data.adminUser.phone || churchForm.adminPhone || churchForm.contactPhone,
       }));
-      toast.success('Church account created');
+      toast.success(
+        data.credentialsSent
+          ? 'Account created. Credentials sent by SMS.'
+          : 'Account created. Credentials SMS needs follow-up.',
+      );
     },
     onError: (error: any) => {
       toast.error(
@@ -152,87 +153,22 @@ export default function ChurchSignup() {
           </Link>
         </header>
 
-        <main className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
-          <aside className="panel p-5 md:p-6">
-            <p className="eyebrow-pill w-fit">{statusText}</p>
-            <h2 className="mt-5 text-2xl font-semibold text-white">
-              Account created first, payment details collected next.
-            </h2>
-            <p className="mt-3 text-sm leading-6 text-stone-300">
-              Once the account is created, the church appears in the Churches
-              section for the platform admin. The next step only captures the
-              M-Pesa details needed to complete setup.
-            </p>
-
-            <div className="mt-6 space-y-3">
-              {[
-                {
-                  icon: Church,
-                  title: 'Church profile',
-                  text: 'Church name, contact email, phone, and address.',
-                },
-                {
-                  icon: UserRound,
-                  title: 'First admin',
-                  text: 'The first admin details are attached to the new church.',
-                },
-                {
-                  icon: HandCoins,
-                  title: 'M-Pesa readiness',
-                  text: 'Paybill or till store number, plus the portal username.',
-                },
-              ].map((item) => (
-                <div
-                  key={item.title}
-                  className="rounded-[24px] border border-white/10 bg-black/10 p-4"
-                >
-                  <div className="flex items-start gap-3">
-                    <item.icon className="mt-1 shrink-0 text-amber-200" size={18} />
-                    <div>
-                      <h3 className="font-semibold text-white">{item.title}</h3>
-                      <p className="mt-1 text-sm leading-6 text-stone-300">
-                        {item.text}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {signupResult ? (
-              <div className="mt-6 rounded-[24px] border border-emerald-300/25 bg-emerald-400/10 p-4">
-                <div className="flex items-start gap-3">
-                  <CheckCircle2
-                    className="mt-0.5 shrink-0 text-emerald-300"
-                    size={18}
-                  />
-                  <div>
-                    <p className="font-semibold text-white">
-                      {signupResult.churchName} has been created
-                    </p>
-                    <p className="mt-1 text-sm leading-6 text-stone-300">
-                      It now appears in the Churches section. The platform admin
-                      can complete the remaining setup credentials there.
-                    </p>
-                    <p className="mt-2 text-xs uppercase tracking-[0.2em] text-emerald-200">
-                      Workspace: /c/{signupResult.slug}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </aside>
-
+        <main className="mx-auto mt-6 max-w-5xl">
           <section className="panel overflow-hidden p-0">
             <div className="border-b border-white/10 px-5 py-5 md:px-6">
-              <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-                {signupResult ? 'M-Pesa onboarding' : 'Account details'}
-              </p>
-              <h2 className="mt-2 text-2xl font-semibold text-white">
-                {signupResult
-                  ? 'Submit payment setup details'
-                  : 'Create the church workspace'}
-              </h2>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+                    {signupResult ? 'M-Pesa onboarding' : 'Account details'}
+                  </p>
+                  <h2 className="mt-2 text-2xl font-semibold text-white">
+                    {signupResult
+                      ? 'Submit payment setup details'
+                      : 'Create the church workspace'}
+                  </h2>
+                </div>
+                <p className="eyebrow-pill w-fit">{statusText}</p>
+              </div>
             </div>
 
             {!signupResult ? (
@@ -379,6 +315,30 @@ export default function ChurchSignup() {
               </form>
             ) : (
               <form className="p-5 md:p-6">
+                <div className="mb-5 rounded-[24px] border border-emerald-300/25 bg-emerald-400/10 p-4">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2
+                      className="mt-0.5 shrink-0 text-emerald-300"
+                      size={18}
+                    />
+                    <div>
+                      <p className="font-semibold text-white">
+                        {signupResult.churchName} account has been created
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-stone-300">
+                        {signupResult.credentialsSent
+                          ? `Login credentials have been sent by SMS to ${
+                              signupResult.adminUser.phone || 'the first admin phone'
+                            }.`
+                          : 'The account was created, but the credentials SMS could not be confirmed. The platform admin has been alerted to follow up.'}
+                      </p>
+                      <p className="mt-2 text-xs uppercase tracking-[0.2em] text-emerald-200">
+                        Workspace: /c/{signupResult.slug}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="rounded-[24px] border border-white/10 bg-black/10 p-4">
                   <div className="flex items-start gap-3">
                     <Landmark className="mt-1 shrink-0 text-amber-200" size={18} />
