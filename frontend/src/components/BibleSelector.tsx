@@ -74,6 +74,8 @@ const bibleBooks = [
   ['Revelation', 22],
 ] as const;
 
+const chapterVerseCountCache = new Map<string, number>();
+
 function parseReference(reference?: string | null) {
   const cleanReference = `${reference || ''}`.trim();
   const lowerReference = cleanReference.toLowerCase();
@@ -83,10 +85,16 @@ function parseReference(reference?: string | null) {
       book === 'Psalm'
         ? lowerReference.startsWith('psalm')
         : lowerReference.startsWith(book.toLowerCase()),
-    );
+  );
 
   if (!matchedBook) {
-    return { book: 'John', chapter: 3, verse: 16 };
+    return {
+      book: 'John',
+      startChapter: 3,
+      startVerse: 16,
+      endChapter: 3,
+      endVerse: 16,
+    };
   }
 
   const matchedLength =
@@ -94,17 +102,60 @@ function parseReference(reference?: string | null) {
       ? 'Psalms'.length
       : matchedBook[0].length;
   const rest = cleanReference.slice(matchedLength).trim();
-  const match = rest.match(/^(\d+)(?::(\d+))?/);
+  const match = rest.match(/^(\d+)(?::(\d+))?(?:\s*-\s*(?:(\d+):)?(\d+))?/);
+  const chapterCount = getChapterCount(matchedBook[0]);
+  const startChapter = Math.min(
+    chapterCount,
+    Math.max(1, Number(match?.[1] || 1)),
+  );
+  const startVerse = Math.max(1, Number(match?.[2] || 1));
+  const endChapter = Math.min(
+    chapterCount,
+    Math.max(startChapter, Number(match?.[3] || startChapter)),
+  );
+  const parsedEndVerse = Number(match?.[4] || startVerse);
+  const endVerse =
+    endChapter === startChapter
+      ? Math.max(startVerse, parsedEndVerse)
+      : Math.max(1, parsedEndVerse);
 
   return {
     book: matchedBook[0],
-    chapter: Math.max(1, Number(match?.[1] || 1)),
-    verse: Math.max(1, Number(match?.[2] || 1)),
+    startChapter,
+    startVerse,
+    endChapter,
+    endVerse,
   };
 }
 
 function getChapterCount(book: string) {
   return bibleBooks.find(([name]) => name === book)?.[1] || 1;
+}
+
+async function fetchChapterVerseCount(book: string, chapter: number) {
+  const cacheKey = `${book}:${chapter}`;
+  const cachedCount = chapterVerseCountCache.get(cacheKey);
+  if (cachedCount) return cachedCount;
+
+  const response = await fetch(
+    `https://bible-api.com/${encodeURIComponent(`${book} ${chapter}`)}`,
+  );
+
+  if (!response.ok) {
+    throw new Error('Chapter lookup failed');
+  }
+
+  const data = await response.json();
+  const verseCount = Array.isArray(data?.verses)
+    ? Math.max(...data.verses.map((item: any) => Number(item.verse || 0)))
+    : 0;
+
+  if (!verseCount) {
+    throw new Error('Chapter has no verses');
+  }
+
+  chapterVerseCountCache.set(cacheKey, verseCount);
+  return verseCount;
 }
 
 async function fetchVerse(reference: string) {
@@ -142,20 +193,88 @@ export function BibleSelector({
     [defaultReference],
   );
   const [book, setBook] = useState(parsedReference.book);
-  const [chapter, setChapter] = useState(parsedReference.chapter);
-  const [verse, setVerse] = useState(parsedReference.verse);
+  const [startChapter, setStartChapter] = useState(
+    parsedReference.startChapter,
+  );
+  const [startVerse, setStartVerse] = useState(parsedReference.startVerse);
+  const [endChapter, setEndChapter] = useState(parsedReference.endChapter);
+  const [endVerse, setEndVerse] = useState(parsedReference.endVerse);
+  const [startVerseCount, setStartVerseCount] = useState(1);
+  const [endVerseCount, setEndVerseCount] = useState(1);
+  const [isValidating, setIsValidating] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [validationError, setValidationError] = useState('');
   const [lookupError, setLookupError] = useState('');
   const chapterCount = getChapterCount(book);
-  const reference = `${book} ${chapter}:${verse}`;
+  const endVerseMinimum = endChapter === startChapter ? startVerse : 1;
+  const reference =
+    startChapter === endChapter && startVerse === endVerse
+      ? `${book} ${startChapter}:${startVerse}`
+      : startChapter === endChapter
+        ? `${book} ${startChapter}:${startVerse}-${endVerse}`
+        : `${book} ${startChapter}:${startVerse}-${endChapter}:${endVerse}`;
 
   useEffect(() => {
     setBook(parsedReference.book);
-    setChapter(parsedReference.chapter);
-    setVerse(parsedReference.verse);
+    setStartChapter(parsedReference.startChapter);
+    setStartVerse(parsedReference.startVerse);
+    setEndChapter(parsedReference.endChapter);
+    setEndVerse(parsedReference.endVerse);
   }, [parsedReference]);
 
+  useEffect(() => {
+    let isActive = true;
+
+    const loadVerseCounts = async () => {
+      setIsValidating(true);
+      setValidationError('');
+
+      try {
+        const [nextStartVerseCount, nextEndVerseCount] = await Promise.all([
+          fetchChapterVerseCount(book, startChapter),
+          endChapter === startChapter
+            ? fetchChapterVerseCount(book, startChapter)
+            : fetchChapterVerseCount(book, endChapter),
+        ]);
+
+        if (!isActive) return;
+
+        setStartVerseCount(nextStartVerseCount);
+        setEndVerseCount(nextEndVerseCount);
+        setStartVerse((current) =>
+          Math.min(Math.max(1, current), nextStartVerseCount),
+        );
+        setEndVerse((current) => {
+          const minimum = endChapter === startChapter ? startVerse : 1;
+          return Math.min(Math.max(minimum, current), nextEndVerseCount);
+        });
+      } catch {
+        if (!isActive) return;
+        setValidationError('Could not validate this chapter right now.');
+      } finally {
+        if (isActive) {
+          setIsValidating(false);
+        }
+      }
+    };
+
+    loadVerseCounts();
+
+    return () => {
+      isActive = false;
+    };
+  }, [book, endChapter, startChapter, startVerse]);
+
   const chapters = Array.from({ length: chapterCount }, (_, index) => index + 1);
+  const endChapters = chapters.filter((chapter) => chapter >= startChapter);
+  const startVerses = Array.from(
+    { length: startVerseCount },
+    (_, index) => index + 1,
+  );
+  const endVerses = Array.from(
+    { length: Math.max(0, endVerseCount - endVerseMinimum + 1) },
+    (_, index) => endVerseMinimum + index,
+  );
 
   const selectVerse = async () => {
     setIsLoading(true);
@@ -174,7 +293,7 @@ export function BibleSelector({
 
   return (
     <div className={className}>
-      <div className="grid gap-3 md:grid-cols-[minmax(150px,1.3fr)_110px_110px_auto]">
+      <div className="grid gap-3 md:grid-cols-[minmax(150px,1.3fr)_96px_96px_96px_96px_auto]">
         <div>
           <label className={labelClassName}>Book</label>
           <select
@@ -182,8 +301,10 @@ export function BibleSelector({
             value={book}
             onChange={(event) => {
               setBook(event.target.value);
-              setChapter(1);
-              setVerse(1);
+              setStartChapter(1);
+              setStartVerse(1);
+              setEndChapter(1);
+              setEndVerse(1);
             }}
           >
             {bibleBooks.map(([bookName]) => (
@@ -194,11 +315,17 @@ export function BibleSelector({
           </select>
         </div>
         <div>
-          <label className={labelClassName}>Chapter</label>
+          <label className={labelClassName}>Start ch.</label>
           <select
             className={inputClassName}
-            value={chapter}
-            onChange={(event) => setChapter(Number(event.target.value))}
+            value={startChapter}
+            onChange={(event) => {
+              const nextChapter = Number(event.target.value);
+              setStartChapter(nextChapter);
+              setStartVerse(1);
+              setEndChapter(nextChapter);
+              setEndVerse(1);
+            }}
           >
             {chapters.map((chapterNumber) => (
               <option key={chapterNumber} value={chapterNumber}>
@@ -208,28 +335,75 @@ export function BibleSelector({
           </select>
         </div>
         <div>
-          <label className={labelClassName}>Verse</label>
-          <input
+          <label className={labelClassName}>Start vs.</label>
+          <select
             className={inputClassName}
-            min="1"
-            type="number"
-            value={verse}
-            onChange={(event) =>
-              setVerse(Math.max(1, Number(event.target.value || 1)))
-            }
-          />
+            disabled={isValidating}
+            value={startVerse}
+            onChange={(event) => {
+              const nextVerse = Number(event.target.value);
+              setStartVerse(nextVerse);
+              if (endChapter === startChapter && endVerse < nextVerse) {
+                setEndVerse(nextVerse);
+              }
+            }}
+          >
+            {startVerses.map((verseNumber) => (
+              <option key={verseNumber} value={verseNumber}>
+                {verseNumber}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={labelClassName}>End ch.</label>
+          <select
+            className={inputClassName}
+            value={endChapter}
+            onChange={(event) => {
+              const nextChapter = Number(event.target.value);
+              setEndChapter(nextChapter);
+              setEndVerse(nextChapter === startChapter ? startVerse : 1);
+            }}
+          >
+            {endChapters.map((chapterNumber) => (
+              <option key={chapterNumber} value={chapterNumber}>
+                {chapterNumber}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={labelClassName}>End vs.</label>
+          <select
+            className={inputClassName}
+            disabled={isValidating}
+            value={endVerse}
+            onChange={(event) => setEndVerse(Number(event.target.value))}
+          >
+            {endVerses.map((verseNumber) => (
+              <option key={verseNumber} value={verseNumber}>
+                {verseNumber}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="flex items-end">
           <button
             className={buttonClassName}
-            disabled={isLoading}
+            disabled={isLoading || isValidating || Boolean(validationError)}
             type="button"
             onClick={selectVerse}
           >
-            {isLoading ? 'Looking up...' : 'Use verse'}
+            {isLoading || isValidating ? 'Checking...' : 'Use verse'}
           </button>
         </div>
       </div>
+      {validationError ? (
+        <p className="mt-2 text-xs font-medium text-amber-300">
+          {validationError}
+        </p>
+      ) : null}
       {lookupError ? (
         <p className="mt-2 text-xs font-medium text-amber-300">
           {lookupError}

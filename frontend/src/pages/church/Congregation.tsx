@@ -3,7 +3,6 @@ import {
   BookOpen,
   CalendarDays,
   Eye,
-  EyeOff,
   ImagePlus,
   Link as LinkIcon,
   Plus,
@@ -430,53 +429,39 @@ export default function ChurchCongregation() {
     uploadMutation.mutate({ file, target, index });
   };
 
-  const addDefaultGalleryImage = (
+  const useDefaultGalleryImageAsCover = (
     image: (typeof defaultGalleryImages)[number],
   ) => {
     setForm((current) => {
-      const alreadyAdded = current.galleryImages.some(
+      return {
+        ...current,
+        featuredImageUrl: image.imageUrl,
+      };
+    });
+  };
+
+  const toggleDefaultGalleryImageUse = (
+    image: (typeof defaultGalleryImages)[number],
+  ) => {
+    setForm((current) => {
+      const existingIndex = current.galleryImages.findIndex(
         (item) => item.imageUrl === image.imageUrl,
       );
-      if (alreadyAdded) {
-        return current;
+
+      if (existingIndex === -1) {
+        return {
+          ...current,
+          galleryImages: [
+            ...current.galleryImages,
+            createGalleryImage(image.imageUrl, image.title, true),
+          ],
+        };
       }
 
-      return {
-        ...current,
-        galleryImages: [
-          ...current.galleryImages,
-          createGalleryImage(image.imageUrl, image.title, true),
-        ],
-      };
-    });
-  };
-
-  const addAllDefaultGalleryImages = () => {
-    setForm((current) => {
-      const existingUrls = new Set(
-        current.galleryImages.map((item) => item.imageUrl),
-      );
-      const nextDefaults = defaultGalleryImages
-        .filter((image) => !existingUrls.has(image.imageUrl))
-        .map((image) => createGalleryImage(image.imageUrl, image.title, true));
-
-      if (nextDefaults.length === 0) {
-        return current;
-      }
-
-      return {
-        ...current,
-        galleryImages: [...current.galleryImages, ...nextDefaults],
-      };
-    });
-  };
-
-  const toggleGalleryImageActive = (index: number) => {
-    setForm((current) => {
       const galleryImages = [...current.galleryImages];
-      galleryImages[index] = {
-        ...galleryImages[index],
-        isActive: galleryImages[index].isActive === false,
+      galleryImages[existingIndex] = {
+        ...galleryImages[existingIndex],
+        isActive: galleryImages[existingIndex].isActive === false,
       };
       return { ...current, galleryImages };
     });
@@ -1181,132 +1166,52 @@ export default function ChurchCongregation() {
 
         <aside className="space-y-5">
           <section className="panel p-5">
-            <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-              Featured Image
-            </p>
-            <h3 className="mt-2 text-xl font-semibold text-white">
-              Public page cover
-            </h3>
-            <input
-              accept="image/png,image/jpeg,image/webp"
-              className="input mt-5"
-              type="file"
-              onChange={(event) => {
-                uploadImage(event.target.files?.[0], 'featured');
-                event.target.value = '';
-              }}
-            />
-            {form.featuredImageUrl ? (
-              <img
-                alt=""
-                className="mt-4 aspect-[4/3] w-full rounded-3xl object-cover"
-                src={resolveMediaUrl(form.featuredImageUrl)}
-              />
-            ) : (
-              <div className="mt-4 flex aspect-[4/3] items-center justify-center rounded-3xl border border-white/10 bg-black/10 text-stone-400">
-                <ImagePlus size={28} />
-              </div>
-            )}
-          </section>
-
-          <section className="panel p-5">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-                  Gallery
+                  Visual Assets
                 </p>
                 <h3 className="mt-2 text-xl font-semibold text-white">
-                  Public photos
+                  Public page images
                 </h3>
               </div>
-              <div className="flex gap-2">
-                <button
-                  className="btn-secondary px-3 py-2 text-xs"
-                  type="button"
-                  onClick={addAllDefaultGalleryImages}
-                >
-                  <Plus size={15} />
-                  Defaults
-                </button>
-                <label className="btn-secondary cursor-pointer px-3 py-2">
-                  <ImagePlus size={16} />
-                  <input
-                    accept="image/png,image/jpeg,image/webp"
-                    className="hidden"
-                    type="file"
-                    onChange={(event) => {
-                      uploadImage(event.target.files?.[0], 'gallery');
-                      event.target.value = '';
-                    }}
-                  />
-                </label>
-              </div>
+              <label className="btn-secondary cursor-pointer px-3 py-2 text-xs">
+                <ImagePlus size={15} />
+                Upload
+                <input
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  type="file"
+                  onChange={(event) => {
+                    uploadImage(event.target.files?.[0], 'featured');
+                    event.target.value = '';
+                  }}
+                />
+              </label>
             </div>
 
-            <div className="mt-5 space-y-3">
-              {form.galleryImages.length === 0 ? (
-                <div className="rounded-3xl border border-dashed border-white/10 bg-black/10 p-4 text-sm leading-6 text-stone-300">
-                  Add a default image or upload a church photo. Only active
-                  images appear on the public page.
-                </div>
-              ) : null}
-              {form.galleryImages.map((item, index) => (
-                <div
-                  key={item.id || index}
-                  className="rounded-3xl border border-white/10 bg-black/10 p-3"
-                >
-                  <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#10251f]">
-                    <img
-                      alt=""
-                      className={`aspect-video w-full object-cover transition ${
-                        item.isActive === false ? 'opacity-45 grayscale' : ''
-                      }`}
-                      src={resolveMediaUrl(item.imageUrl)}
-                    />
-                    <span
-                      className={`absolute left-3 top-3 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${
-                        item.isActive === false
-                          ? 'bg-stone-900/75 text-stone-300'
-                          : 'bg-emerald-500/90 text-white'
-                      }`}
-                    >
-                      {item.isActive === false ? 'Inactive' : 'Active'}
-                    </span>
-                    {item.isDefault ? (
-                      <span className="absolute right-3 top-3 rounded-full bg-amber-200 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-950">
-                        Default
-                      </span>
-                    ) : null}
+            <div className="mt-5 rounded-2xl border border-white/10 bg-black/10 p-3">
+              <div className="grid grid-cols-[64px_minmax(0,1fr)] items-center gap-3">
+                {form.featuredImageUrl ? (
+                  <img
+                    alt=""
+                    className="aspect-[4/3] w-full rounded-xl bg-[#10251f] object-cover"
+                    src={resolveMediaUrl(form.featuredImageUrl)}
+                  />
+                ) : (
+                  <div className="flex aspect-[4/3] items-center justify-center rounded-xl bg-white/5 text-stone-400">
+                    <ImagePlus size={20} />
                   </div>
-                  <div className="mt-3 grid gap-2">
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-semibold text-white">
-                      {getGalleryImageTitle(item)}
-                    </div>
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-                      <button
-                        className="btn-secondary justify-center px-3 py-2 text-xs"
-                        type="button"
-                        onClick={() => toggleGalleryImageActive(index)}
-                      >
-                        {item.isActive === false ? (
-                          <Eye size={15} />
-                        ) : (
-                          <EyeOff size={15} />
-                        )}
-                        {item.isActive === false ? 'Activate' : 'Deactivate'}
-                      </button>
-                      <button
-                        aria-label="Remove gallery image"
-                        className="btn-secondary px-3 py-2"
-                        type="button"
-                        onClick={() => removeListItem('galleryImages', index)}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-white">
+                    Current cover
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-stone-400">
+                    Use a default below or upload a cover image.
+                  </p>
                 </div>
-              ))}
+              </div>
             </div>
 
             <div className="mt-5 border-t border-white/10 pt-5">
@@ -1322,12 +1227,15 @@ export default function ChurchCongregation() {
               </div>
               <div className="mt-4 grid gap-3">
                 {defaultGalleryImages.map((image) => {
-                  const alreadyAdded = form.galleryImages.some(
+                  const galleryImage = form.galleryImages.find(
                     (item) => item.imageUrl === image.imageUrl,
                   );
+                  const isCover = form.featuredImageUrl === image.imageUrl;
+                  const isActiveGalleryImage =
+                    galleryImage && galleryImage.isActive !== false;
                   return (
                     <div
-                      className="grid grid-cols-[72px_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-2.5"
+                      className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 rounded-2xl border border-white/10 bg-white/5 p-2.5"
                       key={image.id}
                     >
                       <img
@@ -1343,14 +1251,28 @@ export default function ChurchCongregation() {
                           Default image
                         </p>
                       </div>
-                      <button
-                        className="btn-secondary px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-45"
-                        disabled={alreadyAdded}
-                        type="button"
-                        onClick={() => addDefaultGalleryImage(image)}
-                      >
-                        {alreadyAdded ? 'Added' : 'Use'}
-                      </button>
+                      <div className="col-span-2 grid grid-cols-2 gap-2">
+                        <button
+                          className={`btn-secondary justify-center px-3 py-2 text-xs ${
+                            isCover ? 'border-emerald-300/40 bg-emerald-400/15 text-emerald-100' : ''
+                          }`}
+                          type="button"
+                          onClick={() => useDefaultGalleryImageAsCover(image)}
+                        >
+                          {isCover ? 'Cover' : 'Use cover'}
+                        </button>
+                        <button
+                          className={`btn-secondary justify-center px-3 py-2 text-xs ${
+                            isActiveGalleryImage
+                              ? 'border-emerald-300/40 bg-emerald-400/15 text-emerald-100'
+                              : ''
+                          }`}
+                          type="button"
+                          onClick={() => toggleDefaultGalleryImageUse(image)}
+                        >
+                          {isActiveGalleryImage ? 'In gallery' : 'Use gallery'}
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
