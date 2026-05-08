@@ -52,6 +52,23 @@ function formatLongDate(value?: string | null) {
   });
 }
 
+function getTodayInputDate() {
+  const today = new Date();
+  const localDate = new Date(
+    today.getTime() - today.getTimezoneOffset() * 60_000,
+  );
+  return localDate.toISOString().slice(0, 10);
+}
+
+function toInputDate(value?: string | null) {
+  return value ? value.slice(0, 10) : '';
+}
+
+function isCurrentVerseDate(value?: string | null) {
+  const date = toInputDate(value);
+  return !date || date >= getTodayInputDate();
+}
+
 function formatMoney(value: unknown) {
   return `KES ${Number(value || 0).toLocaleString('en-KE', {
     maximumFractionDigits: 0,
@@ -125,7 +142,9 @@ export default function PublicCongregation() {
   const logoUrl = resolveMediaUrl(church.logoUrl) || '/brand-logo.jpeg';
   const dailyVerses =
     Array.isArray(page.dailyVerses) && page.dailyVerses.length > 0
-      ? page.dailyVerses.filter((item: any) => item?.text)
+      ? page.dailyVerses.filter(
+          (item: any) => item?.text && isCurrentVerseDate(item.date),
+        )
       : page.verseText
         ? [
             {

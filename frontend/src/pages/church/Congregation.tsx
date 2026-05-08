@@ -88,7 +88,31 @@ function createEvent() {
 }
 
 function getTodayInputDate() {
-  return new Date().toISOString().slice(0, 10);
+  const today = new Date();
+  const localDate = new Date(
+    today.getTime() - today.getTimezoneOffset() * 60_000,
+  );
+  return localDate.toISOString().slice(0, 10);
+}
+
+function toInputDate(value?: string | null) {
+  return value ? value.slice(0, 10) : '';
+}
+
+function isPastInputDate(value?: string | null) {
+  const date = toInputDate(value);
+  return Boolean(date && date < getTodayInputDate());
+}
+
+function formatInputDate(value?: string | null) {
+  const date = toInputDate(value);
+  if (!date) return '';
+
+  return new Date(`${date}T00:00:00`).toLocaleDateString('en-KE', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 function createDailyVerse() {
@@ -311,17 +335,26 @@ export default function ChurchCongregation() {
     },
   });
 
+  const pastDailyVerses = useMemo(
+    () =>
+      form.dailyVerses
+        .map((item, index) => ({ ...item, originalIndex: index }))
+        .filter((item) => item.text && isPastInputDate(item.date))
+        .sort((a, b) => toInputDate(b.date).localeCompare(toInputDate(a.date))),
+    [form.dailyVerses],
+  );
+
   const pageSummary = useMemo(
     () => [
       { label: 'Service Times', value: form.serviceTimes.length },
       { label: 'Daily Verses', value: form.dailyVerses.length },
       { label: 'Events', value: form.events.length },
       { label: 'Programs', value: form.massPrograms.length },
-      { label: 'Sermons', value: form.sermons.length },
+      { label: 'Sermons', value: form.sermons.length + pastDailyVerses.length },
       { label: 'Fund Displays', value: form.fundDisplays.length },
       { label: 'Gallery Images', value: form.galleryImages.length },
     ],
-    [form],
+    [form, pastDailyVerses.length],
   );
 
   const updateListItem = (
@@ -1082,6 +1115,48 @@ export default function ChurchCongregation() {
             </div>
 
             <div className="mt-5 space-y-4">
+              {pastDailyVerses.length === 0 && form.sermons.length === 0 ? (
+                <div className="rounded-3xl border border-dashed border-white/15 bg-black/10 p-6 text-sm text-stone-300">
+                  Past dated verses and sermons will appear here.
+                </div>
+              ) : null}
+
+              {pastDailyVerses.map((item) => (
+                <div
+                  key={`past-verse-${item.id || item.originalIndex}`}
+                  className="rounded-3xl border border-emerald-300/15 bg-emerald-400/10 p-4"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200">
+                        Past verse
+                      </p>
+                      <h4 className="mt-2 text-lg font-semibold text-white">
+                        {item.reference || 'Daily verse'}
+                      </h4>
+                      {item.date ? (
+                        <p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">
+                          {formatInputDate(item.date)}
+                        </p>
+                      ) : null}
+                    </div>
+                    <button
+                      aria-label="Remove verse"
+                      className="btn-secondary justify-center px-3 py-2"
+                      type="button"
+                      onClick={() =>
+                        removeListItem('dailyVerses', item.originalIndex)
+                      }
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-stone-200">
+                    {item.text}
+                  </p>
+                </div>
+              ))}
+
               {form.sermons.map((item, index) => (
                 <div
                   key={item.id || index}
