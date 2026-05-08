@@ -672,44 +672,7 @@ export class SmsService {
   public async resolveSystemSmsConfig(
     churchId: string,
   ): Promise<ChurchSmsConfig> {
-    const envSmsConfig = this.getSystemSmsConfigFromEnv(churchId);
-    if (envSmsConfig) {
-      return envSmsConfig;
-    }
-
-    const pinnedSenderChurchId =
-      this.configService.get<string>('SYSTEM_SMS_SENDER_CHURCH_ID') ||
-      this.configService.get<string>('PLATFORM_SMS_SENDER_CHURCH_ID');
-
-    const senderChurch = await this.churchRepo
-      .createQueryBuilder('church')
-      .where("NULLIF(church.smsPartnerId, '') IS NOT NULL")
-      .andWhere("NULLIF(church.smsApiKey, '') IS NOT NULL")
-      .andWhere("NULLIF(church.smsShortcode, '') IS NOT NULL")
-      .andWhere(
-        pinnedSenderChurchId ? 'church.id = :pinnedSenderChurchId' : '1 = 1',
-        { pinnedSenderChurchId },
-      )
-      .orderBy(
-        "CASE WHEN church.status = 'active' THEN 0 ELSE 1 END",
-        'ASC',
-      )
-      .addOrderBy('church.updatedAt', 'DESC')
-      .addOrderBy('church.createdAt', 'DESC')
-      .getOne();
-
-    if (!senderChurch) {
-      return { churchId };
-    }
-
-    return {
-      churchId,
-      smsPartnerId: senderChurch.smsPartnerId,
-      smsApiKey: senderChurch.smsApiKey,
-      smsShortcode: senderChurch.smsShortcode,
-      smsShortcodes: senderChurch.smsShortcodes,
-      smsBaseUrl: senderChurch.smsBaseUrl,
-    };
+    return this.getSystemSmsConfigFromEnv(churchId) || { churchId };
   }
 
   /**
