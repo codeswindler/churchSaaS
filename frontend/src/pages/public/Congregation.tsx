@@ -108,7 +108,7 @@ export default function PublicCongregation() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#f7f3ea] p-8 text-stone-700">
-        Loading sermons & announcements...
+        Loading verses & announcements...
       </div>
     );
   }
@@ -118,7 +118,7 @@ export default function PublicCongregation() {
       <div className="flex min-h-screen items-center justify-center bg-[#f7f3ea] p-6 text-stone-800">
         <div className="max-w-xl text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">
-            Sermons & Announcements
+            Verses & Announcements
           </p>
           <h1 className="mt-3 text-4xl font-semibold">Page not available</h1>
           <p className="mt-3 text-stone-600">
@@ -250,7 +250,7 @@ export default function PublicCongregation() {
                   isNightMode ? 'text-stone-400' : 'text-stone-500'
                 }`}
               >
-                Sermons & Announcements
+                Verses & Announcements
               </p>
             </div>
           </Link>
@@ -603,9 +603,11 @@ export default function PublicCongregation() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <p className={sectionEyebrowClass}>
-                  Sermons
+                  Archive
                 </p>
-                <h2 className="mt-3 text-3xl font-semibold">Past sermons</h2>
+                <h2 className="mt-3 text-3xl font-semibold">
+                  Past verses and messages
+                </h2>
               </div>
             </div>
             <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -624,7 +626,7 @@ export default function PublicCongregation() {
                   <div className="p-5">
                     <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#1e6f87]">
                       <CalendarDays size={14} />
-                      {formatDate(sermon.date) || 'Recent sermon'}
+                      {formatDate(sermon.date) || 'Recent entry'}
                     </div>
                     <h3 className="mt-3 text-xl font-semibold">
                       {sermon.title}
@@ -651,7 +653,7 @@ export default function PublicCongregation() {
                         target="_blank"
                       >
                         <PlayCircle size={16} />
-                        Open sermon
+                        Open resource
                       </a>
                     ) : null}
                   </div>

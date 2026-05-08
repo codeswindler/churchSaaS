@@ -95,6 +95,12 @@ function getTodayInputDate() {
   return localDate.toISOString().slice(0, 10);
 }
 
+function getYesterdayInputDate() {
+  const today = new Date(`${getTodayInputDate()}T00:00:00`);
+  today.setDate(today.getDate() - 1);
+  return today.toISOString().slice(0, 10);
+}
+
 function toInputDate(value?: string | null) {
   return value ? value.slice(0, 10) : '';
 }
@@ -115,10 +121,10 @@ function formatInputDate(value?: string | null) {
   });
 }
 
-function createDailyVerse() {
+function createDailyVerse(date = getTodayInputDate()) {
   return {
     id: createId(),
-    date: getTodayInputDate(),
+    date,
     reference: '',
     text: '',
   };
@@ -270,13 +276,13 @@ export default function ChurchCongregation() {
       api.patch('/church/congregation-page', buildSavePayload(form)),
     onSuccess: (response) => {
       setForm(normalizeForm(response.data));
-      toast.success('Sermons & announcements updated');
+      toast.success('Verses & announcements updated');
       queryClient.invalidateQueries({ queryKey: ['church-congregation-page'] });
     },
     onError: (error: any) => {
       toast.error(
         error?.response?.data?.message ||
-          'Unable to update sermons & announcements',
+          'Unable to update verses & announcements',
       );
     },
   });
@@ -339,22 +345,30 @@ export default function ChurchCongregation() {
     () =>
       form.dailyVerses
         .map((item, index) => ({ ...item, originalIndex: index }))
-        .filter((item) => item.text && isPastInputDate(item.date))
+        .filter((item) => isPastInputDate(item.date))
         .sort((a, b) => toInputDate(b.date).localeCompare(toInputDate(a.date))),
+    [form.dailyVerses],
+  );
+
+  const currentDailyVerses = useMemo(
+    () =>
+      form.dailyVerses
+        .map((item, index) => ({ ...item, originalIndex: index }))
+        .filter((item) => !isPastInputDate(item.date)),
     [form.dailyVerses],
   );
 
   const pageSummary = useMemo(
     () => [
       { label: 'Service Times', value: form.serviceTimes.length },
-      { label: 'Daily Verses', value: form.dailyVerses.length },
+      { label: 'Current Verses', value: currentDailyVerses.length },
+      { label: 'Past Verses', value: pastDailyVerses.length },
       { label: 'Events', value: form.events.length },
       { label: 'Programs', value: form.massPrograms.length },
-      { label: 'Sermons', value: form.sermons.length + pastDailyVerses.length },
       { label: 'Fund Displays', value: form.fundDisplays.length },
       { label: 'Gallery Images', value: form.galleryImages.length },
     ],
-    [form, pastDailyVerses.length],
+    [form, currentDailyVerses.length, pastDailyVerses.length],
   );
 
   const updateListItem = (
@@ -465,14 +479,14 @@ export default function ChurchCongregation() {
         <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-              Sermons & Announcements
+              Verses & Announcements
             </p>
             <h3 className="mt-2 text-2xl font-semibold text-white">
               Keep members updated
             </h3>
             <p className="mt-2 max-w-3xl text-sm text-stone-300">
-              Update daily scripture, sermons, announcements, worship times, and
-              selected public photos for this church only.
+              Update daily scripture, announcements, worship times, and selected
+              public photos for this church only.
             </p>
           </div>
 
@@ -604,9 +618,9 @@ export default function ChurchCongregation() {
                 </div>
 
                 <div className="mt-4 space-y-3">
-                  {form.dailyVerses.map((item, index) => (
+                  {currentDailyVerses.map((item) => (
                     <div
-                      key={item.id || index}
+                      key={item.id || item.originalIndex}
                       className="grid gap-3 rounded-2xl border border-white/10 bg-white/5 p-3 md:grid-cols-[150px_190px_1fr_auto]"
                     >
                       {[
@@ -623,7 +637,7 @@ export default function ChurchCongregation() {
                             onChange={(event) =>
                               updateListItem(
                                 'dailyVerses',
-                                index,
+                                item.originalIndex,
                                 field,
                                 event.target.value,
                               )
@@ -635,7 +649,9 @@ export default function ChurchCongregation() {
                         aria-label="Remove verse"
                         className="btn-secondary self-end px-3 py-2"
                         type="button"
-                        onClick={() => removeListItem('dailyVerses', index)}
+                        onClick={() =>
+                          removeListItem('dailyVerses', item.originalIndex)
+                        }
                       >
                         <Trash2 size={16} />
                       </button>
@@ -1093,10 +1109,10 @@ export default function ChurchCongregation() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-                  Sermons
+                  Past Verses
                 </p>
                 <h3 className="mt-2 text-2xl font-semibold text-white">
-                  Past sermon library
+                  Past verse library
                 </h3>
               </div>
               <button
@@ -1105,19 +1121,22 @@ export default function ChurchCongregation() {
                 onClick={() =>
                   setForm((current) => ({
                     ...current,
-                    sermons: [...current.sermons, createSermon()],
+                    dailyVerses: [
+                      ...current.dailyVerses,
+                      createDailyVerse(getYesterdayInputDate()),
+                    ],
                   }))
                 }
               >
                 <BookOpen size={16} />
-                Add sermon
+                Add past verse
               </button>
             </div>
 
             <div className="mt-5 space-y-4">
-              {pastDailyVerses.length === 0 && form.sermons.length === 0 ? (
+              {pastDailyVerses.length === 0 ? (
                 <div className="rounded-3xl border border-dashed border-white/15 bg-black/10 p-6 text-sm text-stone-300">
-                  Past dated verses and sermons will appear here.
+                  Any verse with a past date will appear here by default.
                 </div>
               ) : null}
 
@@ -1126,47 +1145,11 @@ export default function ChurchCongregation() {
                   key={`past-verse-${item.id || item.originalIndex}`}
                   className="rounded-3xl border border-emerald-300/15 bg-emerald-400/10 p-4"
                 >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200">
-                        Past verse
-                      </p>
-                      <h4 className="mt-2 text-lg font-semibold text-white">
-                        {item.reference || 'Daily verse'}
-                      </h4>
-                      {item.date ? (
-                        <p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">
-                          {formatInputDate(item.date)}
-                        </p>
-                      ) : null}
-                    </div>
-                    <button
-                      aria-label="Remove verse"
-                      className="btn-secondary justify-center px-3 py-2"
-                      type="button"
-                      onClick={() =>
-                        removeListItem('dailyVerses', item.originalIndex)
-                      }
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-stone-200">
-                    {item.text}
-                  </p>
-                </div>
-              ))}
-
-              {form.sermons.map((item, index) => (
-                <div
-                  key={item.id || index}
-                  className="rounded-3xl border border-white/10 bg-black/10 p-4"
-                >
-                  <div className="grid gap-3 md:grid-cols-[1fr_150px_180px_auto]">
+                  <div className="grid gap-3 md:grid-cols-[150px_190px_1fr_auto]">
                     {[
-                      ['title', 'Title', 'text'],
                       ['date', 'Date', 'date'],
-                      ['speaker', 'Speaker', 'text'],
+                      ['reference', 'Reference', 'text'],
+                      ['text', 'Verse text', 'text'],
                     ].map(([field, label, type]) => (
                       <div key={field}>
                         <label className="label-compact">{label}</label>
@@ -1176,8 +1159,8 @@ export default function ChurchCongregation() {
                           value={item[field] || ''}
                           onChange={(event) =>
                             updateListItem(
-                              'sermons',
-                              index,
+                              'dailyVerses',
+                              item.originalIndex,
                               field,
                               event.target.value,
                             )
@@ -1186,71 +1169,21 @@ export default function ChurchCongregation() {
                       </div>
                     ))}
                     <button
-                      aria-label="Remove sermon"
+                      aria-label="Remove verse"
                       className="btn-secondary self-end px-3 py-2"
                       type="button"
-                      onClick={() => removeListItem('sermons', index)}
+                      onClick={() =>
+                        removeListItem('dailyVerses', item.originalIndex)
+                      }
                     >
                       <Trash2 size={16} />
                     </button>
                   </div>
-
-                  <div className="mt-3 grid gap-3 md:grid-cols-[1fr_220px]">
-                    <div className="space-y-3">
-                      <div>
-                        <label className="label-compact">Sermon summary</label>
-                        <textarea
-                          className="input-compact mt-1.5 min-h-24"
-                          value={item.summary || ''}
-                          onChange={(event) =>
-                            updateListItem(
-                              'sermons',
-                              index,
-                              'summary',
-                              event.target.value,
-                            )
-                          }
-                        />
-                      </div>
-                      <div>
-                        <label className="label-compact">
-                          Audio, video, or notes link
-                        </label>
-                        <input
-                          className="input-compact mt-1.5"
-                          value={item.mediaUrl || ''}
-                          onChange={(event) =>
-                            updateListItem(
-                              'sermons',
-                              index,
-                              'mediaUrl',
-                              event.target.value,
-                            )
-                          }
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="label-compact">Sermon image</label>
-                      <input
-                        accept="image/png,image/jpeg,image/webp"
-                        className="input-compact mt-1.5"
-                        type="file"
-                        onChange={(event) => {
-                          uploadImage(event.target.files?.[0], 'sermon', index);
-                          event.target.value = '';
-                        }}
-                      />
-                      {item.imageUrl ? (
-                        <img
-                          alt=""
-                          className="mt-3 h-28 w-full rounded-2xl object-cover"
-                          src={resolveMediaUrl(item.imageUrl)}
-                        />
-                      ) : null}
-                    </div>
-                  </div>
+                  {item.date ? (
+                    <p className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">
+                      Archived from {formatInputDate(item.date)}
+                    </p>
+                  ) : null}
                 </div>
               ))}
             </div>

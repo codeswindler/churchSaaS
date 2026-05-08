@@ -72,7 +72,7 @@ const churchLinks = [
   },
   {
     to: '/church/congregation',
-    label: 'Sermons & Announcements',
+    label: 'Verses & Announcements',
     icon: BookOpenText,
     permission: 'congregation.manage',
   },
@@ -150,7 +150,7 @@ const pageMeta = {
     },
     {
       prefix: '/church/congregation',
-      title: 'Sermons & Announcements',
+      title: 'Verses & Announcements',
       variant: 'compact',
     },
     { prefix: '/church/users', title: 'Staff users', variant: 'compact' },
