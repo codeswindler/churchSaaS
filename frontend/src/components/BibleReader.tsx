@@ -140,46 +140,14 @@ export function BibleReader({
 
   return (
     <div className={panelClassName}>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-3">
-          <div
-            className={`mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${
-              isNightMode
-                ? 'border-amber-200/20 bg-amber-200/10 text-amber-100'
-                : 'border-[#143f34]/15 bg-[#143f34]/10 text-[#143f34]'
-            }`}
-          >
-            <BookOpen size={20} />
-          </div>
-          <div>
-            <p
-              className={
-                isNightMode
-                  ? 'text-xs font-semibold uppercase tracking-[0.24em] text-amber-200'
-                  : 'text-xs font-semibold uppercase tracking-[0.24em] text-[#9b6b19]'
-              }
-            >
-              Bible
-            </p>
-            <h2 className="mt-2 text-2xl font-semibold">Read the Bible</h2>
-            <p
-              className={`mt-1 max-w-3xl text-sm ${
-                isNightMode ? 'text-stone-300' : 'text-stone-700'
-              }`}
-            >
-              Open to read a full book chapter in a scrollable Bible reader.
-            </p>
-          </div>
-        </div>
-        <button
-          className={buttonClassName}
-          type="button"
-          onClick={() => setIsOpen((current) => !current)}
-        >
-          <BookOpen size={16} />
-          {isOpen ? 'Close Bible' : 'Open to read'}
-        </button>
-      </div>
+      <button
+        className={`${buttonClassName} w-full`}
+        type="button"
+        onClick={() => setIsOpen((current) => !current)}
+      >
+        <BookOpen size={16} />
+        {isOpen ? 'Close Bible' : 'Open Bible'}
+      </button>
 
       {isOpen ? (
         <>
