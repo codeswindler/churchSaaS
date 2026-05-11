@@ -9,6 +9,7 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
 
   async onApplicationBootstrap() {
     await this.ensureChurchCredentialColumns();
+    await this.ensurePlatformSmsConfigTable();
     await this.ensureRevenueAndAccessColumns();
     await this.ensureClientEnquiryTable();
     await this.ensureSmsMessagingTables();
@@ -298,6 +299,75 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
     }
   }
 
+  private async ensurePlatformSmsConfigTable() {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+
+    try {
+      const table = await queryRunner.getTable('platform_sms_config');
+
+      if (!table) {
+        await queryRunner.query(`
+          CREATE TABLE \`platform_sms_config\` (
+            \`id\` varchar(40) NOT NULL,
+            \`smsPartnerId\` varchar(120) NULL,
+            \`smsApiKey\` text NULL,
+            \`smsShortcode\` varchar(80) NULL,
+            \`smsBaseUrl\` varchar(255) NULL,
+            \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            \`updatedAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+            PRIMARY KEY (\`id\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        this.logger.log('Created platform SMS config table.');
+        return;
+      }
+
+      const statements: string[] = [];
+      if (!table.findColumnByName('smsPartnerId')) {
+        statements.push(
+          'ADD COLUMN `smsPartnerId` varchar(120) NULL AFTER `id`',
+        );
+      }
+      if (!table.findColumnByName('smsApiKey')) {
+        statements.push(
+          'ADD COLUMN `smsApiKey` text NULL AFTER `smsPartnerId`',
+        );
+      }
+      if (!table.findColumnByName('smsShortcode')) {
+        statements.push(
+          'ADD COLUMN `smsShortcode` varchar(80) NULL AFTER `smsApiKey`',
+        );
+      }
+      if (!table.findColumnByName('smsBaseUrl')) {
+        statements.push(
+          'ADD COLUMN `smsBaseUrl` varchar(255) NULL AFTER `smsShortcode`',
+        );
+      }
+      if (!table.findColumnByName('createdAt')) {
+        statements.push(
+          'ADD COLUMN `createdAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) AFTER `smsBaseUrl`',
+        );
+      }
+      if (!table.findColumnByName('updatedAt')) {
+        statements.push(
+          'ADD COLUMN `updatedAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) AFTER `createdAt`',
+        );
+      }
+
+      if (statements.length > 0) {
+        await queryRunner.query(
+          `ALTER TABLE \`platform_sms_config\` ${statements.join(', ')}`,
+        );
+        this.logger.log(
+          `Applied platform SMS config schema bootstrap with ${statements.length} column updates.`,
+        );
+      }
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
   private async ensureSmsMessagingTables() {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -453,7 +523,9 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
       const statements: string[] = [];
 
       if (!table.findColumnByName('churchId')) {
-        statements.push('ADD COLUMN `churchId` varchar(36) NOT NULL AFTER `id`');
+        statements.push(
+          'ADD COLUMN `churchId` varchar(36) NOT NULL AFTER `id`',
+        );
       }
       if (!table.findColumnByName('isPublished')) {
         statements.push(
@@ -476,7 +548,9 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
         );
       }
       if (!table.findColumnByName('verseText')) {
-        statements.push('ADD COLUMN `verseText` text NULL AFTER `verseReference`');
+        statements.push(
+          'ADD COLUMN `verseText` text NULL AFTER `verseReference`',
+        );
       }
       if (!table.findColumnByName('dailyVerses')) {
         statements.push('ADD COLUMN `dailyVerses` text NULL AFTER `verseText`');
@@ -509,7 +583,9 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
         );
       }
       if (!table.findColumnByName('contactNote')) {
-        statements.push('ADD COLUMN `contactNote` text NULL AFTER `galleryImages`');
+        statements.push(
+          'ADD COLUMN `contactNote` text NULL AFTER `galleryImages`',
+        );
       }
       if (!table.findColumnByName('updatedByUserId')) {
         statements.push(

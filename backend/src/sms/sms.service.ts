@@ -3,7 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import axios from 'axios';
 import { Repository } from 'typeorm';
-import { ChurchSmsConfig, getChurchSmsShortcodes } from '../common/church.utils';
+import {
+  ChurchSmsConfig,
+  getChurchSmsShortcodes,
+} from '../common/church.utils';
 import { Church } from '../entities/church.entity';
 import {
   Contribution,
@@ -11,6 +14,10 @@ import {
   ContributionStatus,
 } from '../entities/contribution.entity';
 import { Contributor, ContributorGender } from '../entities/contributor.entity';
+import {
+  PLATFORM_SMS_CONFIG_ID,
+  PlatformSmsConfig,
+} from '../entities/platform-sms-config.entity';
 import { SmsAddressBookContact } from '../entities/sms-address-book-contact.entity';
 import { SmsBatch, SmsBatchAudience } from '../entities/sms-batch.entity';
 import {
@@ -63,6 +70,8 @@ export class SmsService {
     private readonly smsBatchRepo: Repository<SmsBatch>,
     @InjectRepository(SmsOutbox)
     private readonly smsOutboxRepo: Repository<SmsOutbox>,
+    @InjectRepository(PlatformSmsConfig)
+    private readonly platformSmsConfigRepo: Repository<PlatformSmsConfig>,
   ) {
     this.partnerId = this.configService.get<string>('ADVANTA_PARTNER_ID') || '';
     this.apiKey = this.configService.get<string>('ADVANTA_API_KEY') || '';
@@ -672,7 +681,30 @@ export class SmsService {
   public async resolveSystemSmsConfig(
     churchId: string,
   ): Promise<ChurchSmsConfig> {
-    return this.getSystemSmsConfigFromEnv(churchId) || { churchId };
+    return (
+      (await this.getPlatformSmsConfig(churchId)) ||
+      this.getSystemSmsConfigFromEnv(churchId) || { churchId }
+    );
+  }
+
+  public async getPlatformSmsConfigForAdmin() {
+    const config = await this.platformSmsConfigRepo.findOne({
+      where: { id: PLATFORM_SMS_CONFIG_ID },
+    });
+    const envConfigured = Boolean(this.getSystemSmsConfigFromEnv('platform'));
+    const configured = Boolean(
+      config?.smsPartnerId && config?.smsApiKey && config?.smsShortcode,
+    );
+
+    return {
+      smsPartnerId: config?.smsPartnerId || '',
+      smsApiKey: config?.smsApiKey || '',
+      smsShortcode: config?.smsShortcode || '',
+      smsBaseUrl: config?.smsBaseUrl || this.baseUrl,
+      configured,
+      fallbackConfigured: !configured && envConfigured,
+      source: configured ? 'platform' : envConfigured ? 'env' : 'missing',
+    };
   }
 
   /**
@@ -705,9 +737,7 @@ export class SmsService {
     };
   }
 
-  private getSystemSmsConfigFromEnv(
-    churchId: string,
-  ): ChurchSmsConfig | null {
+  private getSystemSmsConfigFromEnv(churchId: string): ChurchSmsConfig | null {
     const smsPartnerId =
       this.configService.get<string>('SYSTEM_SMS_PARTNER_ID') ||
       this.configService.get<string>('PLATFORM_SMS_PARTNER_ID') ||
@@ -730,11 +760,33 @@ export class SmsService {
       smsPartnerId,
       smsApiKey,
       smsShortcode,
+      smsConfigSource: 'env',
       smsBaseUrl:
         this.configService.get<string>('SYSTEM_SMS_BASE_URL') ||
         this.configService.get<string>('PLATFORM_SMS_BASE_URL') ||
         this.configService.get<string>('ADVANTA_BASE_URL') ||
         undefined,
+    };
+  }
+
+  private async getPlatformSmsConfig(
+    churchId: string,
+  ): Promise<ChurchSmsConfig | null> {
+    const config = await this.platformSmsConfigRepo.findOne({
+      where: { id: PLATFORM_SMS_CONFIG_ID },
+    });
+
+    if (!config?.smsPartnerId || !config?.smsApiKey || !config?.smsShortcode) {
+      return null;
+    }
+
+    return {
+      churchId,
+      smsPartnerId: config.smsPartnerId,
+      smsApiKey: config.smsApiKey,
+      smsShortcode: config.smsShortcode,
+      smsBaseUrl: config.smsBaseUrl || undefined,
+      smsConfigSource: 'platform',
     };
   }
 
@@ -778,11 +830,9 @@ export class SmsService {
             : SmsDeliveryStatus.UNKNOWN,
         providerMessageId: provider.messageId,
         providerCode: input.providerCode || provider.code,
-        providerDescription:
-          input.providerDescription || provider.description,
+        providerDescription: input.providerDescription || provider.description,
         providerRawResponse: input.providerResponse || null,
-        sentAt:
-          input.sendStatus === SmsSendStatus.ACCEPTED ? new Date() : null,
+        sentAt: input.sendStatus === SmsSendStatus.ACCEPTED ? new Date() : null,
       }),
     );
   }
@@ -790,7 +840,8 @@ export class SmsService {
   private extractProviderResult(data: any) {
     const nested = data?.responses?.[0];
     return {
-      code: `${nested?.['response-code'] ?? data?.['response-code'] ?? ''}` || null,
+      code:
+        `${nested?.['response-code'] ?? data?.['response-code'] ?? ''}` || null,
       description:
         nested?.['response-description'] ??
         data?.['response-description'] ??
@@ -812,7 +863,9 @@ export class SmsService {
 
     await this.smsOutboxRepo.save(
       rows.map((row) => {
-        const response = byClientSmsId.get(clientSmsIdByRowId.get(row.id) || row.id);
+        const response = byClientSmsId.get(
+          clientSmsIdByRowId.get(row.id) || row.id,
+        );
         const provider = this.extractProviderResult({ responses: [response] });
         const success = Number(provider.code || 0) === 200;
 
@@ -832,7 +885,10 @@ export class SmsService {
     );
   }
 
-  private async sendHashedOutboxRow(row: SmsOutbox, resolved: ResolvedSmsConfig) {
+  private async sendHashedOutboxRow(
+    row: SmsOutbox,
+    resolved: ResolvedSmsConfig,
+  ) {
     const url = `${resolved.baseUrl}/api/services/sendotp`;
     const data = {
       apikey: resolved.apiKey,
@@ -1025,8 +1081,7 @@ export class SmsService {
         contributorId: null,
         name: contact.displayName,
         firstName:
-          contact.firstName ||
-          this.extractFirstName(contact.displayName || ''),
+          contact.firstName || this.extractFirstName(contact.displayName || ''),
         mobile: contact.normalizedPhone,
         isHashedRecipient: false,
         dedupeKey: contact.normalizedPhone,
@@ -1188,11 +1243,10 @@ export class SmsService {
     churchId: string,
     contributors: Contributor[],
   ): Promise<BulkRecipient[]> {
-    const hashedByContributorId =
-      await this.getLatestHashedMobileByContributor(
-        churchId,
-        contributors.map((contributor) => contributor.id),
-      );
+    const hashedByContributorId = await this.getLatestHashedMobileByContributor(
+      churchId,
+      contributors.map((contributor) => contributor.id),
+    );
 
     return contributors
       .map((contributor) => {
@@ -1282,7 +1336,10 @@ export class SmsService {
       .getMany();
 
     for (const contribution of contributions) {
-      if (!contribution.contributorId || hashedByContributorId.has(contribution.contributorId)) {
+      if (
+        !contribution.contributorId ||
+        hashedByContributorId.has(contribution.contributorId)
+      ) {
         continue;
       }
 
@@ -1311,7 +1368,10 @@ export class SmsService {
     church: Church,
     requestedShortcode?: string | null,
   ): ChurchSmsConfig {
-    const shortcode = this.resolveChurchSmsShortcode(church, requestedShortcode);
+    const shortcode = this.resolveChurchSmsShortcode(
+      church,
+      requestedShortcode,
+    );
     return {
       churchId: church.id,
       smsPartnerId: church.smsPartnerId,
@@ -1358,11 +1418,28 @@ export class SmsService {
     config: ChurchSmsConfig,
     resolved: ResolvedSmsConfig,
   ) {
+    const configSource = config.smsConfigSource || 'church';
     return {
-      partnerIdSource: this.resolveFieldSource(config.smsPartnerId, this.partnerId),
-      apiKeySource: this.resolveFieldSource(config.smsApiKey, this.apiKey),
-      shortCodeSource: this.resolveFieldSource(config.smsShortcode, this.shortCode),
-      baseUrlSource: this.resolveFieldSource(config.smsBaseUrl, this.baseUrl),
+      partnerIdSource: this.resolveFieldSource(
+        config.smsPartnerId,
+        this.partnerId,
+        configSource,
+      ),
+      apiKeySource: this.resolveFieldSource(
+        config.smsApiKey,
+        this.apiKey,
+        configSource,
+      ),
+      shortCodeSource: this.resolveFieldSource(
+        config.smsShortcode,
+        this.shortCode,
+        configSource,
+      ),
+      baseUrlSource: this.resolveFieldSource(
+        config.smsBaseUrl,
+        this.baseUrl,
+        configSource,
+      ),
       partnerIdHint: this.maskSecret(resolved.partnerId),
       shortCodeHint: this.maskSecret(resolved.shortCode),
       apiKeyPresent: Boolean(resolved.apiKey),
@@ -1373,9 +1450,10 @@ export class SmsService {
   private resolveFieldSource(
     churchValue: string | null | undefined,
     envValue: string | null | undefined,
+    configSource = 'church',
   ) {
     if (churchValue) {
-      return 'church';
+      return configSource;
     }
 
     if (envValue) {
@@ -1385,7 +1463,9 @@ export class SmsService {
     return 'missing';
   }
 
-  private formatDiagnostics(diagnostics: ReturnType<typeof this.buildDiagnostics>) {
+  private formatDiagnostics(
+    diagnostics: ReturnType<typeof this.buildDiagnostics>,
+  ) {
     return [
       `partnerIdSource=${diagnostics.partnerIdSource}`,
       `apiKeySource=${diagnostics.apiKeySource}`,
@@ -1419,7 +1499,9 @@ export class SmsService {
   private describeAxiosError(error: any) {
     if (axios.isAxiosError(error)) {
       const status = error.response?.status ?? 'no-status';
-      const providerResponse = this.describeProviderResponse(error.response?.data);
+      const providerResponse = this.describeProviderResponse(
+        error.response?.data,
+      );
       return `status=${status} | message=${error.message} | ${providerResponse}`;
     }
 

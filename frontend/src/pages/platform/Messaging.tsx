@@ -1,33 +1,43 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Building2,
   CheckCircle2,
   Clock3,
+  Eye,
+  EyeOff,
   Inbox,
+  KeyRound,
   MessageSquareText,
   RotateCcw,
   Search,
   Send,
   Users,
-} from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import toast from 'react-hot-toast';
-import api from '../../services/api';
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
+import api from "../../services/api";
 
-type Workspace = 'compose' | 'addressBox' | 'outbox';
+type Workspace = "compose" | "addressBox" | "sender" | "outbox";
 
 const initialMessageForm = {
-  audience: 'all',
+  audience: "all",
   churchIds: [] as string[],
-  message: '',
+  message: "",
 };
 
 const initialFilters = {
-  churchId: '',
-  from: '',
-  to: '',
-  sendStatus: '',
-  deliveryStatus: '',
+  churchId: "",
+  from: "",
+  to: "",
+  sendStatus: "",
+  deliveryStatus: "",
+};
+
+const initialSenderForm = {
+  smsPartnerId: "",
+  smsApiKey: "",
+  smsShortcode: "",
+  smsBaseUrl: "https://quicksms.advantasms.com",
 };
 
 const undoSeconds = 6;
@@ -45,24 +55,24 @@ function toQueryString(filters: Record<string, string>) {
 }
 
 function formatDate(value?: string | null) {
-  if (!value) return '-';
+  if (!value) return "-";
   return new Date(value).toLocaleString();
 }
 
-const selectableTileClass =
-  'rounded-2xl border px-4 py-3 text-left transition';
+const selectableTileClass = "rounded-2xl border px-4 py-3 text-left transition";
 const selectedTileClass =
-  'border-emerald-300/60 bg-emerald-300/15 text-white shadow-[0_0_0_1px_rgba(110,231,183,0.14)]';
+  "border-emerald-300/60 bg-emerald-300/15 text-white shadow-[0_0_0_1px_rgba(110,231,183,0.14)]";
 const idleTileClass =
-  'border-white/10 bg-black/10 text-stone-300 hover:border-emerald-300/35 hover:bg-emerald-300/10 hover:text-white';
+  "border-white/10 bg-black/10 text-stone-300 hover:border-emerald-300/35 hover:bg-emerald-300/10 hover:text-white";
 
 export default function PlatformMessaging() {
   const queryClient = useQueryClient();
-  const [activeWorkspace, setActiveWorkspace] =
-    useState<Workspace>('compose');
+  const [activeWorkspace, setActiveWorkspace] = useState<Workspace>("compose");
   const [form, setForm] = useState(initialMessageForm);
+  const [senderForm, setSenderForm] = useState(initialSenderForm);
+  const [showSmsApiKey, setShowSmsApiKey] = useState(false);
   const [filters, setFilters] = useState(initialFilters);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
   const [pendingSend, setPendingSend] = useState<null | {
     seconds: number;
     payload: typeof initialMessageForm;
@@ -74,32 +84,37 @@ export default function PlatformMessaging() {
     currentPageUsage === 0 ? 160 : 160 - currentPageUsage;
 
   const { data: config, isLoading: configLoading } = useQuery({
-    queryKey: ['platform-messaging-config'],
+    queryKey: ["platform-messaging-config"],
     queryFn: () =>
-      api.get('/platform/messaging/config').then((response) => response.data),
+      api.get("/platform/messaging/config").then((response) => response.data),
   });
 
   const { data: outbox, isLoading: outboxLoading } = useQuery({
-    queryKey: ['platform-messaging-outbox', queryString],
+    queryKey: ["platform-messaging-outbox", queryString],
     queryFn: () =>
       api
         .get(
-          `/platform/messaging/outbox${queryString ? `?${queryString}` : ''}`,
+          `/platform/messaging/outbox${queryString ? `?${queryString}` : ""}`,
         )
         .then((response) => response.data),
   });
 
   const churches = config?.churches || [];
+  const smsConfig = config?.smsConfig;
+  const platformSmsReady = Boolean(
+    smsConfig?.configured || smsConfig?.fallbackConfigured,
+  );
   const activeChurches = churches.filter(
-    (church: any) => church.status === 'active',
+    (church: any) => church.status === "active",
   );
   const outboxRows = outbox || [];
   const selectedCount =
-    form.audience === 'all' ? activeChurches.length : form.churchIds.length;
+    form.audience === "all" ? activeChurches.length : form.churchIds.length;
   const estimatedRecipients =
-    form.audience === 'all'
+    form.audience === "all"
       ? activeChurches.reduce(
-          (sum: number, church: any) => sum + Number(church.contacts?.length || 0),
+          (sum: number, church: any) =>
+            sum + Number(church.contacts?.length || 0),
           0,
         )
       : churches
@@ -123,7 +138,7 @@ export default function PlatformMessaging() {
       ]),
     ]
       .filter(Boolean)
-      .join(' ')
+      .join(" ")
       .toLowerCase();
 
     return haystack.includes(searchTerm.trim().toLowerCase());
@@ -131,27 +146,70 @@ export default function PlatformMessaging() {
 
   const sendMutation = useMutation({
     mutationFn: async (payload: typeof initialMessageForm) => {
-      const response = await api.post('/platform/messaging/bulk', payload);
+      const response = await api.post("/platform/messaging/bulk", payload);
       return response.data;
     },
     onSuccess: (data) => {
       toast.success(
-        `SMS sent to ${Number(data.recipientCount || 0).toLocaleString()} contact${Number(data.recipientCount || 0) === 1 ? '' : 's'}`,
+        `SMS sent to ${Number(data.recipientCount || 0).toLocaleString()} contact${Number(data.recipientCount || 0) === 1 ? "" : "s"}`,
       );
       setForm(initialMessageForm);
-      setActiveWorkspace('outbox');
-      queryClient.invalidateQueries({ queryKey: ['platform-messaging-outbox'] });
-      queryClient.invalidateQueries({ queryKey: ['platform-churches'] });
-      queryClient.invalidateQueries({ queryKey: ['platform-dashboard'] });
+      setActiveWorkspace("outbox");
+      queryClient.invalidateQueries({
+        queryKey: ["platform-messaging-outbox"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["platform-churches"] });
+      queryClient.invalidateQueries({ queryKey: ["platform-dashboard"] });
     },
     onError: (error: any) => {
       toast.error(
         error?.response?.data?.message ||
           error?.message ||
-          'Unable to send platform SMS',
+          "Unable to send platform SMS",
       );
     },
   });
+
+  const saveSenderMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.patch(
+        "/platform/messaging/config",
+        senderForm,
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      toast.success("Platform SMS credentials saved");
+      queryClient.invalidateQueries({
+        queryKey: ["platform-messaging-config"],
+      });
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Unable to save SMS credentials",
+      );
+    },
+  });
+
+  useEffect(() => {
+    if (!smsConfig) {
+      return;
+    }
+
+    setSenderForm({
+      smsPartnerId: smsConfig.smsPartnerId || "",
+      smsApiKey: smsConfig.smsApiKey || "",
+      smsShortcode: smsConfig.smsShortcode || "",
+      smsBaseUrl: smsConfig.smsBaseUrl || "https://quicksms.advantasms.com",
+    });
+  }, [
+    smsConfig?.smsPartnerId,
+    smsConfig?.smsApiKey,
+    smsConfig?.smsShortcode,
+    smsConfig?.smsBaseUrl,
+  ]);
 
   useEffect(() => {
     if (!pendingSend) {
@@ -190,16 +248,21 @@ export default function PlatformMessaging() {
   };
 
   const queueSend = () => {
-    if (!form.message.trim()) {
-      toast.error('Write the message before sending');
+    if (!platformSmsReady) {
+      toast.error("Set platform SMS credentials before sending");
+      setActiveWorkspace("sender");
       return;
     }
-    if (form.audience === 'selected' && form.churchIds.length === 0) {
-      toast.error('Select at least one church');
+    if (!form.message.trim()) {
+      toast.error("Write the message before sending");
+      return;
+    }
+    if (form.audience === "selected" && form.churchIds.length === 0) {
+      toast.error("Select at least one church");
       return;
     }
     if (pendingSend) {
-      toast.error('A message is already waiting for the undo window');
+      toast.error("A message is already waiting for the undo window");
       return;
     }
 
@@ -215,16 +278,26 @@ export default function PlatformMessaging() {
 
   const cancelPendingSend = () => {
     setPendingSend(null);
-    toast.success('SMS send cancelled');
+    toast.success("SMS send cancelled");
   };
 
   const messageChurch = (churchId: string) => {
     setForm((current) => ({
       ...current,
-      audience: 'selected',
+      audience: "selected",
       churchIds: [churchId],
     }));
-    setActiveWorkspace('compose');
+    setActiveWorkspace("compose");
+  };
+
+  const updateSenderForm = (
+    key: keyof typeof initialSenderForm,
+    value: string,
+  ) => {
+    setSenderForm((current) => ({
+      ...current,
+      [key]: value,
+    }));
   };
 
   const renderWorkspaceTab = (
@@ -233,10 +306,10 @@ export default function PlatformMessaging() {
     Icon: typeof Send,
   ) => (
     <button
-      className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+      className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition sm:px-4 ${
         activeWorkspace === id
-          ? 'bg-amber-200 text-stone-950'
-          : 'text-stone-300 hover:bg-white/5 hover:text-white'
+          ? "bg-amber-200 text-stone-950"
+          : "text-stone-300 hover:bg-white/5 hover:text-white"
       }`}
       type="button"
       onClick={() => setActiveWorkspace(id)}
@@ -250,7 +323,7 @@ export default function PlatformMessaging() {
     <div className="space-y-5">
       <section className="panel p-3 sm:p-4">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-4">
             <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
               <p className="text-[11px] uppercase tracking-[0.22em] text-stone-400">
                 Client churches
@@ -275,17 +348,26 @@ export default function PlatformMessaging() {
                 {Number(outboxRows.length || 0).toLocaleString()}
               </div>
             </div>
+            <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
+              <p className="text-[11px] uppercase tracking-[0.22em] text-stone-400">
+                Sender
+              </p>
+              <div className="mt-1 text-xl font-semibold text-white">
+                {platformSmsReady ? "Ready" : "Missing"}
+              </div>
+            </div>
           </div>
 
-          <div className="grid grid-cols-3 rounded-2xl border border-white/10 bg-black/10 p-1">
-            {renderWorkspaceTab('compose', 'Compose', Send)}
-            {renderWorkspaceTab('addressBox', 'Address Box', Users)}
-            {renderWorkspaceTab('outbox', 'Outbox', Inbox)}
+          <div className="grid grid-cols-2 rounded-2xl border border-white/10 bg-black/10 p-1 sm:grid-cols-4">
+            {renderWorkspaceTab("compose", "Compose", Send)}
+            {renderWorkspaceTab("addressBox", "Address Box", Users)}
+            {renderWorkspaceTab("sender", "Sender", KeyRound)}
+            {renderWorkspaceTab("outbox", "Outbox", Inbox)}
           </div>
         </div>
       </section>
 
-      {activeWorkspace === 'compose' ? (
+      {activeWorkspace === "compose" ? (
         <section className="panel p-5 sm:p-6">
           <form
             onSubmit={(event) => {
@@ -308,9 +390,9 @@ export default function PlatformMessaging() {
               </div>
               <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-100">
                 {selectedCount.toLocaleString()} church
-                {selectedCount === 1 ? '' : 'es'} selected | about{' '}
+                {selectedCount === 1 ? "" : "es"} selected | about{" "}
                 {estimatedRecipients.toLocaleString()} contact
-                {estimatedRecipients === 1 ? '' : 's'}
+                {estimatedRecipients === 1 ? "" : "s"}
               </div>
             </div>
 
@@ -320,16 +402,16 @@ export default function PlatformMessaging() {
                 <div className="grid gap-2 md:grid-cols-2">
                   {[
                     {
-                      id: 'all',
-                      title: 'All active churches',
+                      id: "all",
+                      title: "All active churches",
                       description:
-                        'Send to every active church contact in the registry.',
+                        "Send to every active church contact in the registry.",
                     },
                     {
-                      id: 'selected',
-                      title: 'Selected churches',
+                      id: "selected",
+                      title: "Selected churches",
                       description:
-                        'Choose one or more churches from the client address box.',
+                        "Choose one or more churches from the client address box.",
                     },
                   ].map((option) => {
                     const isSelected = form.audience === option.id;
@@ -359,7 +441,7 @@ export default function PlatformMessaging() {
                 </div>
               </div>
 
-              {form.audience === 'selected' ? (
+              {form.audience === "selected" ? (
                 <div className="lg:col-span-2">
                   <label className="label">Churches</label>
                   <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
@@ -380,7 +462,7 @@ export default function PlatformMessaging() {
                           <span className="text-xs text-stone-400">
                             {church.contactPhone ||
                               church.primaryContact?.phone ||
-                              'No phone on file'}
+                              "No phone on file"}
                           </span>
                         </button>
                       );
@@ -394,7 +476,7 @@ export default function PlatformMessaging() {
                   <label className="label mb-0">Message</label>
                   <span className="text-xs text-stone-400">
                     {form.message.length} chars | {smsUnits(form.message)} unit
-                    {smsUnits(form.message) === 1 ? '' : 's'} |{' '}
+                    {smsUnits(form.message) === 1 ? "" : "s"} |{" "}
                     {remainingCharacters} left on current page
                   </span>
                 </div>
@@ -445,17 +527,114 @@ export default function PlatformMessaging() {
               >
                 <Send size={16} />
                 {sendMutation.isPending
-                  ? 'Sending...'
+                  ? "Sending..."
                   : pendingSend
                     ? `Sending in ${pendingSend.seconds}s`
-                    : 'Send platform SMS'}
+                    : "Send platform SMS"}
               </button>
             </div>
           </form>
         </section>
       ) : null}
 
-      {activeWorkspace === 'addressBox' ? (
+      {activeWorkspace === "sender" ? (
+        <section className="panel p-5 sm:p-6">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+                Platform SMS Sender
+              </p>
+              <h3 className="mt-2 text-2xl font-semibold text-white">
+                Super admin credentials
+              </h3>
+            </div>
+            <div
+              className={`rounded-2xl border px-4 py-3 text-sm ${
+                platformSmsReady
+                  ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-100"
+                  : "border-amber-200/30 bg-amber-200/10 text-amber-100"
+              }`}
+            >
+              {smsConfig?.configured
+                ? "Platform sender ready"
+                : smsConfig?.fallbackConfigured
+                  ? "Environment fallback active"
+                  : "Sender setup needed"}
+            </div>
+          </div>
+
+          <form
+            className="mt-6 grid gap-4 lg:grid-cols-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              saveSenderMutation.mutate();
+            }}
+          >
+            <div>
+              <label className="label">Partner ID</label>
+              <input
+                className="input"
+                value={senderForm.smsPartnerId}
+                onChange={(event) =>
+                  updateSenderForm("smsPartnerId", event.target.value)
+                }
+              />
+            </div>
+            <div>
+              <label className="label">Sender shortcode</label>
+              <input
+                className="input"
+                value={senderForm.smsShortcode}
+                onChange={(event) =>
+                  updateSenderForm("smsShortcode", event.target.value)
+                }
+              />
+            </div>
+            <div>
+              <label className="label">Base URL</label>
+              <input
+                className="input"
+                value={senderForm.smsBaseUrl}
+                onChange={(event) =>
+                  updateSenderForm("smsBaseUrl", event.target.value)
+                }
+              />
+            </div>
+            <div>
+              <label className="label">API key</label>
+              <div className="relative">
+                <input
+                  className="input pr-12"
+                  type={showSmsApiKey ? "text" : "password"}
+                  value={senderForm.smsApiKey}
+                  onChange={(event) =>
+                    updateSenderForm("smsApiKey", event.target.value)
+                  }
+                />
+                <button
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-xl p-2 text-stone-400 transition hover:bg-white/10 hover:text-white"
+                  type="button"
+                  onClick={() => setShowSmsApiKey((current) => !current)}
+                >
+                  {showSmsApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+            <button
+              className="btn-primary w-full justify-center lg:col-span-2"
+              disabled={saveSenderMutation.isPending}
+              type="submit"
+            >
+              <KeyRound size={16} />
+              {saveSenderMutation.isPending
+                ? "Saving..."
+                : "Save sender credentials"}
+            </button>
+          </form>
+        </section>
+      ) : null}
+
+      {activeWorkspace === "addressBox" ? (
         <section className="panel p-5 sm:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
@@ -514,7 +693,7 @@ export default function PlatformMessaging() {
                             ) : (
                               <MessageSquareText size={12} />
                             )}
-                            SMS {church.smsReady ? 'ready' : 'missing'}
+                            Own SMS {church.smsReady ? "ready" : "missing"}
                           </span>
                           <span className="badge border-white/10 bg-white/5 text-stone-100">
                             <Users size={12} />
@@ -534,24 +713,26 @@ export default function PlatformMessaging() {
                   </div>
 
                   <div className="mt-4 grid gap-2">
-                    {(church.contacts || []).map((contact: any, index: number) => (
-                      <div
-                        key={`${church.id}-${contact.phone}-${index}`}
-                        className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm"
-                      >
-                        <div className="font-medium text-white">
-                          {contact.name || church.name}
+                    {(church.contacts || []).map(
+                      (contact: any, index: number) => (
+                        <div
+                          key={`${church.id}-${contact.phone}-${index}`}
+                          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm"
+                        >
+                          <div className="font-medium text-white">
+                            {contact.name || church.name}
+                          </div>
+                          <div className="mt-1 text-stone-300">
+                            {contact.phone || "-"}
+                          </div>
+                          <div className="mt-1 text-xs text-stone-400">
+                            {contact.email || church.contactEmail || "-"} |{" "}
+                            {contact.role || contact.source}
+                          </div>
                         </div>
-                        <div className="mt-1 text-stone-300">
-                          {contact.phone || '-'}
-                        </div>
-                        <div className="mt-1 text-xs text-stone-400">
-                          {contact.email || church.contactEmail || '-'} |{' '}
-                          {contact.role || contact.source}
-                        </div>
-                      </div>
-                    ))}
-                    {(!church.contacts || church.contacts.length === 0) ? (
+                      ),
+                    )}
+                    {!church.contacts || church.contacts.length === 0 ? (
                       <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-stone-400">
                         No SMS contact has been saved for this church.
                       </div>
@@ -569,7 +750,7 @@ export default function PlatformMessaging() {
         </section>
       ) : null}
 
-      {activeWorkspace === 'outbox' ? (
+      {activeWorkspace === "outbox" ? (
         <section className="space-y-5">
           <section className="panel p-5 sm:p-6">
             <div className="flex items-start gap-3">
@@ -706,11 +887,11 @@ export default function PlatformMessaging() {
                           {formatDate(item.createdAt)}
                         </td>
                         <td data-label="Church">
-                          {item.church?.name || 'Client church'}
+                          {item.church?.name || "Client church"}
                         </td>
                         <td data-label="Recipient">
                           <div className="font-medium text-white">
-                            {item.recipientName || 'Church contact'}
+                            {item.recipientName || "Church contact"}
                           </div>
                           <div className="text-xs text-stone-400">
                             {item.recipientMobile}

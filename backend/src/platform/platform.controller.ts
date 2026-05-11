@@ -47,6 +47,11 @@ export class PlatformController {
     return this.platformService.getPlatformMessagingConfig();
   }
 
+  @Patch('messaging/config')
+  updatePlatformMessagingConfig(@Body() body: any) {
+    return this.platformService.updatePlatformMessagingConfig(body);
+  }
+
   @Post('messaging/bulk')
   sendPlatformChurchMessage(@Body() body: any) {
     return this.platformService.sendPlatformChurchMessage(body);
@@ -68,10 +73,7 @@ export class PlatformController {
   }
 
   @Post('churches/:churchId/users')
-  createChurchUser(
-    @Param('churchId') churchId: string,
-    @Body() body: any,
-  ) {
+  createChurchUser(@Param('churchId') churchId: string, @Body() body: any) {
     return this.platformService.createChurchUser(churchId, body);
   }
 

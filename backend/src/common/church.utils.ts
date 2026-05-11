@@ -5,6 +5,7 @@ export interface ChurchSmsConfig {
   smsShortcode?: string | null;
   smsShortcodes?: string[] | null;
   smsBaseUrl?: string | null;
+  smsConfigSource?: 'church' | 'platform' | 'env';
 }
 
 export interface ChurchMpesaConfig {
@@ -61,7 +62,9 @@ export function hasConfiguredSmsCredentials(church: ChurchSmsConfig | null) {
 export function getChurchSmsShortcodes(church: ChurchSmsConfig | null) {
   const values = [
     church?.smsShortcode,
-    ...(Array.isArray(church?.smsShortcodes) ? church?.smsShortcodes || [] : []),
+    ...(Array.isArray(church?.smsShortcodes)
+      ? church?.smsShortcodes || []
+      : []),
   ];
   const normalized = values
     .map((value) => `${value || ''}`.trim())

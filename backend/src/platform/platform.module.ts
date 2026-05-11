@@ -6,6 +6,7 @@ import { ChurchUser } from '../entities/church-user.entity';
 import { ClientEnquiry } from '../entities/client-enquiry.entity';
 import { Contribution } from '../entities/contribution.entity';
 import { FundAccount } from '../entities/fund-account.entity';
+import { PlatformSmsConfig } from '../entities/platform-sms-config.entity';
 import { PlatformUser } from '../entities/platform-user.entity';
 import { SmsOutbox } from '../entities/sms-outbox.entity';
 import { SmsModule } from '../sms/sms.module';
@@ -17,6 +18,7 @@ import { PlatformService } from './platform.service';
   imports: [
     TypeOrmModule.forFeature([
       PlatformUser,
+      PlatformSmsConfig,
       Church,
       ChurchUser,
       Contribution,

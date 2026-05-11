@@ -2,9 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
 import { In, Repository } from 'typeorm';
-import {
-  buildChurchIntegrationSummary,
-} from '../common/church.utils';
+import { buildChurchIntegrationSummary } from '../common/church.utils';
 import {
   ChurchPermission,
   DEFAULT_CHURCH_FEATURES,
@@ -26,6 +24,10 @@ import {
   ContributionStatus,
 } from '../entities/contribution.entity';
 import { FundAccount } from '../entities/fund-account.entity';
+import {
+  PLATFORM_SMS_CONFIG_ID,
+  PlatformSmsConfig,
+} from '../entities/platform-sms-config.entity';
 import {
   PlatformUser,
   PlatformUserRole,
@@ -55,6 +57,8 @@ export class PlatformService {
     private readonly clientEnquiryRepo: Repository<ClientEnquiry>,
     @InjectRepository(SmsOutbox)
     private readonly smsOutboxRepo: Repository<SmsOutbox>,
+    @InjectRepository(PlatformSmsConfig)
+    private readonly platformSmsConfigRepo: Repository<PlatformSmsConfig>,
     private readonly churchSubscriptionsService: ChurchSubscriptionsService,
     private readonly contributionsService: ContributionsService,
     private readonly smsService: SmsService,
@@ -181,12 +185,13 @@ export class PlatformService {
 
     let subscription: any = null;
     if (billingModel === ChurchBillingModel.SUBSCRIPTION) {
-      subscription = await this.churchSubscriptionsService.initializeSubscription(
-        church.id,
-        Number(body.initialSubscriptionDays || 30),
-        performedByPlatformUserId,
-        body.planName || 'Standard Plan',
-      );
+      subscription =
+        await this.churchSubscriptionsService.initializeSubscription(
+          church.id,
+          Number(body.initialSubscriptionDays || 30),
+          performedByPlatformUserId,
+          body.planName || 'Standard Plan',
+        );
     }
 
     if (body.seedDefaultFundAccounts !== false) {
@@ -751,12 +756,46 @@ export class PlatformService {
       relations: ['users'],
       order: { name: 'ASC' },
     });
+    const smsConfig = await this.smsService.getPlatformSmsConfigForAdmin();
 
     return {
+      smsConfig,
       churches: churches.map((church) =>
         this.buildPlatformMessagingChurch(church),
       ),
     };
+  }
+
+  async updatePlatformMessagingConfig(body: any) {
+    const smsPartnerId = this.normalizeOptionalText(body.smsPartnerId);
+    const smsApiKey = this.normalizeOptionalText(body.smsApiKey);
+    const smsShortcode = this.normalizeOptionalText(body.smsShortcode);
+    const smsBaseUrl =
+      this.normalizeOptionalText(body.smsBaseUrl) ||
+      'https://quicksms.advantasms.com';
+
+    if (!smsPartnerId || !smsApiKey || !smsShortcode) {
+      throw new BadRequestException(
+        'Platform SMS partner ID, API key, and shortcode are required',
+      );
+    }
+
+    const config =
+      (await this.platformSmsConfigRepo.findOne({
+        where: { id: PLATFORM_SMS_CONFIG_ID },
+      })) ||
+      this.platformSmsConfigRepo.create({
+        id: PLATFORM_SMS_CONFIG_ID,
+      });
+
+    config.smsPartnerId = smsPartnerId;
+    config.smsApiKey = smsApiKey;
+    config.smsShortcode = smsShortcode;
+    config.smsBaseUrl = smsBaseUrl.replace(/\/$/, '');
+
+    await this.platformSmsConfigRepo.save(config);
+
+    return this.smsService.getPlatformSmsConfigForAdmin();
   }
 
   async sendPlatformChurchMessage(body: any) {
@@ -800,6 +839,8 @@ export class PlatformService {
       status: 'accepted' | 'failed' | 'skipped';
     }> = [];
     const sentPhones = new Set<string>();
+    const platformSmsConfig =
+      await this.smsService.resolveSystemSmsConfig('platform');
 
     for (const church of churches) {
       const contacts = this.getPlatformMessagingContacts(church);
@@ -828,10 +869,11 @@ export class PlatformService {
           message,
           {
             churchId: church.id,
-            smsPartnerId: church.smsPartnerId || undefined,
-            smsApiKey: church.smsApiKey || undefined,
-            smsShortcode: church.smsShortcode || undefined,
-            smsBaseUrl: church.smsBaseUrl || undefined,
+            smsPartnerId: platformSmsConfig.smsPartnerId || undefined,
+            smsApiKey: platformSmsConfig.smsApiKey || undefined,
+            smsShortcode: platformSmsConfig.smsShortcode || undefined,
+            smsBaseUrl: platformSmsConfig.smsBaseUrl || undefined,
+            smsConfigSource: platformSmsConfig.smsConfigSource,
           },
           {
             messageType: SmsMessageType.BULK,
@@ -1264,7 +1306,9 @@ export class PlatformService {
 
     const rate = Number(value);
     if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
-      throw new BadRequestException('Commission rate must be between 0 and 100');
+      throw new BadRequestException(
+        'Commission rate must be between 0 and 100',
+      );
     }
     return Number(rate.toFixed(2));
   }
@@ -1332,7 +1376,9 @@ export class PlatformService {
       contactEmail: church.contactEmail,
       contactPhone: church.contactPhone,
       address: church.address,
-      smsReady: Boolean(church.smsPartnerId && church.smsApiKey),
+      smsReady: Boolean(
+        church.smsPartnerId && church.smsApiKey && church.smsShortcode,
+      ),
       contacts: contacts.map((contact) => ({
         name: contact.name,
         email: contact.email,
@@ -1367,10 +1413,16 @@ export class PlatformService {
     const activeUsers = (church.users || [])
       .filter((user) => user.isActive && user.phone)
       .sort((a, b) => {
-        if (a.role === ChurchUserRole.PRIEST && b.role !== ChurchUserRole.PRIEST) {
+        if (
+          a.role === ChurchUserRole.PRIEST &&
+          b.role !== ChurchUserRole.PRIEST
+        ) {
           return -1;
         }
-        if (a.role !== ChurchUserRole.PRIEST && b.role === ChurchUserRole.PRIEST) {
+        if (
+          a.role !== ChurchUserRole.PRIEST &&
+          b.role === ChurchUserRole.PRIEST
+        ) {
           return 1;
         }
         return a.createdAt.getTime() - b.createdAt.getTime();

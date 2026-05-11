@@ -19,6 +19,7 @@ import { Contribution } from './entities/contribution.entity';
 import { Contributor } from './entities/contributor.entity';
 import { FundAccount } from './entities/fund-account.entity';
 import { PlatformUser } from './entities/platform-user.entity';
+import { PlatformSmsConfig } from './entities/platform-sms-config.entity';
 import { SmsAddressBook } from './entities/sms-address-book.entity';
 import { SmsAddressBookContact } from './entities/sms-address-book-contact.entity';
 import { SmsBatch } from './entities/sms-batch.entity';
@@ -39,6 +40,7 @@ import { SchemaBootstrapService } from './common/schema-bootstrap.service';
       database: process.env.DB_NAME || 'church_system',
       entities: [
         PlatformUser,
+        PlatformSmsConfig,
         Church,
         ChurchCongregationPage,
         ChurchUser,
