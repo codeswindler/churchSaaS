@@ -574,6 +574,7 @@ export default function PlatformMessaging() {
               <label className="label">Partner ID</label>
               <input
                 className="input"
+                placeholder="Advanta partnerID"
                 value={senderForm.smsPartnerId}
                 onChange={(event) =>
                   updateSenderForm("smsPartnerId", event.target.value)
@@ -581,9 +582,31 @@ export default function PlatformMessaging() {
               />
             </div>
             <div>
+              <label className="label">API key / apikey</label>
+              <div className="relative">
+                <input
+                  className="input pr-12"
+                  placeholder="Advanta apikey"
+                  type={showSmsApiKey ? "text" : "password"}
+                  value={senderForm.smsApiKey}
+                  onChange={(event) =>
+                    updateSenderForm("smsApiKey", event.target.value)
+                  }
+                />
+                <button
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-xl p-2 text-stone-400 transition hover:bg-white/10 hover:text-white"
+                  type="button"
+                  onClick={() => setShowSmsApiKey((current) => !current)}
+                >
+                  {showSmsApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+            <div>
               <label className="label">Sender shortcode</label>
               <input
                 className="input"
+                placeholder="Advanta shortcode"
                 value={senderForm.smsShortcode}
                 onChange={(event) =>
                   updateSenderForm("smsShortcode", event.target.value)
@@ -599,26 +622,6 @@ export default function PlatformMessaging() {
                   updateSenderForm("smsBaseUrl", event.target.value)
                 }
               />
-            </div>
-            <div>
-              <label className="label">API key</label>
-              <div className="relative">
-                <input
-                  className="input pr-12"
-                  type={showSmsApiKey ? "text" : "password"}
-                  value={senderForm.smsApiKey}
-                  onChange={(event) =>
-                    updateSenderForm("smsApiKey", event.target.value)
-                  }
-                />
-                <button
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-xl p-2 text-stone-400 transition hover:bg-white/10 hover:text-white"
-                  type="button"
-                  onClick={() => setShowSmsApiKey((current) => !current)}
-                >
-                  {showSmsApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
             </div>
             <button
               className="btn-primary w-full justify-center lg:col-span-2"
