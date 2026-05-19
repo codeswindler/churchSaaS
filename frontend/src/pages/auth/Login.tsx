@@ -8,8 +8,10 @@ import {
   LifeBuoy,
   Mail,
   MessageSquareText,
+  Moon,
   PhoneCall,
   ShieldCheck,
+  Sun,
   Twitter,
   UserCog,
   X,
@@ -18,43 +20,42 @@ import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { BrandLogo } from '../../components/BrandLogo';
+import {
+  PUBLIC_COLOR_MODE_STORAGE_KEY,
+  useColorMode,
+} from '../../hooks/useColorMode';
 import api, { getPortalPath, saveSession } from '../../services/api';
 
 const landingHighlights = [
   {
-    icon: ShieldCheck,
-    title: 'Contribution analytics',
-    text: 'See total collections, account performance, payment channel mix, and contribution trends from one clear finance dashboard.',
-  },
-  {
     icon: Clock4,
-    title: 'Action-ready reporting',
+    title: 'Reports',
     text: 'Filter by date, account, and payment channel, then export reports that support reviews, accountability, and planning.',
   },
   {
-    icon: Mail,
-    title: 'Receipt communication',
-    text: 'Send personalized confirmation messages based on the exact transaction type that was received.',
+    icon: UserCog,
+    title: 'Staff access',
+    text: 'Create staff accounts and give each person the right level of visibility and action access.',
   },
 ];
 
 const featureCards = [
   {
-    label: 'Staff access',
-    title: 'Controlled user access and role assignment',
-    icon: UserCog,
+    label: 'Start messaging',
+    title: 'Start messaging: compose a message',
+    icon: MessageSquareText,
     points: [
-      'Create staff accounts for the people who manage finance, reporting, and contribution entry.',
-      'Keep sensitive finance activity controlled by giving each user the right level of visibility and action access.',
+      'Compose announcements, reminders, and receipt updates from one messaging area.',
+      'Send messages using the configured SMS sender credentials for the right audience.',
     ],
   },
   {
-    label: 'Transaction messaging',
-    title: 'Personalized messages by transaction type',
-    icon: MessageSquareText,
+    label: 'View transactions',
+    title: 'View transactions',
+    icon: ShieldCheck,
     points: [
-      'Configure different confirmation messages for tithe, offering, harambee, and other fund accounts.',
-      'Use transaction-specific templates so receipts match the contribution type that was recorded.',
+      'Review received contributions, payment channels, contributors, and fund accounts.',
+      'Trace every collection record before moving into reports and exports.',
     ],
   },
 ];
@@ -66,10 +67,10 @@ const workflowSteps = [
 ];
 
 const heroPillOptions = [
-  'Detailed analytics',
-  'Clear records',
-  'Personalized responses',
-  'Easy-to-use',
+  'Start messaging: compose a message',
+  'View transactions',
+  'Reports',
+  'Staff access',
 ];
 
 const widestHeroPillLabel = heroPillOptions.reduce((widest, option) =>
@@ -92,6 +93,10 @@ export default function Login() {
   const [showEnquiryModal, setShowEnquiryModal] = useState(false);
   const [activeHeroPill, setActiveHeroPill] = useState(0);
   const [enquiryForm, setEnquiryForm] = useState(initialEnquiryForm);
+  const { isLightMode, toggleColorMode } = useColorMode(
+    'light',
+    PUBLIC_COLOR_MODE_STORAGE_KEY,
+  );
 
   const loginMutation = useMutation({
     mutationFn: async () => {
@@ -213,6 +218,18 @@ export default function Login() {
     <div className="app-shell-background min-h-screen px-4 py-4 text-stone-50 xl:px-7 2xl:px-8">
       <div className="mx-auto min-h-[calc(100vh-2rem)] max-w-[1880px]">
         <section className="panel reveal-block p-7 lg:p-8 2xl:p-10" data-reveal>
+          <div className="mb-5 flex justify-end">
+            <button
+              aria-label={isLightMode ? 'Switch to dark mode' : 'Switch to light mode'}
+              className="shell-icon-button"
+              title={isLightMode ? 'Switch to dark mode' : 'Switch to light mode'}
+              type="button"
+              onClick={toggleColorMode}
+            >
+              {isLightMode ? <Moon size={18} /> : <Sun size={18} />}
+            </button>
+          </div>
+
           <div>
             <div className="grid gap-8 2xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
               <div>
@@ -234,7 +251,7 @@ export default function Login() {
 
                   <div className="max-w-5xl flex-1 lg:pt-3">
                     <h1 className="display-heading text-[2rem] font-semibold leading-[1.04] tracking-[-0.028em] text-white sm:text-[2.25rem] lg:text-[2.55rem] xl:text-[2.85rem] 2xl:text-[3.05rem]">
-                      Gain a complete view of collections, fund performance, and reporting trends.
+                      Bringing technology to fellowship. Creating a better service.
                     </h1>
                     <p className="mt-4 max-w-3xl text-[0.98rem] leading-7 text-stone-300 xl:text-[1.02rem]">
                       Designed to improve contribution tracking, analysis, and accountability.
@@ -297,7 +314,7 @@ export default function Login() {
                   ))}
                 </div>
 
-                <div className="mt-8 grid gap-4 xl:grid-cols-3">
+                <div className="mt-8 grid gap-4 xl:grid-cols-2">
                   {landingHighlights.map((item, index) => (
                     <div
                       key={item.title}

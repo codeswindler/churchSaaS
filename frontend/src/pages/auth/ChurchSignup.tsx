@@ -1,16 +1,24 @@
 import { useMutation } from '@tanstack/react-query';
 import {
   ArrowLeft,
+  Building2,
   CheckCircle2,
-  Landmark,
+  CreditCard,
+  HelpCircle,
   LockKeyhole,
+  Moon,
   PhoneCall,
   Send,
+  Sun,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, Navigate } from 'react-router-dom';
 import { BrandLogo } from '../../components/BrandLogo';
+import {
+  PUBLIC_COLOR_MODE_STORAGE_KEY,
+  useColorMode,
+} from '../../hooks/useColorMode';
 import api, { getSession } from '../../services/api';
 
 type SignupResult = {
@@ -28,19 +36,17 @@ type SignupResult = {
 
 const initialChurchForm = {
   churchName: '',
-  address: '',
-  contactEmail: '',
-  contactPhone: '',
   adminName: '',
   adminEmail: '',
   adminPhone: '',
-  adminUsername: '',
 };
 
 const initialMpesaForm = {
-  shortcodeType: 'paybill',
+  hasPaybill: '',
+  paybillType: '',
   mpesaShortcode: '',
   g2AdminUsername: '',
+  businessName: '',
   contactName: '',
   email: '',
   callbackPhone: '',
@@ -52,8 +58,12 @@ export default function ChurchSignup() {
   const [mpesaForm, setMpesaForm] = useState(initialMpesaForm);
   const [signupResult, setSignupResult] = useState<SignupResult | null>(null);
   const [submittedMode, setSubmittedMode] = useState<
-    'details' | 'callback' | null
+    'details' | 'guidance' | null
   >(null);
+  const { isLightMode, toggleColorMode } = useColorMode(
+    'light',
+    PUBLIC_COLOR_MODE_STORAGE_KEY,
+  );
 
   const signupMutation = useMutation({
     mutationFn: async () => {
@@ -66,8 +76,7 @@ export default function ChurchSignup() {
         ...current,
         contactName: data.adminUser.name || churchForm.adminName,
         email: data.adminUser.email || churchForm.adminEmail,
-        callbackPhone:
-          data.adminUser.phone || churchForm.adminPhone || churchForm.contactPhone,
+        callbackPhone: data.adminUser.phone || churchForm.adminPhone,
       }));
       toast.success(
         data.credentialsSent
@@ -83,24 +92,29 @@ export default function ChurchSignup() {
   });
 
   const onboardingMutation = useMutation({
-    mutationFn: async (requestCallback: boolean) => {
+    mutationFn: async (requestGuidance: boolean) => {
       if (!signupResult) {
         throw new Error('Church account is required first');
       }
 
+      const shortcodeType = requestGuidance
+        ? mpesaForm.hasPaybill === 'no'
+          ? 'no_paybill'
+          : 'bank_paybill'
+        : 'safaricom_paybill';
+
       const response = await api.post('/public/church-signups/mpesa-onboarding', {
         ...mpesaForm,
         churchId: signupResult.churchId,
-        requestCallback,
+        shortcodeType,
+        requestCallback: requestGuidance,
       });
       return response.data;
     },
-    onSuccess: (_data, requestCallback) => {
-      setSubmittedMode(requestCallback ? 'callback' : 'details');
+    onSuccess: (_data, requestGuidance) => {
+      setSubmittedMode(requestGuidance ? 'guidance' : 'details');
       toast.success(
-        requestCallback
-          ? 'Callback request sent'
-          : 'M-Pesa setup details submitted',
+        requestGuidance ? 'Guidance request sent' : 'Paybill details submitted',
       );
     },
     onError: (error: any) => {
@@ -117,15 +131,18 @@ export default function ChurchSignup() {
     if (!submittedMode) {
       return 'Step 2 of 2';
     }
-    return submittedMode === 'callback'
-      ? 'Callback requested'
+    return submittedMode === 'guidance'
+      ? 'Guidance requested'
       : 'Details submitted';
   }, [signupResult, submittedMode]);
-  const isTillSetup = mpesaForm.shortcodeType === 'till';
-  const mpesaNumberLabel = isTillSetup ? 'Till store number' : 'Paybill number';
-  const mpesaNumberPlaceholder = isTillSetup
-    ? 'Enter the till store number'
-    : 'Enter the paybill number';
+  const needsGuidance =
+    mpesaForm.hasPaybill === 'no' || mpesaForm.paybillType === 'bank';
+  const isSafaricomPaybill =
+    mpesaForm.hasPaybill === 'yes' && mpesaForm.paybillType === 'safaricom';
+  const guidanceReason =
+    mpesaForm.hasPaybill === 'no'
+      ? 'This church does not have a Paybill yet.'
+      : 'Bank Paybills need guidance before automated Safaricom C2B setup.';
 
   if (session?.user) {
     return <Navigate to="/" replace />;
@@ -147,10 +164,22 @@ export default function ChurchSignup() {
             </div>
           </div>
 
-          <Link className="btn-secondary justify-center" to="/">
-            <ArrowLeft size={16} />
-            Back to login
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              aria-label={isLightMode ? 'Switch to dark mode' : 'Switch to light mode'}
+              className="shell-icon-button"
+              title={isLightMode ? 'Switch to dark mode' : 'Switch to light mode'}
+              type="button"
+              onClick={toggleColorMode}
+            >
+              {isLightMode ? <Moon size={18} /> : <Sun size={18} />}
+            </button>
+
+            <Link className="btn-secondary justify-center" to="/">
+              <ArrowLeft size={16} />
+              Back to login
+            </Link>
+          </div>
         </header>
 
         <main className="mx-auto mt-6 max-w-5xl">
@@ -184,6 +213,7 @@ export default function ChurchSignup() {
                     <label className="label">Church name</label>
                     <input
                       className="input"
+                      required
                       value={churchForm.churchName}
                       onChange={(event) =>
                         setChurchForm((current) => ({
@@ -196,55 +226,10 @@ export default function ChurchSignup() {
                   </div>
 
                   <div>
-                    <label className="label">Church phone</label>
+                    <label className="label">Admin name</label>
                     <input
                       className="input"
-                      value={churchForm.contactPhone}
-                      onChange={(event) =>
-                        setChurchForm((current) => ({
-                          ...current,
-                          contactPhone: event.target.value,
-                        }))
-                      }
-                      placeholder="0712 345 678"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label">Church email</label>
-                    <input
-                      className="input"
-                      type="email"
-                      value={churchForm.contactEmail}
-                      onChange={(event) =>
-                        setChurchForm((current) => ({
-                          ...current,
-                          contactEmail: event.target.value,
-                        }))
-                      }
-                      placeholder="office@example.org"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label">Address</label>
-                    <input
-                      className="input"
-                      value={churchForm.address}
-                      onChange={(event) =>
-                        setChurchForm((current) => ({
-                          ...current,
-                          address: event.target.value,
-                        }))
-                      }
-                      placeholder="Town, estate, building"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label">First admin name</label>
-                    <input
-                      className="input"
+                      required
                       value={churchForm.adminName}
                       onChange={(event) =>
                         setChurchForm((current) => ({
@@ -257,7 +242,7 @@ export default function ChurchSignup() {
                   </div>
 
                   <div>
-                    <label className="label">First admin phone</label>
+                    <label className="label">Admin phone</label>
                     <input
                       className="input"
                       value={churchForm.adminPhone}
@@ -272,10 +257,11 @@ export default function ChurchSignup() {
                   </div>
 
                   <div>
-                    <label className="label">First admin email</label>
+                    <label className="label">Admin email</label>
                     <input
                       className="input"
                       type="email"
+                      required
                       value={churchForm.adminEmail}
                       onChange={(event) =>
                         setChurchForm((current) => ({
@@ -286,25 +272,11 @@ export default function ChurchSignup() {
                       placeholder="admin@example.org"
                     />
                   </div>
-
-                  <div>
-                    <label className="label">Preferred username</label>
-                    <input
-                      className="input"
-                      value={churchForm.adminUsername}
-                      onChange={(event) =>
-                        setChurchForm((current) => ({
-                          ...current,
-                          adminUsername: event.target.value,
-                        }))
-                      }
-                      placeholder="church-admin"
-                    />
-                  </div>
                 </div>
 
                 <button
                   className="btn-primary mt-6 w-full justify-center md:w-auto"
+                  disabled={signupMutation.isPending}
                   type="submit"
                 >
                   <LockKeyhole size={16} />
@@ -314,7 +286,15 @@ export default function ChurchSignup() {
                 </button>
               </form>
             ) : (
-              <form className="p-5 md:p-6">
+              <form
+                className="p-5 md:p-6"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (isSafaricomPaybill && !submittedMode) {
+                    onboardingMutation.mutate(false);
+                  }
+                }}
+              >
                 <div className="mb-5 rounded-[24px] border border-emerald-300/25 bg-emerald-400/10 p-4">
                   <div className="flex items-start gap-3">
                     <CheckCircle2
@@ -341,109 +321,232 @@ export default function ChurchSignup() {
 
                 <div className="rounded-[24px] border border-white/10 bg-black/10 p-4">
                   <div className="flex items-start gap-3">
-                    <Landmark className="mt-1 shrink-0 text-amber-200" size={18} />
+                    <CreditCard
+                      className="mt-1 shrink-0 text-amber-200"
+                      size={18}
+                    />
                     <p className="text-sm leading-6 text-stone-300">
-                      Select whether the church uses a Paybill or Till. For a
-                      Paybill, enter the paybill number. For a Till, enter the
-                      store number used for collections. The username is the
-                      user who signs in to the M-Pesa portal or Safaricom G2
-                      portal.
+                      We only need the Safaricom Paybill details for automated
+                      M-Pesa setup. If you do not have one, or the current
+                      Paybill is bank-issued, request guidance and our team will
+                      follow up.
                     </p>
                   </div>
                 </div>
 
-                <div className="mt-5 grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="label">M-Pesa account type</label>
-                    <select
-                      className="input"
-                      value={mpesaForm.shortcodeType}
-                      onChange={(event) =>
-                        setMpesaForm((current) => ({
-                          ...current,
-                          shortcodeType: event.target.value,
-                          mpesaShortcode: '',
-                        }))
-                      }
-                    >
-                      <option value="paybill">Paybill</option>
-                      <option value="till">Till</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="label">{mpesaNumberLabel}</label>
-                    <input
-                      className="input"
-                      value={mpesaForm.mpesaShortcode}
-                      onChange={(event) =>
-                        setMpesaForm((current) => ({
-                          ...current,
-                          mpesaShortcode: event.target.value,
-                        }))
-                      }
-                      placeholder={mpesaNumberPlaceholder}
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="label">M-Pesa portal / G2 username</label>
-                    <input
-                      className="input"
-                      value={mpesaForm.g2AdminUsername}
-                      onChange={(event) =>
-                        setMpesaForm((current) => ({
-                          ...current,
-                          g2AdminUsername: event.target.value,
-                        }))
-                      }
-                      placeholder="Username used to log in to the portal"
-                    />
-                  </div>
-                </div>
-
-                {submittedMode ? (
-                  <div className="mt-5 rounded-[24px] border border-emerald-300/25 bg-emerald-400/10 p-4 text-sm leading-6 text-stone-200">
-                    {submittedMode === 'callback'
-                      ? 'Your callback request is now visible in the enquiries section.'
-                      : 'Your M-Pesa onboarding details are now visible in the enquiries section.'}
+                {!submittedMode && !mpesaForm.hasPaybill ? (
+                  <div className="mt-5">
+                    <p className="label">Do you already have a Paybill?</p>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <button
+                        className="btn-primary justify-center"
+                        type="button"
+                        onClick={() =>
+                          setMpesaForm((current) => ({
+                            ...current,
+                            hasPaybill: 'yes',
+                            paybillType: '',
+                          }))
+                        }
+                      >
+                        Yes
+                      </button>
+                      <button
+                        className="btn-secondary justify-center"
+                        type="button"
+                        onClick={() =>
+                          setMpesaForm((current) => ({
+                            ...current,
+                            hasPaybill: 'no',
+                            paybillType: '',
+                            mpesaShortcode: '',
+                            g2AdminUsername: '',
+                            businessName: '',
+                          }))
+                        }
+                      >
+                        No
+                      </button>
+                    </div>
                   </div>
                 ) : null}
 
-                <div className="mt-6 grid gap-3 md:grid-cols-2">
-                  <button
-                    className="btn-secondary justify-center"
-                    type="button"
-                    onClick={() => onboardingMutation.mutate(true)}
-                  >
-                    <PhoneCall size={16} />
-                    {onboardingMutation.isPending
-                      ? 'Submitting...'
-                      : 'Request callback'}
-                  </button>
-                  <button
-                    className="btn-primary justify-center"
-                    type="button"
-                    onClick={() => onboardingMutation.mutate(false)}
-                  >
-                    {submittedMode === 'details' ? (
-                      <CheckCircle2 size={16} />
-                    ) : (
-                      <Send size={16} />
-                    )}
-                    {onboardingMutation.isPending
-                      ? 'Submitting...'
-                      : 'Submit M-Pesa details'}
-                  </button>
-                </div>
+                {!submittedMode &&
+                mpesaForm.hasPaybill === 'yes' &&
+                !mpesaForm.paybillType ? (
+                  <div className="mt-5">
+                    <p className="label">What type of Paybill is it?</p>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <button
+                        className="btn-primary justify-center"
+                        type="button"
+                        onClick={() =>
+                          setMpesaForm((current) => ({
+                            ...current,
+                            paybillType: 'safaricom',
+                          }))
+                        }
+                      >
+                        <CreditCard size={16} />
+                        Safaricom Paybill
+                      </button>
+                      <button
+                        className="btn-secondary justify-center"
+                        type="button"
+                        onClick={() =>
+                          setMpesaForm((current) => ({
+                            ...current,
+                            paybillType: 'bank',
+                            mpesaShortcode: '',
+                            g2AdminUsername: '',
+                            businessName: '',
+                          }))
+                        }
+                      >
+                        <Building2 size={16} />
+                        Bank Paybill
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
 
-                <div className="mt-4 flex items-start gap-3 text-sm leading-6 text-stone-400">
-                  <PhoneCall className="mt-0.5 shrink-0" size={16} />
-                  <p>
-                    Callback requests use the first admin phone or email from
-                    the account creation step.
-                  </p>
-                </div>
+                {!submittedMode && isSafaricomPaybill ? (
+                  <>
+                    <div className="mt-5 grid gap-4 md:grid-cols-2">
+                      <div>
+                        <label className="label">Paybill number</label>
+                        <input
+                          className="input"
+                          required
+                          value={mpesaForm.mpesaShortcode}
+                          onChange={(event) =>
+                            setMpesaForm((current) => ({
+                              ...current,
+                              mpesaShortcode: event.target.value,
+                            }))
+                          }
+                          placeholder="4049311"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="label">Business name</label>
+                        <input
+                          className="input"
+                          required
+                          value={mpesaForm.businessName}
+                          onChange={(event) =>
+                            setMpesaForm((current) => ({
+                              ...current,
+                              businessName: event.target.value,
+                            }))
+                          }
+                          placeholder="Registered Paybill business name"
+                        />
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <label className="label">Admin username</label>
+                        <input
+                          className="input"
+                          required
+                          value={mpesaForm.g2AdminUsername}
+                          onChange={(event) =>
+                            setMpesaForm((current) => ({
+                              ...current,
+                              g2AdminUsername: event.target.value,
+                            }))
+                          }
+                          placeholder="Username used to log in to Safaricom portal"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                      <button
+                        className="btn-secondary justify-center"
+                        type="button"
+                        onClick={() =>
+                          setMpesaForm((current) => ({
+                            ...current,
+                            paybillType: '',
+                            mpesaShortcode: '',
+                            g2AdminUsername: '',
+                            businessName: '',
+                          }))
+                        }
+                      >
+                        Change Paybill type
+                      </button>
+                      <button
+                        className="btn-primary justify-center"
+                        disabled={onboardingMutation.isPending}
+                        type="submit"
+                      >
+                        <Send size={16} />
+                        {onboardingMutation.isPending
+                          ? 'Submitting...'
+                          : 'Submit Paybill details'}
+                      </button>
+                    </div>
+                  </>
+                ) : null}
+
+                {!submittedMode && needsGuidance ? (
+                  <div className="mt-5 rounded-[24px] border border-amber-200/25 bg-amber-200/10 p-4">
+                    <div className="flex items-start gap-3">
+                      <HelpCircle
+                        className="mt-0.5 shrink-0 text-amber-200"
+                        size={18}
+                      />
+                      <div>
+                        <p className="font-semibold text-white">
+                          Paybill guidance needed
+                        </p>
+                        <p className="mt-1 text-sm leading-6 text-stone-300">
+                          {guidanceReason} We can guide you on acquiring the
+                          right Safaricom Paybill and preparing it for direct
+                          collection callbacks.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                      <button
+                        className="btn-secondary justify-center"
+                        type="button"
+                        onClick={() =>
+                          setMpesaForm((current) => ({
+                            ...current,
+                            hasPaybill: '',
+                            paybillType: '',
+                          }))
+                        }
+                      >
+                        Back
+                      </button>
+                      <button
+                        className="btn-primary justify-center"
+                        disabled={onboardingMutation.isPending}
+                        type="button"
+                        onClick={() => onboardingMutation.mutate(true)}
+                      >
+                        <PhoneCall size={16} />
+                        {onboardingMutation.isPending
+                          ? 'Sending alert...'
+                          : 'Request guidance'}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {submittedMode ? (
+                  <div className="mt-5 rounded-[24px] border border-emerald-300/25 bg-emerald-400/10 p-4 text-sm leading-6 text-stone-200">
+                    {submittedMode === 'guidance'
+                      ? 'Thank you. One of our agents will get back to you shortly with Paybill guidance.'
+                      : 'Your Safaricom Paybill setup details are now visible to the platform team.'}
+                  </div>
+                ) : null}
               </form>
             )}
           </section>

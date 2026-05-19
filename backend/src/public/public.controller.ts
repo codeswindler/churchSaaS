@@ -223,12 +223,15 @@ export class PublicController {
       'First admin name is required',
     );
     const adminEmail = this.normalizeEmail(body.adminEmail || body.email);
-    const adminPhone = this.normalizeOptionalText(body.adminPhone || body.phone);
+    const adminPhone = this.normalizeOptionalText(
+      body.adminPhone || body.phone,
+    );
     const contactEmailValue = this.normalizeOptionalText(body.contactEmail);
     const contactEmail = contactEmailValue
       ? this.normalizeEmail(contactEmailValue)
       : adminEmail;
-    const contactPhone = this.normalizeOptionalText(body.contactPhone) || adminPhone;
+    const contactPhone =
+      this.normalizeOptionalText(body.contactPhone) || adminPhone;
     const address = this.normalizeOptionalText(body.address);
     const slug = await this.resolveUniqueChurchSlug(
       this.slugify(body.slug || churchName),
@@ -357,35 +360,62 @@ export class PublicController {
       throw new NotFoundException('Church signup was not found');
     }
 
-    const contactName = this.normalizeOptionalText(body.contactName) || church.name;
+    const contactName =
+      this.normalizeOptionalText(body.contactName) || church.name;
     const email = this.normalizeEmail(body.email || church.contactEmail);
     const callbackPhone = this.normalizeOptionalText(
       body.callbackPhone || body.phone || church.contactPhone,
     );
-    const requestCallback = Boolean(body.requestCallback);
+    const rawShortcodeType = (
+      this.normalizeOptionalText(body.shortcodeType) ||
+      this.normalizeOptionalText(body.paybillType) ||
+      'safaricom_paybill'
+    ).toLowerCase();
+    const guidanceOnlyTypes = [
+      'no_paybill',
+      'bank_paybill',
+      'bank',
+      'none',
+      'till',
+    ];
+    const safaricomTypes = ['safaricom_paybill', 'safaricom', 'paybill'];
+    if (![...guidanceOnlyTypes, ...safaricomTypes].includes(rawShortcodeType)) {
+      throw new BadRequestException(
+        'Select Safaricom Paybill, Bank Paybill, or no Paybill.',
+      );
+    }
+    const needsPaybillGuidance =
+      Boolean(body.requestCallback) ||
+      guidanceOnlyTypes.includes(rawShortcodeType);
+    const paybillStatus =
+      rawShortcodeType === 'no_paybill' || rawShortcodeType === 'none'
+        ? 'No Paybill'
+        : guidanceOnlyTypes.includes(rawShortcodeType)
+          ? rawShortcodeType === 'till'
+            ? 'Till / non-Safaricom collection account'
+            : 'Bank Paybill'
+          : 'Safaricom Paybill';
     const mpesaShortcode = this.normalizeOptionalText(
       body.mpesaShortcode || body.shortcode,
     );
-    const rawShortcodeType = (
-      this.normalizeOptionalText(body.shortcodeType) || 'paybill'
-    ).toLowerCase();
-    if (!['paybill', 'till'].includes(rawShortcodeType)) {
-      throw new BadRequestException('Select either Paybill or Till.');
-    }
-    const shortcodeType = rawShortcodeType as 'paybill' | 'till';
     const g2AdminUsername = this.normalizeOptionalText(body.g2AdminUsername);
+    const businessName = this.normalizeOptionalText(body.businessName);
     const message = this.normalizeOptionalText(body.message);
-    const mpesaNumberLabel =
-      shortcodeType === 'till' ? 'Till store number' : 'Paybill number';
+    const mpesaNumberLabel = 'Paybill number';
 
-    if (!requestCallback && !mpesaShortcode) {
+    if (!needsPaybillGuidance && !mpesaShortcode) {
       throw new BadRequestException(
         `Enter the ${mpesaNumberLabel.toLowerCase()} or request a callback.`,
       );
     }
-    if (!requestCallback && !g2AdminUsername) {
+    if (!needsPaybillGuidance && !g2AdminUsername) {
       throw new BadRequestException(
-        'Enter the M-Pesa portal / G2 username or request a callback.',
+        'Enter the Safaricom portal admin username or request guidance.',
+      );
+    }
+    if (!needsPaybillGuidance && !businessName) {
+      throw new BadRequestException(
+        'Enter the Paybill business name or request guidance.',
       );
     }
 
@@ -394,18 +424,21 @@ export class PublicController {
       contactName,
       email,
       phone: callbackPhone,
-      status: requestCallback ? 'callback_requested' : 'mpesa_setup_submitted',
+      status: needsPaybillGuidance
+        ? 'paybill_guidance_requested'
+        : 'mpesa_setup_submitted',
       message: [
-        requestCallback
-          ? 'Callback requested for M-Pesa onboarding guidance.'
-          : 'M-Pesa onboarding details submitted.',
+        needsPaybillGuidance
+          ? 'Paybill guidance requested during self-service onboarding.'
+          : 'Safaricom Paybill onboarding details submitted.',
         `Church: ${church.name}`,
         `Slug: ${church.slug}`,
         `Church ID: ${church.id}`,
         `Callback phone: ${callbackPhone || 'Not provided'}`,
-        `M-Pesa account type: ${shortcodeType === 'till' ? 'Till' : 'Paybill'}`,
+        `Paybill status: ${paybillStatus}`,
         `${mpesaNumberLabel}: ${mpesaShortcode || 'Not provided'}`,
-        `M-Pesa portal / G2 username: ${g2AdminUsername || 'Not provided'}`,
+        `Admin username: ${g2AdminUsername || 'Not provided'}`,
+        `Business name: ${businessName || 'Not provided'}`,
         message ? `Notes: ${message}` : null,
       ]
         .filter(Boolean)
@@ -416,13 +449,15 @@ export class PublicController {
     );
     await this.notifyPlatformAdmins(
       church.id,
-      requestCallback
-        ? `Callback requested by ${church.name}: ${callbackPhone || email}.`
-        : `M-Pesa setup submitted by ${church.name}. ${mpesaNumberLabel}: ${mpesaShortcode}.`,
+      needsPaybillGuidance
+        ? `Paybill guidance needed: ${church.name} has ${paybillStatus}. Contact: ${callbackPhone || email}.`
+        : `Safaricom Paybill setup submitted by ${church.name}. Paybill: ${mpesaShortcode}.`,
       systemSmsConfig,
     );
 
-    return { status: requestCallback ? 'callback_requested' : 'submitted' };
+    return {
+      status: needsPaybillGuidance ? 'paybill_guidance_requested' : 'submitted',
+    };
   }
 
   @Post('enquiries')
@@ -649,15 +684,10 @@ export class PublicController {
       admins
         .filter((admin) => Boolean(admin.phone))
         .map((admin) =>
-          this.smsService.sendSms(
-            admin.phone!,
-            message,
-            resolvedSmsConfig,
-            {
-              messageType: SmsMessageType.SYSTEM,
-              recipientName: `Platform admin: ${admin.name}`,
-            },
-          ),
+          this.smsService.sendSms(admin.phone!, message, resolvedSmsConfig, {
+            messageType: SmsMessageType.SYSTEM,
+            recipientName: `Platform admin: ${admin.name}`,
+          }),
         ),
     );
   }
