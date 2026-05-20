@@ -444,6 +444,13 @@ textarea {
   color: #cbd5c0;
 }
 
+:root[data-color-mode='light'] .eyebrow-pill {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: rgba(21, 56, 42, 0.24);
+  color: #2f4f43;
+  box-shadow: 0 12px 28px -24px rgba(22, 47, 36, 0.45);
+}
+
 .stat-card {
   @apply panel p-5;
   min-height: 152px;
