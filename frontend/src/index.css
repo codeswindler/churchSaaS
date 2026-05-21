@@ -451,6 +451,13 @@ textarea {
   box-shadow: 0 12px 28px -24px rgba(22, 47, 36, 0.45);
 }
 
+.public-hero-pill {
+  min-height: 2.25rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .stat-card {
   @apply panel p-5;
   min-height: 152px;
@@ -966,6 +973,18 @@ select.input-compact option:checked {
   .badge {
     padding: 0.3rem 0.65rem;
     letter-spacing: 0.12em;
+  }
+
+  .public-hero-pill {
+    font-size: 0.66rem;
+    letter-spacing: 0.14em;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  .brand-logo-wrap.h-\[136px\] {
+    height: min(136px, 38vw);
+    width: min(136px, 38vw);
   }
 
   .page-grid,

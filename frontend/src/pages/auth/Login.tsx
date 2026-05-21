@@ -73,10 +73,6 @@ const heroPillOptions = [
   'Staff access',
 ];
 
-const widestHeroPillLabel = heroPillOptions.reduce((widest, option) =>
-  option.length > widest.length ? option : widest
-);
-
 const initialEnquiryForm = {
   organizationName: '',
   contactName: '',
@@ -217,7 +213,10 @@ export default function Login() {
   return (
     <div className="app-shell-background min-h-screen px-4 py-4 text-stone-50 xl:px-7 2xl:px-8">
       <div className="mx-auto min-h-[calc(100vh-2rem)] max-w-[1880px]">
-        <section className="panel reveal-block p-7 lg:p-8 2xl:p-10" data-reveal>
+        <section
+          className="panel reveal-block w-full max-w-full overflow-hidden p-7 lg:p-8 2xl:p-10"
+          data-reveal
+        >
           <div className="mb-5 flex justify-end">
             <button
               aria-label={isLightMode ? 'Switch to dark mode' : 'Switch to light mode'}
@@ -231,26 +230,21 @@ export default function Login() {
           </div>
 
           <div>
-            <div className="grid gap-8 2xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
+            <div className="grid min-w-0 gap-8 2xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
               <div>
-                <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-6 xl:gap-8">
-                  <div className="flex shrink-0 flex-col items-start">
-                    <BrandLogo className="mb-4" size="xl" />
-                    <p className="eyebrow-pill relative justify-center text-center">
-                      <span aria-hidden="true" className="invisible whitespace-nowrap">
-                        {widestHeroPillLabel}
-                      </span>
-                      <span
-                        aria-live="polite"
-                        className="absolute inset-0 inline-flex items-center justify-center px-3.5"
-                      >
-                        {heroPillOptions[activeHeroPill]}
-                      </span>
+                <div className="flex min-w-0 flex-col gap-6 lg:flex-row lg:items-start lg:gap-6 xl:gap-8">
+                  <div className="flex w-full min-w-0 flex-col items-center lg:w-[340px] lg:shrink-0 lg:items-start">
+                    <BrandLogo className="mb-4 max-w-full" size="xl" />
+                    <p
+                      aria-live="polite"
+                      className="eyebrow-pill public-hero-pill w-full max-w-full justify-center text-center"
+                    >
+                      {heroPillOptions[activeHeroPill]}
                     </p>
                   </div>
 
-                  <div className="max-w-5xl flex-1 lg:pt-3">
-                    <h1 className="display-heading text-[2rem] font-semibold leading-[1.04] tracking-[-0.028em] text-white sm:text-[2.25rem] lg:text-[2.55rem] xl:text-[2.85rem] 2xl:text-[3.05rem]">
+                  <div className="min-w-0 max-w-5xl flex-1 lg:pt-3">
+                    <h1 className="display-heading break-words text-[1.85rem] font-semibold leading-[1.08] tracking-[-0.028em] text-white sm:text-[2.25rem] sm:leading-[1.04] lg:text-[2.55rem] xl:text-[2.85rem] 2xl:text-[3.05rem]">
                       Bringing technology to fellowship. Creating a better service.
                     </h1>
                     <p className="mt-4 max-w-3xl text-[0.98rem] leading-7 text-stone-300 xl:text-[1.02rem]">
