@@ -458,6 +458,27 @@ textarea {
   white-space: normal;
 }
 
+.choice-public-shell {
+  background:
+    linear-gradient(135deg, rgba(3, 105, 161, 0.12), transparent 34%),
+    linear-gradient(315deg, rgba(15, 118, 110, 0.14), transparent 30%),
+    var(--app-shell-bg);
+}
+
+.choice-public-nav {
+  @apply flex items-center justify-between gap-3 rounded-[28px] px-4 py-3 backdrop-blur-xl;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: var(--panel-shadow);
+}
+
+:root[data-color-mode='light'] .choice-public-nav {
+  background:
+    linear-gradient(135deg, rgba(14, 165, 233, 0.09), transparent 40%),
+    linear-gradient(315deg, rgba(245, 158, 11, 0.1), transparent 34%),
+    rgba(255, 255, 255, 0.96);
+}
+
 .stat-card {
   @apply panel p-5;
   min-height: 152px;
@@ -980,6 +1001,16 @@ select.input-compact option:checked {
     letter-spacing: 0.14em;
     padding-left: 0.75rem;
     padding-right: 0.75rem;
+  }
+
+  .choice-public-nav {
+    border-radius: 22px;
+    padding: 0.75rem;
+  }
+
+  .choice-public-nav .btn-primary,
+  .choice-public-nav .btn-secondary {
+    display: none;
   }
 
   .brand-logo-wrap.h-\[136px\] {

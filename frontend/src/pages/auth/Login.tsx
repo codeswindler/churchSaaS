@@ -211,13 +211,36 @@ export default function Login() {
   }, []);
 
   return (
-    <div className="app-shell-background min-h-screen px-4 py-4 text-stone-50 xl:px-7 2xl:px-8">
+    <div className="choice-public-shell min-h-screen px-4 py-4 text-stone-50 xl:px-7 2xl:px-8">
       <div className="mx-auto min-h-[calc(100vh-2rem)] max-w-[1880px]">
-        <section
-          className="panel reveal-block w-full max-w-full overflow-hidden p-7 lg:p-8 2xl:p-10"
-          data-reveal
-        >
-          <div className="mb-5 flex justify-end">
+        <header className="choice-public-nav reveal-block mb-5" data-reveal>
+          <div className="flex min-w-0 items-center gap-3">
+            <BrandLogo size="sm" />
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-stone-400">
+                Choice Networks
+              </p>
+              <p className="truncate text-sm font-semibold text-white sm:text-base">
+                Church SaaS
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              className="btn-secondary hidden justify-center sm:inline-flex"
+              type="button"
+              onClick={() => setShowEnquiryModal(true)}
+            >
+              Talk to us
+            </button>
+            <button
+              className="btn-primary hidden justify-center sm:inline-flex"
+              type="button"
+              onClick={() => setShowLoginSheet(true)}
+            >
+              Sign in
+            </button>
             <button
               aria-label={isLightMode ? 'Switch to dark mode' : 'Switch to light mode'}
               className="shell-icon-button"
@@ -228,45 +251,45 @@ export default function Login() {
               {isLightMode ? <Moon size={18} /> : <Sun size={18} />}
             </button>
           </div>
+        </header>
 
+        <section
+          className="panel reveal-block w-full max-w-full overflow-hidden p-7 lg:p-8 2xl:p-10"
+          data-reveal
+        >
           <div>
-            <div className="grid min-w-0 gap-8 2xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
+            <div className="grid min-w-0 gap-8">
               <div>
-                <div className="flex min-w-0 flex-col gap-6 lg:flex-row lg:items-start lg:gap-6 xl:gap-8">
-                  <div className="flex w-full min-w-0 flex-col items-center lg:w-[340px] lg:shrink-0 lg:items-start">
-                    <BrandLogo className="mb-4 max-w-full" size="xl" />
-                    <p
-                      aria-live="polite"
-                      className="eyebrow-pill public-hero-pill w-full max-w-full justify-center text-center"
+                <div className="min-w-0 max-w-5xl">
+                  <h1 className="display-heading break-words text-[1.85rem] font-semibold leading-[1.08] tracking-[-0.028em] text-white sm:text-[2.25rem] sm:leading-[1.04] lg:text-[2.55rem] xl:text-[2.85rem] 2xl:text-[3.05rem]">
+                    Bringing technology to fellowship. Creating a better service.
+                  </h1>
+                  <p className="mt-4 max-w-3xl text-[0.98rem] leading-7 text-stone-300 xl:text-[1.02rem]">
+                    Designed to improve contribution tracking, analysis, and accountability.
+                  </p>
+
+                  <p
+                    aria-live="polite"
+                    className="eyebrow-pill public-hero-pill mt-5 max-w-full justify-center text-center"
+                  >
+                    {heroPillOptions[activeHeroPill]}
+                  </p>
+
+                  <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                    <button
+                      className="btn-primary justify-center sm:min-w-[180px]"
+                      type="button"
+                      onClick={() => setShowLoginSheet(true)}
                     >
-                      {heroPillOptions[activeHeroPill]}
-                    </p>
-                  </div>
-
-                  <div className="min-w-0 max-w-5xl flex-1 lg:pt-3">
-                    <h1 className="display-heading break-words text-[1.85rem] font-semibold leading-[1.08] tracking-[-0.028em] text-white sm:text-[2.25rem] sm:leading-[1.04] lg:text-[2.55rem] xl:text-[2.85rem] 2xl:text-[3.05rem]">
-                      Bringing technology to fellowship. Creating a better service.
-                    </h1>
-                    <p className="mt-4 max-w-3xl text-[0.98rem] leading-7 text-stone-300 xl:text-[1.02rem]">
-                      Designed to improve contribution tracking, analysis, and accountability.
-                    </p>
-
-                    <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                      <button
-                        className="btn-primary justify-center sm:min-w-[180px]"
-                        type="button"
-                        onClick={() => setShowLoginSheet(true)}
-                      >
-                        Sign in
-                      </button>
-                      <button
-                        className="btn-secondary justify-center sm:min-w-[220px]"
-                        type="button"
-                        onClick={() => navigate('/signup')}
-                      >
-                        Create account with us
-                      </button>
-                    </div>
+                      Sign in
+                    </button>
+                    <button
+                      className="btn-secondary justify-center sm:min-w-[220px]"
+                      type="button"
+                      onClick={() => navigate('/signup')}
+                    >
+                      Create account with us
+                    </button>
                   </div>
                 </div>
 
