@@ -1003,14 +1003,77 @@ select.input-compact option:checked {
     padding-right: 0.75rem;
   }
 
+  .choice-public-shell {
+    padding: 0.45rem !important;
+  }
+
+  .choice-public-shell > div {
+    min-height: calc(100vh - 0.9rem);
+  }
+
   .choice-public-nav {
-    border-radius: 22px;
-    padding: 0.75rem;
+    margin-bottom: 0.55rem;
+    border-radius: 20px;
+    padding: 0.65rem 0.75rem;
   }
 
   .choice-public-nav .btn-primary,
   .choice-public-nav .btn-secondary {
     display: none;
+  }
+
+  .choice-public-main-panel {
+    border: 0 !important;
+    border-radius: 0;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0.85rem 0.05rem 0 !important;
+  }
+
+  .choice-public-hero-copy,
+  .choice-public-hero-copy p:not(.eyebrow-pill) {
+    max-width: none;
+  }
+
+  .choice-public-hero-copy {
+    padding: 0.15rem 0.35rem 0;
+  }
+
+  .choice-public-hero-copy .display-heading {
+    font-size: clamp(2rem, 9vw, 2.35rem);
+    line-height: 1.04;
+  }
+
+  .choice-public-hero-copy .btn-primary,
+  .choice-public-hero-copy .btn-secondary {
+    width: 100%;
+  }
+
+  .choice-public-card-grid {
+    gap: 0.75rem;
+    margin-top: 1rem;
+  }
+
+  .choice-public-card,
+  .choice-public-workflow {
+    border-radius: 20px;
+    padding: 1rem !important;
+  }
+
+  .choice-public-card .rounded-2xl,
+  .choice-public-workflow .rounded-3xl {
+    border-radius: 16px;
+    padding: 0.85rem !important;
+  }
+
+  .choice-public-workflow h2 {
+    font-size: clamp(1.28rem, 5.8vw, 1.55rem);
+    line-height: 1.18;
+  }
+
+  .choice-public-shell footer.panel {
+    margin-top: 0.55rem;
+    border-radius: 22px;
   }
 
   .brand-logo-wrap.h-\[136px\] {

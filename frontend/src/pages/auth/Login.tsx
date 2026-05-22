@@ -254,13 +254,13 @@ export default function Login() {
         </header>
 
         <section
-          className="panel reveal-block w-full max-w-full overflow-hidden p-7 lg:p-8 2xl:p-10"
+          className="choice-public-main-panel panel reveal-block w-full max-w-full overflow-hidden p-7 lg:p-8 2xl:p-10"
           data-reveal
         >
           <div>
             <div className="grid min-w-0 gap-8">
               <div>
-                <div className="min-w-0 max-w-5xl">
+                <div className="choice-public-hero-copy min-w-0 max-w-5xl">
                   <h1 className="display-heading break-words text-[1.85rem] font-semibold leading-[1.08] tracking-[-0.028em] text-white sm:text-[2.25rem] sm:leading-[1.04] lg:text-[2.55rem] xl:text-[2.85rem] 2xl:text-[3.05rem]">
                     Bringing technology to fellowship. Creating a better service.
                   </h1>
@@ -293,11 +293,11 @@ export default function Login() {
                   </div>
                 </div>
 
-                <div className="mt-8 grid gap-4 xl:grid-cols-2">
+                <div className="choice-public-card-grid mt-8 grid gap-4 xl:grid-cols-2">
                   {featureCards.map((card, index) => (
                     <div
                       key={card.title}
-                      className="reveal-block rounded-[28px] border border-white/10 bg-black/10 p-5"
+                      className="choice-public-card reveal-block rounded-[28px] border border-white/10 bg-black/10 p-5"
                       data-reveal
                       style={{ transitionDelay: `${120 + index * 80}ms` }}
                     >
@@ -331,11 +331,11 @@ export default function Login() {
                   ))}
                 </div>
 
-                <div className="mt-8 grid gap-4 xl:grid-cols-2">
+                <div className="choice-public-card-grid mt-8 grid gap-4 xl:grid-cols-2">
                   {landingHighlights.map((item, index) => (
                     <div
                       key={item.title}
-                      className="reveal-block rounded-[28px] border border-white/10 bg-black/10 p-5"
+                      className="choice-public-card reveal-block rounded-[28px] border border-white/10 bg-black/10 p-5"
                       data-reveal
                       style={{ transitionDelay: `${200 + index * 80}ms` }}
                     >
@@ -352,7 +352,7 @@ export default function Login() {
               </div>
 
               <div
-                className="reveal-block rounded-[30px] border border-white/10 bg-black/10 p-6"
+                className="choice-public-workflow reveal-block rounded-[30px] border border-white/10 bg-black/10 p-6"
                 data-reveal
               >
                 <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
