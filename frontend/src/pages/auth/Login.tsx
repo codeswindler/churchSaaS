@@ -408,7 +408,7 @@ export default function Login() {
 
               <div className="flex items-center gap-3 leading-7 text-stone-100">
                 <PhoneCall size={17} className="shrink-0 text-stone-300" />
-                <span>Client support line available on request</span>
+                <span>254724075174</span>
               </div>
             </div>
           </div>
