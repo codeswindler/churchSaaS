@@ -630,6 +630,17 @@ textarea {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 
+.presentation-slide-motion {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  background: var(--presentation-bg);
+  backface-visibility: hidden;
+  transform-origin: center;
+  will-change: clip-path, filter, opacity, transform;
+}
+
 .presentation-background-image {
   position: absolute;
   inset: 0;
@@ -661,6 +672,7 @@ textarea {
 .presentation-stage-inner {
   position: relative;
   display: flex;
+  height: 100%;
   min-height: 100%;
   flex-direction: column;
   justify-content: center;
@@ -713,6 +725,16 @@ textarea {
   overflow: hidden;
   background: var(--presentation-bg);
   color: var(--presentation-fg);
+}
+
+.presentation-display-motion {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background: var(--presentation-bg);
+  backface-visibility: hidden;
+  transform-origin: center;
+  will-change: clip-path, filter, opacity, transform;
 }
 
 .presentation-display-frame {
@@ -887,51 +909,43 @@ textarea {
   --presentation-accent: #1f2937;
 }
 
-.presentation-transition-fade .presentation-stage-inner,
-.presentation-transition-fade .presentation-display-content,
-.presentation-transition-fade .presentation-display-paused {
-  animation: presentation-fade-in 720ms ease both;
+.presentation-transition-fade .presentation-slide-motion,
+.presentation-transition-fade .presentation-display-motion {
+  animation: presentation-fade-in 1300ms ease both;
 }
 
-.presentation-transition-push .presentation-stage-inner,
-.presentation-transition-push .presentation-display-content,
-.presentation-transition-push .presentation-display-paused {
-  animation: presentation-push-in 780ms cubic-bezier(0.16, 1, 0.3, 1) both;
+.presentation-transition-push .presentation-slide-motion,
+.presentation-transition-push .presentation-display-motion {
+  animation: presentation-push-in 1450ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.presentation-transition-wipe .presentation-stage-inner,
-.presentation-transition-wipe .presentation-display-content,
-.presentation-transition-wipe .presentation-display-paused {
-  animation: presentation-wipe-in 860ms cubic-bezier(0.22, 1, 0.36, 1) both;
+.presentation-transition-wipe .presentation-slide-motion,
+.presentation-transition-wipe .presentation-display-motion {
+  animation: presentation-wipe-in 1500ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.presentation-transition-split .presentation-stage-inner,
-.presentation-transition-split .presentation-display-content,
-.presentation-transition-split .presentation-display-paused {
-  animation: presentation-split-in 860ms cubic-bezier(0.22, 1, 0.36, 1) both;
+.presentation-transition-split .presentation-slide-motion,
+.presentation-transition-split .presentation-display-motion {
+  animation: presentation-split-in 1550ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.presentation-transition-zoom .presentation-stage-inner,
-.presentation-transition-zoom .presentation-display-content,
-.presentation-transition-zoom .presentation-display-paused {
-  animation: presentation-soft-zoom 820ms cubic-bezier(0.16, 1, 0.3, 1) both;
+.presentation-transition-zoom .presentation-slide-motion,
+.presentation-transition-zoom .presentation-display-motion {
+  animation: presentation-soft-zoom 1450ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.presentation-transition-rise .presentation-stage-inner,
-.presentation-transition-rise .presentation-display-content,
-.presentation-transition-rise .presentation-display-paused {
-  animation: presentation-rise-in 760ms cubic-bezier(0.16, 1, 0.3, 1) both;
+.presentation-transition-rise .presentation-slide-motion,
+.presentation-transition-rise .presentation-display-motion {
+  animation: presentation-rise-in 1350ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.presentation-transition-flip .presentation-stage-inner,
-.presentation-transition-flip .presentation-display-content,
-.presentation-transition-flip .presentation-display-paused {
-  animation: presentation-flip-in 820ms cubic-bezier(0.16, 1, 0.3, 1) both;
+.presentation-transition-flip .presentation-slide-motion,
+.presentation-transition-flip .presentation-display-motion {
+  animation: presentation-flip-in 1450ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.presentation-transition-none .presentation-stage-inner,
-.presentation-transition-none .presentation-display-content,
-.presentation-transition-none .presentation-display-paused {
+.presentation-transition-none .presentation-slide-motion,
+.presentation-transition-none .presentation-display-motion {
   animation: none;
 }
 
@@ -945,18 +959,20 @@ textarea {
 @keyframes presentation-fade-in {
   from {
     opacity: 0;
-    filter: blur(10px);
+    filter: blur(18px);
+    transform: scale(1.045);
   }
   to {
     opacity: 1;
     filter: blur(0);
+    transform: scale(1);
   }
 }
 
 @keyframes presentation-push-in {
   from {
     opacity: 0;
-    transform: translateX(72px);
+    transform: translateX(28%);
   }
   to {
     opacity: 1;
@@ -966,41 +982,47 @@ textarea {
 
 @keyframes presentation-wipe-in {
   from {
-    opacity: 0.75;
+    opacity: 0.85;
     clip-path: inset(0 100% 0 0);
+    filter: brightness(1.2);
   }
   to {
     opacity: 1;
     clip-path: inset(0 0 0 0);
+    filter: brightness(1);
   }
 }
 
 @keyframes presentation-split-in {
   from {
-    opacity: 0.7;
-    clip-path: inset(0 48% 0 48%);
+    opacity: 0.82;
+    clip-path: inset(0 50% 0 50%);
+    filter: blur(4px);
   }
   to {
     opacity: 1;
     clip-path: inset(0 0 0 0);
+    filter: blur(0);
   }
 }
 
 @keyframes presentation-soft-zoom {
   from {
     opacity: 0;
-    transform: scale(0.88);
+    transform: scale(0.74);
+    filter: blur(8px);
   }
   to {
     opacity: 1;
     transform: scale(1);
+    filter: blur(0);
   }
 }
 
 @keyframes presentation-rise-in {
   from {
     opacity: 0;
-    transform: translateY(56px);
+    transform: translateY(18%);
   }
   to {
     opacity: 1;
@@ -1011,11 +1033,13 @@ textarea {
 @keyframes presentation-flip-in {
   from {
     opacity: 0;
-    transform: perspective(1200px) rotateX(18deg) scale(0.96);
+    transform: perspective(1200px) rotateY(-32deg) scale(0.9);
+    filter: brightness(0.82);
   }
   to {
     opacity: 1;
-    transform: perspective(1200px) rotateX(0deg) scale(1);
+    transform: perspective(1200px) rotateY(0deg) scale(1);
+    filter: brightness(1);
   }
 }
 

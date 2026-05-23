@@ -129,23 +129,28 @@ function PreviewSlide({
     <div
       className={`presentation-stage-preview presentation-theme-${theme} presentation-background-${background.id} presentation-font-${slide.fontId || 'sora'} presentation-text-color-${slide.textColorId || 'theme'} presentation-transition-${slide.transitionId || 'fade'}`}
     >
-      <SlideBackground backgroundId={slide.backgroundId} />
-      <div className="presentation-stage-inner" key={slide.id}>
-        {!isLive ? (
-          <div className="presentation-paused-preview">
-            <Pause size={28} />
-            <span>Output paused</span>
-          </div>
-        ) : slide.kind === 'blank' ? null : (
-          <>
-            <p className="presentation-kind-label">{slide.kind}</p>
-            <h3>{slide.title || 'Untitled slide'}</h3>
-            <p className="presentation-body-copy">
-              {slide.body || 'Add slide content'}
-            </p>
-            {slide.note ? <p className="presentation-note">{slide.note}</p> : null}
-          </>
-        )}
+      <div
+        className="presentation-slide-motion"
+        key={`${slide.id}-${slide.backgroundId}-${slide.transitionId}`}
+      >
+        <SlideBackground backgroundId={slide.backgroundId} />
+        <div className="presentation-stage-inner">
+          {!isLive ? (
+            <div className="presentation-paused-preview">
+              <Pause size={28} />
+              <span>Output paused</span>
+            </div>
+          ) : slide.kind === 'blank' ? null : (
+            <>
+              <p className="presentation-kind-label">{slide.kind}</p>
+              <h3>{slide.title || 'Untitled slide'}</h3>
+              <p className="presentation-body-copy">
+                {slide.body || 'Add slide content'}
+              </p>
+              {slide.note ? <p className="presentation-note">{slide.note}</p> : null}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
