@@ -24,7 +24,7 @@ export default function PresentationDisplay() {
 
   return (
     <main
-      className={`presentation-display presentation-theme-${state.theme} presentation-background-${background.id}`}
+      className={`presentation-display presentation-theme-${state.theme} presentation-background-${background.id} presentation-font-${slide.fontId || 'sora'} presentation-transition-${slide.transitionId || 'fade'}`}
     >
       {background.kind === 'image' && background.imageUrl ? (
         <img
@@ -35,12 +35,12 @@ export default function PresentationDisplay() {
       ) : null}
       <div className="presentation-display-frame">
         {!state.isLive ? (
-          <section className="presentation-display-paused">
+          <section className="presentation-display-paused" key={`${slide.id}-paused`}>
             <Pause size={64} />
             <h1>Output paused</h1>
           </section>
         ) : slide.kind === 'blank' ? null : (
-          <section className="presentation-display-content">
+          <section className="presentation-display-content" key={slide.id}>
             <p className="presentation-display-kind">{slide.kind}</p>
             <h1>{slide.title || 'Untitled slide'}</h1>
             <p className="presentation-display-body">

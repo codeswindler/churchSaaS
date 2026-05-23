@@ -6,6 +6,8 @@ export type PresentationSlideKind =
   | 'blank';
 
 export type PresentationTheme = 'midnight' | 'sanctuary' | 'paper';
+export type PresentationFontId = 'sora' | 'serif' | 'classic' | 'mono';
+export type PresentationTransitionId = 'fade' | 'slide' | 'zoom' | 'none';
 export type PresentationBackgroundId =
   | 'theme'
   | 'spotlight'
@@ -31,6 +33,16 @@ export interface PresentationSong {
   updatedAt: string;
 }
 
+export interface PresentationFont {
+  id: PresentationFontId;
+  label: string;
+}
+
+export interface PresentationTransition {
+  id: PresentationTransitionId;
+  label: string;
+}
+
 export interface PresentationSlide {
   id: string;
   kind: PresentationSlideKind;
@@ -40,6 +52,8 @@ export interface PresentationSlide {
   bibleVersion?: string | null;
   bibleVersionLabel?: string | null;
   backgroundId: PresentationBackgroundId;
+  fontId: PresentationFontId;
+  transitionId: PresentationTransitionId;
 }
 
 export interface PresentationState {
@@ -91,6 +105,20 @@ export const presentationBackgrounds: PresentationBackground[] = [
   },
 ];
 
+export const presentationFonts: PresentationFont[] = [
+  { id: 'sora', label: 'Modern' },
+  { id: 'serif', label: 'Scripture Serif' },
+  { id: 'classic', label: 'Classic Sans' },
+  { id: 'mono', label: 'Reading Mono' },
+];
+
+export const presentationTransitions: PresentationTransition[] = [
+  { id: 'fade', label: 'Fade' },
+  { id: 'slide', label: 'Slide up' },
+  { id: 'zoom', label: 'Soft zoom' },
+  { id: 'none', label: 'None' },
+];
+
 function createId() {
   return crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
 }
@@ -102,12 +130,23 @@ export function getPresentationBackground(id?: string | null) {
   );
 }
 
+export function getPresentationFont(id?: string | null) {
+  return presentationFonts.find((font) => font.id === id) || presentationFonts[0];
+}
+
+export function getPresentationTransition(id?: string | null) {
+  return (
+    presentationTransitions.find((transition) => transition.id === id) ||
+    presentationTransitions[0]
+  );
+}
+
 export function createPresentationSlide(
   kind: PresentationSlideKind = 'announcement',
 ): PresentationSlide {
   const defaults: Record<
     PresentationSlideKind,
-    Omit<PresentationSlide, 'id' | 'backgroundId'>
+    Omit<PresentationSlide, 'id' | 'backgroundId' | 'fontId' | 'transitionId'>
   > = {
     song: {
       kind: 'song',
@@ -145,6 +184,8 @@ export function createPresentationSlide(
     id: createId(),
     ...defaults[kind],
     backgroundId: 'theme',
+    fontId: 'sora',
+    transitionId: 'fade',
   };
 }
 
@@ -159,6 +200,8 @@ export function createDefaultPresentationState(
       body: 'We are glad you are here.',
       note: 'Service begins shortly',
       backgroundId: 'spotlight',
+      fontId: 'sora',
+      transitionId: 'fade',
     },
     {
       id: createId(),
@@ -169,6 +212,8 @@ export function createDefaultPresentationState(
       bibleVersion: 'kjv',
       bibleVersionLabel: 'KJV',
       backgroundId: 'cross',
+      fontId: 'serif',
+      transitionId: 'slide',
     },
     {
       id: createId(),
@@ -177,6 +222,8 @@ export function createDefaultPresentationState(
       body: 'Use the church paybill or giving instructions shared by the finance team.',
       note: 'Thank you for your generosity',
       backgroundId: 'default_1',
+      fontId: 'classic',
+      transitionId: 'zoom',
     },
   ];
 
@@ -214,6 +261,8 @@ function normalizePresentationState(
           bibleVersion: slide.bibleVersion || null,
           bibleVersionLabel: slide.bibleVersionLabel || null,
           backgroundId: getPresentationBackground(slide.backgroundId).id,
+          fontId: getPresentationFont(slide.fontId).id,
+          transitionId: getPresentationTransition(slide.transitionId).id,
         }))
       : fallback.slides;
   const currentSlideId =
