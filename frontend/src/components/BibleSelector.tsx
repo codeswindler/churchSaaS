@@ -7,16 +7,27 @@ export type SelectedBibleVerse = {
   versionLabel: string;
 };
 
-export type BibleVersionCode = 'kjv' | 'niv' | 'gnt';
+export type BibleVersionCode =
+  | 'web'
+  | 'kjv'
+  | 'asv'
+  | 'bbe'
+  | 'darby'
+  | 'dra'
+  | 'webbe';
 
 export const bibleVersions: Array<{
   code: BibleVersionCode;
   label: string;
   lookupCode?: string;
 }> = [
+  { code: 'web', label: 'WEB', lookupCode: 'web' },
   { code: 'kjv', label: 'KJV', lookupCode: 'kjv' },
-  { code: 'niv', label: 'NIV' },
-  { code: 'gnt', label: 'Good News' },
+  { code: 'asv', label: 'ASV', lookupCode: 'asv' },
+  { code: 'bbe', label: 'BBE', lookupCode: 'bbe' },
+  { code: 'darby', label: 'Darby', lookupCode: 'darby' },
+  { code: 'dra', label: 'Douay-Rheims', lookupCode: 'dra' },
+  { code: 'webbe', label: 'WEB British', lookupCode: 'webbe' },
 ];
 
 export const bibleBooks = [
@@ -160,14 +171,14 @@ export function getBibleChapterCount(book: string) {
 }
 
 async function fetchChapterVerseCount(book: string, chapter: number) {
-  const cacheKey = `${book}:${chapter}:kjv`;
+  const cacheKey = `${book}:${chapter}:web`;
   const cachedCount = chapterVerseCountCache.get(cacheKey);
   if (cachedCount) return cachedCount;
 
   const response = await fetch(
     `https://thebibleapi.netlify.app/.netlify/functions/getChapter?book=${encodeURIComponent(
       book,
-    )}&chapter=${chapter}&translation=kjv`,
+    )}&chapter=${chapter}&translation=web`,
   );
 
   if (!response.ok) {
@@ -339,11 +350,7 @@ export function BibleSelector({
         versionLabel: selectedVersion.label,
       });
     } catch {
-      setLookupError(
-        selectedVersion.lookupCode
-          ? 'Could not fetch the text. Reference was applied.'
-          : `${selectedVersion.label} text needs a licensed Bible source. Reference was applied so you can paste the text.`,
-      );
+      setLookupError('Could not fetch the text. Reference was applied.');
       onSelect({
         reference,
         text: '',
@@ -459,12 +466,6 @@ export function BibleSelector({
           </button>
         </div>
       </div>
-      {!selectedVersion.lookupCode ? (
-        <p className="mt-2 text-xs font-medium text-amber-300">
-          {selectedVersion.label} is selectable and saved, but the text must be
-          pasted because this translation requires a licensed source.
-        </p>
-      ) : null}
       {validationError ? (
         <p className="mt-2 text-xs font-medium text-amber-300">
           {validationError}

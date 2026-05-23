@@ -568,6 +568,19 @@ textarea {
   @apply border-amber-200/35 bg-amber-200/10 text-white;
 }
 
+.presentation-color-option {
+  @apply flex items-center gap-3 rounded-2xl border border-white/10 bg-black/10 px-3 py-2 text-left text-sm font-semibold text-stone-300 transition;
+}
+
+.presentation-color-option:hover,
+.presentation-color-option.is-active {
+  @apply border-amber-200/35 bg-amber-200/10 text-white;
+}
+
+.presentation-color-swatch {
+  @apply inline-flex h-9 w-9 shrink-0 rounded-full border border-white/20 shadow-sm;
+}
+
 .presentation-background-swatch {
   @apply inline-flex h-12 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10;
   background: var(--presentation-bg);
@@ -782,34 +795,138 @@ textarea {
   --presentation-font-family: 'Sora', 'Manrope', sans-serif;
 }
 
-.presentation-font-serif {
-  --presentation-font-family: Georgia, 'Times New Roman', serif;
+.presentation-font-aptos {
+  --presentation-font-family: Aptos, Calibri, 'Segoe UI', sans-serif;
 }
 
-.presentation-font-classic {
-  --presentation-font-family: 'Manrope', Arial, sans-serif;
+.presentation-font-calibri {
+  --presentation-font-family: Calibri, Aptos, 'Segoe UI', sans-serif;
 }
 
-.presentation-font-mono {
-  --presentation-font-family: 'IBM Plex Mono', 'Courier New', monospace;
+.presentation-font-cambria {
+  --presentation-font-family: Cambria, Georgia, 'Times New Roman', serif;
+}
+
+.presentation-font-georgia {
+  --presentation-font-family: Georgia, Cambria, 'Times New Roman', serif;
+}
+
+.presentation-font-garamond {
+  --presentation-font-family: Garamond, 'EB Garamond', Georgia, serif;
+}
+
+.presentation-font-times {
+  --presentation-font-family: 'Times New Roman', Times, serif;
+}
+
+.presentation-font-arial {
+  --presentation-font-family: Arial, Helvetica, sans-serif;
+}
+
+.presentation-font-verdana {
+  --presentation-font-family: Verdana, Geneva, sans-serif;
+}
+
+.presentation-font-trebuchet {
+  --presentation-font-family: 'Trebuchet MS', Arial, sans-serif;
+}
+
+.presentation-font-century {
+  --presentation-font-family: 'Century Gothic', Aptos, 'Segoe UI', sans-serif;
+}
+
+.presentation-font-consolas {
+  --presentation-font-family: Consolas, 'IBM Plex Mono', 'Courier New', monospace;
+}
+
+.presentation-text-color-white {
+  --presentation-fg: #ffffff;
+  --presentation-muted: rgba(255, 255, 255, 0.76);
+  --presentation-accent: #ffffff;
+}
+
+.presentation-text-color-cream {
+  --presentation-fg: #fff7d6;
+  --presentation-muted: rgba(255, 247, 214, 0.74);
+  --presentation-accent: #fde68a;
+}
+
+.presentation-text-color-gold {
+  --presentation-fg: #facc15;
+  --presentation-muted: rgba(250, 204, 21, 0.72);
+  --presentation-accent: #fde047;
+}
+
+.presentation-text-color-amber {
+  --presentation-fg: #f59e0b;
+  --presentation-muted: rgba(245, 158, 11, 0.72);
+  --presentation-accent: #fbbf24;
+}
+
+.presentation-text-color-sky {
+  --presentation-fg: #7dd3fc;
+  --presentation-muted: rgba(125, 211, 252, 0.72);
+  --presentation-accent: #bae6fd;
+}
+
+.presentation-text-color-mint {
+  --presentation-fg: #86efac;
+  --presentation-muted: rgba(134, 239, 172, 0.72);
+  --presentation-accent: #bbf7d0;
+}
+
+.presentation-text-color-rose {
+  --presentation-fg: #fda4af;
+  --presentation-muted: rgba(253, 164, 175, 0.72);
+  --presentation-accent: #fecdd3;
+}
+
+.presentation-text-color-black {
+  --presentation-fg: #111827;
+  --presentation-muted: rgba(17, 24, 39, 0.7);
+  --presentation-accent: #1f2937;
 }
 
 .presentation-transition-fade .presentation-stage-inner,
 .presentation-transition-fade .presentation-display-content,
 .presentation-transition-fade .presentation-display-paused {
-  animation: presentation-fade-in 420ms ease both;
+  animation: presentation-fade-in 720ms ease both;
 }
 
-.presentation-transition-slide .presentation-stage-inner,
-.presentation-transition-slide .presentation-display-content,
-.presentation-transition-slide .presentation-display-paused {
-  animation: presentation-slide-up 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
+.presentation-transition-push .presentation-stage-inner,
+.presentation-transition-push .presentation-display-content,
+.presentation-transition-push .presentation-display-paused {
+  animation: presentation-push-in 780ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.presentation-transition-wipe .presentation-stage-inner,
+.presentation-transition-wipe .presentation-display-content,
+.presentation-transition-wipe .presentation-display-paused {
+  animation: presentation-wipe-in 860ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.presentation-transition-split .presentation-stage-inner,
+.presentation-transition-split .presentation-display-content,
+.presentation-transition-split .presentation-display-paused {
+  animation: presentation-split-in 860ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .presentation-transition-zoom .presentation-stage-inner,
 .presentation-transition-zoom .presentation-display-content,
 .presentation-transition-zoom .presentation-display-paused {
-  animation: presentation-soft-zoom 520ms ease both;
+  animation: presentation-soft-zoom 820ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.presentation-transition-rise .presentation-stage-inner,
+.presentation-transition-rise .presentation-display-content,
+.presentation-transition-rise .presentation-display-paused {
+  animation: presentation-rise-in 760ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.presentation-transition-flip .presentation-stage-inner,
+.presentation-transition-flip .presentation-display-content,
+.presentation-transition-flip .presentation-display-paused {
+  animation: presentation-flip-in 820ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .presentation-transition-none .presentation-stage-inner,
@@ -828,27 +945,51 @@ textarea {
 @keyframes presentation-fade-in {
   from {
     opacity: 0;
+    filter: blur(10px);
   }
   to {
     opacity: 1;
+    filter: blur(0);
   }
 }
 
-@keyframes presentation-slide-up {
+@keyframes presentation-push-in {
   from {
     opacity: 0;
-    transform: translateY(18px);
+    transform: translateX(72px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(0);
+  }
+}
+
+@keyframes presentation-wipe-in {
+  from {
+    opacity: 0.75;
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes presentation-split-in {
+  from {
+    opacity: 0.7;
+    clip-path: inset(0 48% 0 48%);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
   }
 }
 
 @keyframes presentation-soft-zoom {
   from {
     opacity: 0;
-    transform: scale(0.975);
+    transform: scale(0.88);
   }
   to {
     opacity: 1;
@@ -856,9 +997,32 @@ textarea {
   }
 }
 
+@keyframes presentation-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(56px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes presentation-flip-in {
+  from {
+    opacity: 0;
+    transform: perspective(1200px) rotateX(18deg) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: perspective(1200px) rotateX(0deg) scale(1);
+  }
+}
+
 :root[data-color-mode='light'] .presentation-slide-picker,
 :root[data-color-mode='light'] .presentation-kind-option,
-:root[data-color-mode='light'] .presentation-background-option {
+:root[data-color-mode='light'] .presentation-background-option,
+:root[data-color-mode='light'] .presentation-color-option {
   background: rgba(255, 255, 255, 0.78);
   border-color: rgba(21, 56, 42, 0.18);
   color: #213c31;
@@ -869,7 +1033,9 @@ textarea {
 :root[data-color-mode='light'] .presentation-kind-option:hover,
 :root[data-color-mode='light'] .presentation-kind-option.is-active,
 :root[data-color-mode='light'] .presentation-background-option:hover,
-:root[data-color-mode='light'] .presentation-background-option.is-active {
+:root[data-color-mode='light'] .presentation-background-option.is-active,
+:root[data-color-mode='light'] .presentation-color-option:hover,
+:root[data-color-mode='light'] .presentation-color-option.is-active {
   background: rgba(241, 199, 95, 0.18);
   border-color: rgba(150, 106, 16, 0.34);
   color: #173328;

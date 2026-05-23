@@ -38,6 +38,7 @@ import {
   subscribePresentationState,
   presentationBackgrounds,
   presentationFonts,
+  presentationTextColors,
   presentationTransitions,
   type PresentationBackgroundId,
   type PresentationFontId,
@@ -46,6 +47,7 @@ import {
   type PresentationSong,
   type PresentationState,
   type PresentationTheme,
+  type PresentationTextColorId,
   type PresentationTransitionId,
 } from '../../services/presentation';
 
@@ -79,12 +81,6 @@ const slideKindOptions: Array<{
     label: 'Blank',
     description: 'Clear the screen during transitions.',
   },
-];
-
-const themeOptions: Array<{ value: PresentationTheme; label: string }> = [
-  { value: 'midnight', label: 'Midnight' },
-  { value: 'sanctuary', label: 'Sanctuary' },
-  { value: 'paper', label: 'Paper' },
 ];
 
 function resolveChurchName() {
@@ -131,7 +127,7 @@ function PreviewSlide({
   const background = getPresentationBackground(slide.backgroundId);
   return (
     <div
-      className={`presentation-stage-preview presentation-theme-${theme} presentation-background-${background.id} presentation-font-${slide.fontId || 'sora'} presentation-transition-${slide.transitionId || 'fade'}`}
+      className={`presentation-stage-preview presentation-theme-${theme} presentation-background-${background.id} presentation-font-${slide.fontId || 'sora'} presentation-text-color-${slide.textColorId || 'theme'} presentation-transition-${slide.transitionId || 'fade'}`}
     >
       <SlideBackground backgroundId={slide.backgroundId} />
       <div className="presentation-stage-inner" key={slide.id}>
@@ -361,9 +357,6 @@ export default function ChurchPresentation() {
           </span>
           <span className="badge border-white/10 bg-white/5 text-stone-200">
             {state.isLive ? 'Live output' : 'Output paused'}
-          </span>
-          <span className="badge border-white/10 bg-white/5 text-stone-200">
-            {themeOptions.find((theme) => theme.value === state.theme)?.label}
           </span>
         </div>
       </section>
@@ -685,7 +678,7 @@ export default function ChurchPresentation() {
                     />
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-3">
+                  <div className="grid gap-4 md:grid-cols-2">
                     <div>
                       <label className="label">Font</label>
                       <select
@@ -723,24 +716,31 @@ export default function ChurchPresentation() {
                         ))}
                       </select>
                     </div>
-                    <div>
-                      <label className="label">Display theme</label>
-                      <select
-                        className="input"
-                        value={state.theme}
-                        onChange={(event) =>
-                          commitState({
-                            ...state,
-                            theme: event.target.value as PresentationTheme,
-                          })
-                        }
-                      >
-                        {themeOptions.map((theme) => (
-                          <option key={theme.value} value={theme.value}>
-                            {theme.label}
-                          </option>
-                        ))}
-                      </select>
+                  </div>
+
+                  <div>
+                    <label className="label">Text color</label>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                      {presentationTextColors.map((color) => (
+                        <button
+                          key={color.id}
+                          className={`presentation-color-option ${
+                            draftSlide.textColorId === color.id ? 'is-active' : ''
+                          }`}
+                          type="button"
+                          onClick={() =>
+                            updateDraftSlide({
+                              textColorId: color.id as PresentationTextColorId,
+                            })
+                          }
+                        >
+                          <span
+                            className="presentation-color-swatch"
+                            style={{ background: color.swatch }}
+                          />
+                          <span>{color.label}</span>
+                        </button>
+                      ))}
                     </div>
                   </div>
 

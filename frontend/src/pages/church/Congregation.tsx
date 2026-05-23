@@ -669,7 +669,7 @@ export default function ChurchCongregation() {
                               event.target.value,
                             )
                           }
-                          placeholder="Verse text appears here. Paste licensed NIV or Good News text here when needed."
+                          placeholder="Verse text appears here. You can also paste text from a Bible source your church is licensed to use."
                         />
                       </div>
                     </div>

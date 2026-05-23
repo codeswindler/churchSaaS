@@ -6,8 +6,38 @@ export type PresentationSlideKind =
   | 'blank';
 
 export type PresentationTheme = 'midnight' | 'sanctuary' | 'paper';
-export type PresentationFontId = 'sora' | 'serif' | 'classic' | 'mono';
-export type PresentationTransitionId = 'fade' | 'slide' | 'zoom' | 'none';
+export type PresentationFontId =
+  | 'sora'
+  | 'aptos'
+  | 'calibri'
+  | 'cambria'
+  | 'georgia'
+  | 'garamond'
+  | 'times'
+  | 'arial'
+  | 'verdana'
+  | 'trebuchet'
+  | 'century'
+  | 'consolas';
+export type PresentationTransitionId =
+  | 'fade'
+  | 'push'
+  | 'wipe'
+  | 'split'
+  | 'zoom'
+  | 'rise'
+  | 'flip'
+  | 'none';
+export type PresentationTextColorId =
+  | 'theme'
+  | 'white'
+  | 'cream'
+  | 'gold'
+  | 'amber'
+  | 'sky'
+  | 'mint'
+  | 'rose'
+  | 'black';
 export type PresentationBackgroundId =
   | 'theme'
   | 'spotlight'
@@ -43,6 +73,12 @@ export interface PresentationTransition {
   label: string;
 }
 
+export interface PresentationTextColor {
+  id: PresentationTextColorId;
+  label: string;
+  swatch: string;
+}
+
 export interface PresentationSlide {
   id: string;
   kind: PresentationSlideKind;
@@ -54,6 +90,7 @@ export interface PresentationSlide {
   backgroundId: PresentationBackgroundId;
   fontId: PresentationFontId;
   transitionId: PresentationTransitionId;
+  textColorId: PresentationTextColorId;
 }
 
 export interface PresentationState {
@@ -106,17 +143,41 @@ export const presentationBackgrounds: PresentationBackground[] = [
 ];
 
 export const presentationFonts: PresentationFont[] = [
-  { id: 'sora', label: 'Modern' },
-  { id: 'serif', label: 'Scripture Serif' },
-  { id: 'classic', label: 'Classic Sans' },
-  { id: 'mono', label: 'Reading Mono' },
+  { id: 'sora', label: 'Sora Modern' },
+  { id: 'aptos', label: 'Aptos' },
+  { id: 'calibri', label: 'Calibri' },
+  { id: 'cambria', label: 'Cambria' },
+  { id: 'georgia', label: 'Georgia' },
+  { id: 'garamond', label: 'Garamond' },
+  { id: 'times', label: 'Times New Roman' },
+  { id: 'arial', label: 'Arial' },
+  { id: 'verdana', label: 'Verdana' },
+  { id: 'trebuchet', label: 'Trebuchet MS' },
+  { id: 'century', label: 'Century Gothic' },
+  { id: 'consolas', label: 'Consolas' },
 ];
 
 export const presentationTransitions: PresentationTransition[] = [
-  { id: 'fade', label: 'Fade' },
-  { id: 'slide', label: 'Slide up' },
-  { id: 'zoom', label: 'Soft zoom' },
+  { id: 'fade', label: 'PowerPoint Fade' },
+  { id: 'push', label: 'Push' },
+  { id: 'wipe', label: 'Wipe' },
+  { id: 'split', label: 'Split' },
+  { id: 'zoom', label: 'Zoom' },
+  { id: 'rise', label: 'Rise up' },
+  { id: 'flip', label: 'Flip' },
   { id: 'none', label: 'None' },
+];
+
+export const presentationTextColors: PresentationTextColor[] = [
+  { id: 'theme', label: 'Theme default', swatch: 'linear-gradient(135deg, #f8fafc, #fde68a)' },
+  { id: 'white', label: 'White', swatch: '#ffffff' },
+  { id: 'cream', label: 'Warm cream', swatch: '#fff7d6' },
+  { id: 'gold', label: 'Gold', swatch: '#facc15' },
+  { id: 'amber', label: 'Amber', swatch: '#f59e0b' },
+  { id: 'sky', label: 'Sky', swatch: '#7dd3fc' },
+  { id: 'mint', label: 'Mint', swatch: '#86efac' },
+  { id: 'rose', label: 'Rose', swatch: '#fda4af' },
+  { id: 'black', label: 'Black', swatch: '#111827' },
 ];
 
 function createId() {
@@ -141,12 +202,22 @@ export function getPresentationTransition(id?: string | null) {
   );
 }
 
+export function getPresentationTextColor(id?: string | null) {
+  return (
+    presentationTextColors.find((color) => color.id === id) ||
+    presentationTextColors[0]
+  );
+}
+
 export function createPresentationSlide(
   kind: PresentationSlideKind = 'announcement',
 ): PresentationSlide {
   const defaults: Record<
     PresentationSlideKind,
-    Omit<PresentationSlide, 'id' | 'backgroundId' | 'fontId' | 'transitionId'>
+    Omit<
+      PresentationSlide,
+      'id' | 'backgroundId' | 'fontId' | 'transitionId' | 'textColorId'
+    >
   > = {
     song: {
       kind: 'song',
@@ -186,6 +257,7 @@ export function createPresentationSlide(
     backgroundId: 'theme',
     fontId: 'sora',
     transitionId: 'fade',
+    textColorId: 'theme',
   };
 }
 
@@ -202,6 +274,7 @@ export function createDefaultPresentationState(
       backgroundId: 'spotlight',
       fontId: 'sora',
       transitionId: 'fade',
+      textColorId: 'white',
     },
     {
       id: createId(),
@@ -212,8 +285,9 @@ export function createDefaultPresentationState(
       bibleVersion: 'kjv',
       bibleVersionLabel: 'KJV',
       backgroundId: 'cross',
-      fontId: 'serif',
-      transitionId: 'slide',
+      fontId: 'cambria',
+      transitionId: 'push',
+      textColorId: 'cream',
     },
     {
       id: createId(),
@@ -222,8 +296,9 @@ export function createDefaultPresentationState(
       body: 'Use the church paybill or giving instructions shared by the finance team.',
       note: 'Thank you for your generosity',
       backgroundId: 'default_1',
-      fontId: 'classic',
+      fontId: 'aptos',
       transitionId: 'zoom',
+      textColorId: 'gold',
     },
   ];
 
@@ -263,6 +338,7 @@ function normalizePresentationState(
           backgroundId: getPresentationBackground(slide.backgroundId).id,
           fontId: getPresentationFont(slide.fontId).id,
           transitionId: getPresentationTransition(slide.transitionId).id,
+          textColorId: getPresentationTextColor(slide.textColorId).id,
         }))
       : fallback.slides;
   const currentSlideId =

@@ -24,7 +24,7 @@ export default function PresentationDisplay() {
 
   return (
     <main
-      className={`presentation-display presentation-theme-${state.theme} presentation-background-${background.id} presentation-font-${slide.fontId || 'sora'} presentation-transition-${slide.transitionId || 'fade'}`}
+      className={`presentation-display presentation-theme-${state.theme} presentation-background-${background.id} presentation-font-${slide.fontId || 'sora'} presentation-text-color-${slide.textColorId || 'theme'} presentation-transition-${slide.transitionId || 'fade'}`}
     >
       {background.kind === 'image' && background.imageUrl ? (
         <img
