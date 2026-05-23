@@ -581,6 +581,15 @@ textarea {
   @apply inline-flex h-9 w-9 shrink-0 rounded-full border border-white/20 shadow-sm;
 }
 
+.presentation-collapsible-trigger {
+  @apply flex w-full items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition;
+  color: #f8f5ef;
+}
+
+.presentation-collapsible-trigger:hover {
+  @apply border-amber-200/35 bg-amber-200/10;
+}
+
 .presentation-background-swatch {
   @apply inline-flex h-12 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10;
   background: var(--presentation-bg);
@@ -639,6 +648,16 @@ textarea {
   backface-visibility: hidden;
   transform-origin: center;
   will-change: clip-path, filter, opacity, transform;
+}
+
+.presentation-layer-static,
+.presentation-layer-enter {
+  z-index: 2;
+}
+
+.presentation-layer-exit {
+  z-index: 1;
+  pointer-events: none;
 }
 
 .presentation-background-image {
@@ -728,7 +747,8 @@ textarea {
 }
 
 .presentation-display-motion {
-  position: relative;
+  position: absolute;
+  inset: 0;
   min-height: 100vh;
   overflow: hidden;
   background: var(--presentation-bg);
@@ -909,43 +929,65 @@ textarea {
   --presentation-accent: #1f2937;
 }
 
-.presentation-transition-fade .presentation-slide-motion,
-.presentation-transition-fade .presentation-display-motion {
+.presentation-transition-fade .presentation-layer-enter {
   animation: presentation-fade-in 1300ms ease both;
 }
 
-.presentation-transition-push .presentation-slide-motion,
-.presentation-transition-push .presentation-display-motion {
+.presentation-transition-fade .presentation-layer-exit {
+  animation: presentation-fade-out 1300ms ease both;
+}
+
+.presentation-transition-push .presentation-layer-enter {
   animation: presentation-push-in 1450ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.presentation-transition-wipe .presentation-slide-motion,
-.presentation-transition-wipe .presentation-display-motion {
+.presentation-transition-push .presentation-layer-exit {
+  animation: presentation-push-out 1450ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.presentation-transition-wipe .presentation-layer-enter {
   animation: presentation-wipe-in 1500ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.presentation-transition-split .presentation-slide-motion,
-.presentation-transition-split .presentation-display-motion {
+.presentation-transition-wipe .presentation-layer-exit {
+  animation: presentation-wipe-out 1500ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.presentation-transition-split .presentation-layer-enter {
   animation: presentation-split-in 1550ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.presentation-transition-zoom .presentation-slide-motion,
-.presentation-transition-zoom .presentation-display-motion {
+.presentation-transition-split .presentation-layer-exit {
+  animation: presentation-split-out 1550ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.presentation-transition-zoom .presentation-layer-enter {
   animation: presentation-soft-zoom 1450ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.presentation-transition-rise .presentation-slide-motion,
-.presentation-transition-rise .presentation-display-motion {
+.presentation-transition-zoom .presentation-layer-exit {
+  animation: presentation-soft-zoom-out 1450ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.presentation-transition-rise .presentation-layer-enter {
   animation: presentation-rise-in 1350ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.presentation-transition-flip .presentation-slide-motion,
-.presentation-transition-flip .presentation-display-motion {
+.presentation-transition-rise .presentation-layer-exit {
+  animation: presentation-rise-out 1350ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.presentation-transition-flip .presentation-layer-enter {
   animation: presentation-flip-in 1450ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.presentation-transition-none .presentation-slide-motion,
-.presentation-transition-none .presentation-display-motion {
+.presentation-transition-flip .presentation-layer-exit {
+  animation: presentation-flip-out 1450ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.presentation-transition-none .presentation-layer-enter,
+.presentation-transition-none .presentation-layer-exit,
+.presentation-transition-none .presentation-layer-static {
   animation: none;
 }
 
@@ -969,6 +1011,19 @@ textarea {
   }
 }
 
+@keyframes presentation-fade-out {
+  from {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    filter: blur(18px);
+    transform: scale(0.97);
+  }
+}
+
 @keyframes presentation-push-in {
   from {
     opacity: 0;
@@ -977,6 +1032,17 @@ textarea {
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+@keyframes presentation-push-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-28%);
   }
 }
 
@@ -993,6 +1059,19 @@ textarea {
   }
 }
 
+@keyframes presentation-wipe-out {
+  from {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+    filter: brightness(1);
+  }
+  to {
+    opacity: 0.85;
+    clip-path: inset(0 0 0 100%);
+    filter: brightness(0.86);
+  }
+}
+
 @keyframes presentation-split-in {
   from {
     opacity: 0.82;
@@ -1003,6 +1082,19 @@ textarea {
     opacity: 1;
     clip-path: inset(0 0 0 0);
     filter: blur(0);
+  }
+}
+
+@keyframes presentation-split-out {
+  from {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+    filter: blur(0);
+  }
+  to {
+    opacity: 0.82;
+    clip-path: inset(0 50% 0 50%);
+    filter: blur(4px);
   }
 }
 
@@ -1019,6 +1111,19 @@ textarea {
   }
 }
 
+@keyframes presentation-soft-zoom-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.18);
+    filter: blur(8px);
+  }
+}
+
 @keyframes presentation-rise-in {
   from {
     opacity: 0;
@@ -1027,6 +1132,17 @@ textarea {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes presentation-rise-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-18%);
   }
 }
 
@@ -1043,10 +1159,24 @@ textarea {
   }
 }
 
+@keyframes presentation-flip-out {
+  from {
+    opacity: 1;
+    transform: perspective(1200px) rotateY(0deg) scale(1);
+    filter: brightness(1);
+  }
+  to {
+    opacity: 0;
+    transform: perspective(1200px) rotateY(32deg) scale(0.9);
+    filter: brightness(0.82);
+  }
+}
+
 :root[data-color-mode='light'] .presentation-slide-picker,
 :root[data-color-mode='light'] .presentation-kind-option,
 :root[data-color-mode='light'] .presentation-background-option,
-:root[data-color-mode='light'] .presentation-color-option {
+:root[data-color-mode='light'] .presentation-color-option,
+:root[data-color-mode='light'] .presentation-collapsible-trigger {
   background: rgba(255, 255, 255, 0.78);
   border-color: rgba(21, 56, 42, 0.18);
   color: #213c31;
@@ -1059,7 +1189,8 @@ textarea {
 :root[data-color-mode='light'] .presentation-background-option:hover,
 :root[data-color-mode='light'] .presentation-background-option.is-active,
 :root[data-color-mode='light'] .presentation-color-option:hover,
-:root[data-color-mode='light'] .presentation-color-option.is-active {
+:root[data-color-mode='light'] .presentation-color-option.is-active,
+:root[data-color-mode='light'] .presentation-collapsible-trigger:hover {
   background: rgba(241, 199, 95, 0.18);
   border-color: rgba(150, 106, 16, 0.34);
   color: #173328;

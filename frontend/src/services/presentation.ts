@@ -38,21 +38,15 @@ export type PresentationTextColorId =
   | 'mint'
   | 'rose'
   | 'black';
-export type PresentationBackgroundId =
-  | 'theme'
-  | 'spotlight'
-  | 'cross'
-  | 'default_1'
-  | 'default_2'
-  | 'default_3'
-  | 'default_4'
-  | 'default_5';
+export type PresentationBackgroundId = string;
 
 export interface PresentationBackground {
   id: PresentationBackgroundId;
   label: string;
   kind: 'theme' | 'gradient' | 'image';
+  canDelete?: boolean;
   imageUrl?: string;
+  source?: 'default' | 'media' | 'upload';
 }
 
 export interface PresentationSong {
@@ -104,41 +98,47 @@ export interface PresentationState {
 
 const STORAGE_KEY = 'church_saas_live_presentation';
 const SONG_LIBRARY_KEY = 'church_saas_presentation_songs';
+const BACKGROUND_LIBRARY_KEY = 'church_saas_presentation_backgrounds';
 const CHANNEL_NAME = 'church_saas_live_presentation_channel';
 
 export const presentationBackgrounds: PresentationBackground[] = [
-  { id: 'theme', label: 'Theme color', kind: 'theme' },
-  { id: 'spotlight', label: 'Soft spotlight', kind: 'gradient' },
-  { id: 'cross', label: 'Sanctuary glow', kind: 'gradient' },
+  { id: 'theme', label: 'Theme color', kind: 'theme', source: 'default' },
+  { id: 'spotlight', label: 'Soft spotlight', kind: 'gradient', source: 'default' },
+  { id: 'cross', label: 'Sanctuary glow', kind: 'gradient', source: 'default' },
   {
     id: 'default_1',
     label: 'Default 1',
     kind: 'image',
     imageUrl: '/congregation-defaults/default_1.jpg',
+    source: 'default',
   },
   {
     id: 'default_2',
     label: 'Default 2',
     kind: 'image',
     imageUrl: '/congregation-defaults/default_2.jpg',
+    source: 'default',
   },
   {
     id: 'default_3',
     label: 'Default 3',
     kind: 'image',
     imageUrl: '/congregation-defaults/default_3.avif',
+    source: 'default',
   },
   {
     id: 'default_4',
     label: 'Default 4',
     kind: 'image',
     imageUrl: '/congregation-defaults/default_4.jpg',
+    source: 'default',
   },
   {
     id: 'default_5',
     label: 'Default 5',
     kind: 'image',
     imageUrl: '/congregation-defaults/default_5.jpg',
+    source: 'default',
   },
 ];
 
@@ -184,11 +184,99 @@ function createId() {
   return crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
 }
 
+function hashString(value: string) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(index);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+export function createPresentationMediaBackground(
+  imageUrl: string,
+  label = 'Uploaded image',
+  source: PresentationBackground['source'] = 'media',
+  canDelete = source === 'upload',
+): PresentationBackground {
+  return {
+    id: `media_${hashString(`${source}:${imageUrl}`)}`,
+    label,
+    kind: 'image',
+    imageUrl,
+    source,
+    canDelete,
+  };
+}
+
+export function readPresentationBackgrounds(): PresentationBackground[] {
+  try {
+    const raw = localStorage.getItem(BACKGROUND_LIBRARY_KEY);
+    const items = raw ? JSON.parse(raw) : [];
+    return Array.isArray(items)
+      ? items
+          .map((item: any) => ({
+            id: item.id || (item.imageUrl ? `media_${hashString(item.imageUrl)}` : createId()),
+            label: item.label || 'Uploaded image',
+            kind: 'image' as const,
+            imageUrl: item.imageUrl || '',
+            canDelete: item.canDelete !== false,
+            source: item.source || 'upload',
+          }))
+          .filter((item) => item.imageUrl)
+      : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+export function savePresentationBackgrounds(
+  backgrounds: PresentationBackground[],
+) {
+  const unique = new Map<string, PresentationBackground>();
+  backgrounds
+    .filter((background) => background.imageUrl)
+    .forEach((background) => {
+      unique.set(background.id, background);
+    });
+  const nextBackgrounds = Array.from(unique.values());
+  localStorage.setItem(BACKGROUND_LIBRARY_KEY, JSON.stringify(nextBackgrounds));
+  return nextBackgrounds;
+}
+
+export function upsertPresentationBackground(background: PresentationBackground) {
+  return savePresentationBackgrounds([
+    background,
+    ...readPresentationBackgrounds().filter((item) => item.id !== background.id),
+  ]);
+}
+
 export function getPresentationBackground(id?: string | null) {
   return (
     presentationBackgrounds.find((background) => background.id === id) ||
+    readPresentationBackgrounds().find((background) => background.id === id) ||
     presentationBackgrounds[0]
   );
+}
+
+export function getPresentationTransitionMs(id?: string | null) {
+  switch (getPresentationTransition(id).id) {
+    case 'split':
+      return 1550;
+    case 'wipe':
+      return 1500;
+    case 'push':
+    case 'zoom':
+    case 'flip':
+      return 1450;
+    case 'rise':
+      return 1350;
+    case 'fade':
+      return 1300;
+    case 'none':
+    default:
+      return 0;
+  }
 }
 
 export function getPresentationFont(id?: string | null) {

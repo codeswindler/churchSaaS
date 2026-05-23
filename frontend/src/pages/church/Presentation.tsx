@@ -2,10 +2,12 @@ import {
   BookOpen,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Copy,
   ExternalLink,
   GripVertical,
   Image as ImageIcon,
+  ImagePlus,
   MonitorPlay,
   Music,
   Pause,
@@ -24,22 +26,28 @@ import {
   getBibleVersionLabel,
   type SelectedBibleVerse,
 } from '../../components/BibleSelector';
-import { getSession } from '../../services/api';
+import api, { getSession } from '../../services/api';
 import {
+  createPresentationMediaBackground,
   createDefaultPresentationState,
   createPresentationSlide,
   createPresentationSongFromSlide,
   getCurrentPresentationSlide,
   getPresentationBackground,
+  getPresentationTransitionMs,
   publishPresentationState,
+  readPresentationBackgrounds,
   readPresentationState,
   readPresentationSongs,
+  savePresentationBackgrounds,
   savePresentationSongs,
   subscribePresentationState,
+  upsertPresentationBackground,
   presentationBackgrounds,
   presentationFonts,
   presentationTextColors,
   presentationTransitions,
+  type PresentationBackground,
   type PresentationBackgroundId,
   type PresentationFontId,
   type PresentationSlide,
@@ -115,6 +123,133 @@ function cloneSlide(slide: PresentationSlide): PresentationSlide {
   return { ...slide };
 }
 
+function resolveMediaUrl(value?: string | null) {
+  if (!value) return '';
+  if (/^https?:\/\//i.test(value)) return value;
+  return value;
+}
+
+function collectCongregationBackgrounds(data: any): PresentationBackground[] {
+  if (!data) return [];
+
+  const entries: Array<{ imageUrl?: string | null; label?: string | null }> = [
+    data.featuredImageUrl
+      ? { imageUrl: data.featuredImageUrl, label: 'Current cover' }
+      : {},
+    ...(Array.isArray(data.events)
+      ? data.events.map((item: any) => ({
+          imageUrl: item.imageUrl,
+          label: item.title || 'Announcement image',
+        }))
+      : []),
+    ...(Array.isArray(data.sermons)
+      ? data.sermons.map((item: any) => ({
+          imageUrl: item.imageUrl,
+          label: item.title || 'Sermon image',
+        }))
+      : []),
+    ...(Array.isArray(data.galleryImages)
+      ? data.galleryImages
+          .filter((item: any) => item?.isActive !== false)
+          .map((item: any) => ({
+            imageUrl: item.imageUrl,
+            label: item.title || 'Gallery image',
+          }))
+      : []),
+  ];
+
+  const seen = new Set<string>();
+  return entries
+    .map((entry) => {
+      const imageUrl = resolveMediaUrl(entry.imageUrl);
+      if (!imageUrl || seen.has(imageUrl)) return null;
+      seen.add(imageUrl);
+      return createPresentationMediaBackground(
+        imageUrl,
+        entry.label || 'Church image',
+        'media',
+        false,
+      );
+    })
+    .filter(Boolean) as PresentationBackground[];
+}
+
+function PresentationSlideLayer({
+  isLive,
+  mode,
+  slide,
+}: {
+  isLive: boolean;
+  mode: 'enter' | 'exit' | 'static';
+  slide: PresentationSlide;
+}) {
+  const background = getPresentationBackground(slide.backgroundId);
+  return (
+    <div
+      className={`presentation-slide-motion presentation-layer-${mode} presentation-background-${background.id} presentation-font-${slide.fontId || 'sora'} presentation-text-color-${slide.textColorId || 'theme'}`}
+      key={`${slide.id}-${slide.backgroundId}-${slide.transitionId}-${mode}`}
+    >
+      <SlideBackground backgroundId={slide.backgroundId} />
+      <div className="presentation-stage-inner">
+        {!isLive ? (
+          <div className="presentation-paused-preview">
+            <Pause size={28} />
+            <span>Output paused</span>
+          </div>
+        ) : slide.kind === 'blank' ? null : (
+          <>
+            <p className="presentation-kind-label">{slide.kind}</p>
+            <h3>{slide.title || 'Untitled slide'}</h3>
+            <p className="presentation-body-copy">
+              {slide.body || 'Add slide content'}
+            </p>
+            {slide.note ? <p className="presentation-note">{slide.note}</p> : null}
+          </>
+        )}
+      </div>
+      <span
+        aria-hidden="true"
+        className={`hidden presentation-background-${background.id}`}
+      />
+    </div>
+  );
+}
+
+function slideMotionSignature(slide: PresentationSlide) {
+  return `${slide.id}:${slide.backgroundId}:${slide.transitionId}`;
+}
+
+function useTransitionSlides(slide: PresentationSlide) {
+  const [previousSlide, setPreviousSlide] = useState<PresentationSlide | null>(null);
+  const [activeSlide, setActiveSlide] = useState(slide);
+  const [activeSignature, setActiveSignature] = useState(() =>
+    slideMotionSignature(slide),
+  );
+
+  useEffect(() => {
+    const nextSignature = slideMotionSignature(slide);
+    if (nextSignature === activeSignature) {
+      setActiveSlide(slide);
+      return;
+    }
+
+    const duration = getPresentationTransitionMs(slide.transitionId);
+    setPreviousSlide(activeSlide);
+    setActiveSlide(slide);
+    setActiveSignature(nextSignature);
+
+    if (!duration) {
+      setPreviousSlide(null);
+      return;
+    }
+
+    const timer = window.setTimeout(() => setPreviousSlide(null), duration);
+    return () => window.clearTimeout(timer);
+  }, [activeSignature, activeSlide, slide]);
+
+  return { activeSlide, previousSlide };
+}
+
 function PreviewSlide({
   isLive,
   slide,
@@ -124,34 +259,21 @@ function PreviewSlide({
   slide: PresentationSlide;
   theme: PresentationTheme;
 }) {
-  const background = getPresentationBackground(slide.backgroundId);
+  const { activeSlide, previousSlide } = useTransitionSlides(slide);
+  const background = getPresentationBackground(activeSlide.backgroundId);
+  const transitionId = activeSlide.transitionId || 'fade';
   return (
     <div
-      className={`presentation-stage-preview presentation-theme-${theme} presentation-background-${background.id} presentation-font-${slide.fontId || 'sora'} presentation-text-color-${slide.textColorId || 'theme'} presentation-transition-${slide.transitionId || 'fade'}`}
+      className={`presentation-stage-preview presentation-theme-${theme} presentation-background-${background.id} presentation-font-${activeSlide.fontId || 'sora'} presentation-text-color-${activeSlide.textColorId || 'theme'} presentation-transition-${transitionId}`}
     >
-      <div
-        className="presentation-slide-motion"
-        key={`${slide.id}-${slide.backgroundId}-${slide.transitionId}`}
-      >
-        <SlideBackground backgroundId={slide.backgroundId} />
-        <div className="presentation-stage-inner">
-          {!isLive ? (
-            <div className="presentation-paused-preview">
-              <Pause size={28} />
-              <span>Output paused</span>
-            </div>
-          ) : slide.kind === 'blank' ? null : (
-            <>
-              <p className="presentation-kind-label">{slide.kind}</p>
-              <h3>{slide.title || 'Untitled slide'}</h3>
-              <p className="presentation-body-copy">
-                {slide.body || 'Add slide content'}
-              </p>
-              {slide.note ? <p className="presentation-note">{slide.note}</p> : null}
-            </>
-          )}
-        </div>
-      </div>
+      {previousSlide ? (
+        <PresentationSlideLayer isLive={isLive} mode="exit" slide={previousSlide} />
+      ) : null}
+      <PresentationSlideLayer
+        isLive={isLive}
+        mode={previousSlide ? 'enter' : 'static'}
+        slide={activeSlide}
+      />
     </div>
   );
 }
@@ -162,6 +284,15 @@ export default function ChurchPresentation() {
   const [editorMode, setEditorMode] = useState<'add' | 'edit' | null>(null);
   const [draftSlide, setDraftSlide] = useState<PresentationSlide | null>(null);
   const [draggedSlideId, setDraggedSlideId] = useState<string | null>(null);
+  const [isTextColorOpen, setIsTextColorOpen] = useState(false);
+  const [isBackgroundOpen, setIsBackgroundOpen] = useState(false);
+  const [isUploadingBackground, setIsUploadingBackground] = useState(false);
+  const [churchBackgrounds, setChurchBackgrounds] = useState<
+    PresentationBackground[]
+  >([]);
+  const [customBackgrounds, setCustomBackgrounds] = useState<
+    PresentationBackground[]
+  >(() => readPresentationBackgrounds());
   const [savedSongs, setSavedSongs] = useState<PresentationSong[]>(() =>
     readPresentationSongs(),
   );
@@ -173,6 +304,36 @@ export default function ChurchPresentation() {
       : `${window.location.origin}/display/church-presentation`;
 
   useEffect(() => subscribePresentationState(setState, churchName), [churchName]);
+  useEffect(() => {
+    let isActive = true;
+
+    api
+      .get('/church/congregation-page')
+      .then((response) => {
+        if (isActive) {
+          setChurchBackgrounds(collectCongregationBackgrounds(response.data));
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setChurchBackgrounds([]);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  const availableBackgrounds = useMemo(() => {
+    const byId = new Map<string, PresentationBackground>();
+    [...presentationBackgrounds, ...churchBackgrounds, ...customBackgrounds].forEach(
+      (background) => {
+        byId.set(background.id, background);
+      },
+    );
+    return Array.from(byId.values());
+  }, [churchBackgrounds, customBackgrounds]);
 
   const commitState = (nextState: PresentationState) => {
     setState(publishPresentationState(nextState));
@@ -199,6 +360,54 @@ export default function ChurchPresentation() {
 
   const updateDraftSlide = (patch: Partial<PresentationSlide>) => {
     setDraftSlide((current) => (current ? { ...current, ...patch } : current));
+  };
+
+  const selectBackground = (background: PresentationBackground) => {
+    if (background.imageUrl && background.source && background.source !== 'default') {
+      const nextBackgrounds = upsertPresentationBackground(background);
+      setCustomBackgrounds(nextBackgrounds);
+    }
+    updateDraftSlide({ backgroundId: background.id as PresentationBackgroundId });
+  };
+
+  const deletePresentationBackground = (backgroundId: string) => {
+    const nextBackgrounds = savePresentationBackgrounds(
+      customBackgrounds.filter((background) => background.id !== backgroundId),
+    );
+    setCustomBackgrounds(nextBackgrounds);
+    if (draftSlide?.backgroundId === backgroundId) {
+      updateDraftSlide({ backgroundId: 'theme' });
+    }
+    toast.success('Background removed');
+  };
+
+  const uploadPresentationBackground = async (file?: File) => {
+    if (!file) return;
+
+    const payload = new FormData();
+    payload.append('image', file);
+    setIsUploadingBackground(true);
+
+    try {
+      const response = await api.post('/church/congregation-page/images', payload, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const background = createPresentationMediaBackground(
+        resolveMediaUrl(response.data.imageUrl),
+        file.name.replace(/\.[^.]+$/, '') || 'Presentation upload',
+        'upload',
+        true,
+      );
+      const nextBackgrounds = upsertPresentationBackground(background);
+      setCustomBackgrounds(nextBackgrounds);
+      updateDraftSlide({ backgroundId: background.id as PresentationBackgroundId });
+      setIsBackgroundOpen(true);
+      toast.success('Background uploaded');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Unable to upload image');
+    } finally {
+      setIsUploadingBackground(false);
+    }
   };
 
   const saveDraftSlide = () => {
@@ -724,63 +933,148 @@ export default function ChurchPresentation() {
                   </div>
 
                   <div>
-                    <label className="label">Text color</label>
-                    <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                      {presentationTextColors.map((color) => (
-                        <button
-                          key={color.id}
-                          className={`presentation-color-option ${
-                            draftSlide.textColorId === color.id ? 'is-active' : ''
-                          }`}
-                          type="button"
-                          onClick={() =>
-                            updateDraftSlide({
-                              textColorId: color.id as PresentationTextColorId,
-                            })
-                          }
-                        >
-                          <span
-                            className="presentation-color-swatch"
-                            style={{ background: color.swatch }}
-                          />
-                          <span>{color.label}</span>
-                        </button>
-                      ))}
-                    </div>
+                    <button
+                      className="presentation-collapsible-trigger"
+                      type="button"
+                      onClick={() => setIsTextColorOpen((current) => !current)}
+                    >
+                      <span>
+                        <span className="label">Text color</span>
+                        <span className="mt-1 block text-sm font-semibold text-stone-200">
+                          {presentationTextColors.find(
+                            (color) => color.id === draftSlide.textColorId,
+                          )?.label || 'Theme default'}
+                        </span>
+                      </span>
+                      <ChevronDown
+                        className={`transition ${
+                          isTextColorOpen ? 'rotate-180' : ''
+                        }`}
+                        size={18}
+                      />
+                    </button>
+                    {isTextColorOpen ? (
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                        {presentationTextColors.map((color) => (
+                          <button
+                            key={color.id}
+                            className={`presentation-color-option ${
+                              draftSlide.textColorId === color.id ? 'is-active' : ''
+                            }`}
+                            type="button"
+                            onClick={() =>
+                              updateDraftSlide({
+                                textColorId: color.id as PresentationTextColorId,
+                              })
+                            }
+                          >
+                            <span
+                              className="presentation-color-swatch"
+                              style={{ background: color.swatch }}
+                            />
+                            <span>{color.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
 
                   <div>
-                    <label className="label">Background image</label>
-                    <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                      {presentationBackgrounds.map((background) => (
-                        <button
-                          key={background.id}
-                          className={`presentation-background-option ${
-                            draftSlide.backgroundId === background.id
-                              ? 'is-active'
-                              : ''
-                          }`}
-                          type="button"
-                          onClick={() =>
-                            updateDraftSlide({
-                              backgroundId:
-                                background.id as PresentationBackgroundId,
-                            })
-                          }
-                        >
-                          <span
-                            className={`presentation-background-swatch presentation-background-${background.id}`}
-                          >
-                            {background.imageUrl ? (
-                              <img alt="" src={background.imageUrl} />
-                            ) : (
-                              <ImageIcon size={16} />
-                            )}
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <button
+                        className="presentation-collapsible-trigger flex-1"
+                        type="button"
+                        onClick={() => setIsBackgroundOpen((current) => !current)}
+                      >
+                        <span>
+                          <span className="label">Background image</span>
+                          <span className="mt-1 block text-sm font-semibold text-stone-200">
+                            {availableBackgrounds.find(
+                              (background) =>
+                                background.id === draftSlide.backgroundId,
+                            )?.label || 'Theme color'}
                           </span>
-                          <span>{background.label}</span>
-                        </button>
-                      ))}
+                        </span>
+                        <ChevronDown
+                          className={`transition ${
+                            isBackgroundOpen ? 'rotate-180' : ''
+                          }`}
+                          size={18}
+                        />
+                      </button>
+                      <label className="btn-secondary cursor-pointer justify-center">
+                        <ImagePlus size={16} />
+                        {isUploadingBackground ? 'Uploading...' : 'Upload image'}
+                        <input
+                          accept="image/png,image/jpeg,image/webp"
+                          className="hidden"
+                          disabled={isUploadingBackground}
+                          type="file"
+                          onChange={(event) => {
+                            uploadPresentationBackground(event.target.files?.[0]);
+                            event.target.value = '';
+                          }}
+                        />
+                      </label>
                     </div>
+
+                    {isBackgroundOpen ? (
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                        {availableBackgrounds.map((background) => (
+                          <div
+                            key={background.id}
+                            className={`presentation-background-option ${
+                              draftSlide.backgroundId === background.id
+                                ? 'is-active'
+                                : ''
+                            }`}
+                          >
+                            <button
+                              className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                              type="button"
+                              onClick={() => selectBackground(background)}
+                            >
+                              <span
+                                className={`presentation-background-swatch presentation-background-${background.id}`}
+                              >
+                                {background.imageUrl ? (
+                                  <img alt="" src={background.imageUrl} />
+                                ) : (
+                                  <ImageIcon size={16} />
+                                )}
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block truncate">
+                                  {background.label}
+                                </span>
+                                {background.source === 'media' ? (
+                                  <span className="mt-0.5 block text-xs text-stone-400">
+                                    Church upload
+                                  </span>
+                                ) : null}
+                                {background.source === 'upload' ? (
+                                  <span className="mt-0.5 block text-xs text-stone-400">
+                                    Presentation upload
+                                  </span>
+                                ) : null}
+                              </span>
+                            </button>
+                            {background.canDelete ? (
+                              <button
+                                aria-label={`Delete ${background.label}`}
+                                className="shell-icon-button shell-icon-button-sm"
+                                type="button"
+                                onClick={() =>
+                                  deletePresentationBackground(background.id)
+                                }
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
 
                   <PreviewSlide isLive slide={draftSlide} theme={state.theme} />
