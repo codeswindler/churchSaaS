@@ -529,6 +529,222 @@ textarea {
   @apply inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em];
 }
 
+.presentation-slide-picker {
+  @apply flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-left text-stone-300 transition;
+}
+
+.presentation-slide-picker:hover,
+.presentation-slide-picker.is-active {
+  @apply border-amber-200/35 bg-amber-200/10 text-white;
+}
+
+.presentation-slide-number {
+  @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 text-xs font-semibold text-amber-200;
+}
+
+.presentation-kind-option {
+  @apply rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-left text-stone-300 transition;
+}
+
+.presentation-kind-option:hover,
+.presentation-kind-option.is-active {
+  @apply border-amber-200/35 bg-amber-200/10 text-white;
+}
+
+.presentation-kind-option span {
+  @apply block text-sm font-semibold;
+}
+
+.presentation-kind-option small {
+  @apply mt-1 block text-xs leading-5 text-stone-400;
+}
+
+.presentation-theme-midnight {
+  --presentation-bg: linear-gradient(135deg, #071018 0%, #10253a 48%, #05080d 100%);
+  --presentation-glow: radial-gradient(circle at top left, rgba(56, 189, 248, 0.24), transparent 32%),
+    radial-gradient(circle at bottom right, rgba(250, 204, 21, 0.22), transparent 34%);
+  --presentation-fg: #f8fafc;
+  --presentation-muted: rgba(226, 232, 240, 0.72);
+  --presentation-accent: #facc15;
+}
+
+.presentation-theme-sanctuary {
+  --presentation-bg: linear-gradient(135deg, #061f18 0%, #164432 54%, #08140f 100%);
+  --presentation-glow: radial-gradient(circle at top left, rgba(110, 231, 183, 0.24), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(251, 191, 36, 0.22), transparent 32%);
+  --presentation-fg: #f7fee7;
+  --presentation-muted: rgba(236, 253, 245, 0.7);
+  --presentation-accent: #fde68a;
+}
+
+.presentation-theme-paper {
+  --presentation-bg: linear-gradient(135deg, #fff8eb 0%, #f7efe0 54%, #efe0c7 100%);
+  --presentation-glow: radial-gradient(circle at top left, rgba(14, 165, 233, 0.16), transparent 32%),
+    radial-gradient(circle at bottom right, rgba(180, 83, 9, 0.14), transparent 34%);
+  --presentation-fg: #173328;
+  --presentation-muted: rgba(35, 62, 50, 0.72);
+  --presentation-accent: #9a6508;
+}
+
+.presentation-stage-preview {
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 28px;
+  background: var(--presentation-bg);
+  color: var(--presentation-fg);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.presentation-stage-inner {
+  position: relative;
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1rem;
+  padding: clamp(1.2rem, 4vw, 2.6rem);
+  background: var(--presentation-glow);
+  text-align: center;
+}
+
+.presentation-kind-label {
+  color: var(--presentation-accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+.presentation-stage-inner h3 {
+  color: var(--presentation-fg);
+  font-family: 'Sora', 'Manrope', sans-serif;
+  font-size: clamp(1.4rem, 4.4vw, 3rem);
+  font-weight: 700;
+  line-height: 1.04;
+}
+
+.presentation-body-copy {
+  color: var(--presentation-fg);
+  font-size: clamp(1rem, 2.2vw, 1.65rem);
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: pre-line;
+}
+
+.presentation-note {
+  color: var(--presentation-muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.presentation-paused-preview {
+  @apply flex flex-col items-center justify-center gap-3 text-sm font-semibold uppercase tracking-[0.2em];
+  color: var(--presentation-muted);
+}
+
+.presentation-display {
+  min-height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: var(--presentation-bg);
+  color: var(--presentation-fg);
+}
+
+.presentation-display-frame {
+  position: relative;
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(2rem, 5vw, 5.5rem);
+  background: var(--presentation-glow);
+}
+
+.presentation-display-content {
+  max-width: min(1550px, 92vw);
+  text-align: center;
+}
+
+.presentation-display-kind {
+  color: var(--presentation-accent);
+  font-size: clamp(0.9rem, 1.4vw, 1.35rem);
+  font-weight: 800;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+
+.presentation-display-content h1 {
+  margin-top: clamp(1rem, 2vw, 2rem);
+  color: var(--presentation-fg);
+  font-family: 'Sora', 'Manrope', sans-serif;
+  font-size: clamp(3.5rem, 8vw, 9.5rem);
+  font-weight: 800;
+  line-height: 0.98;
+}
+
+.presentation-display-body {
+  margin-top: clamp(1.5rem, 3vw, 3rem);
+  color: var(--presentation-fg);
+  font-size: clamp(2.2rem, 4.2vw, 5.8rem);
+  font-weight: 700;
+  line-height: 1.14;
+  white-space: pre-line;
+}
+
+.presentation-display-note {
+  margin-top: clamp(1.4rem, 2.2vw, 2.5rem);
+  color: var(--presentation-muted);
+  font-size: clamp(1.2rem, 2vw, 2.6rem);
+  font-weight: 700;
+}
+
+.presentation-display-footer {
+  position: absolute;
+  right: clamp(1.4rem, 3vw, 3.5rem);
+  bottom: clamp(1.2rem, 2.5vw, 3rem);
+  left: clamp(1.4rem, 3vw, 3.5rem);
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--presentation-muted);
+  font-size: clamp(0.8rem, 1.1vw, 1.2rem);
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.presentation-display-paused {
+  @apply flex flex-col items-center justify-center gap-6 text-center;
+  color: var(--presentation-muted);
+}
+
+.presentation-display-paused h1 {
+  color: var(--presentation-fg);
+  font-family: 'Sora', 'Manrope', sans-serif;
+  font-size: clamp(3rem, 7vw, 8rem);
+  font-weight: 800;
+}
+
+:root[data-color-mode='light'] .presentation-slide-picker,
+:root[data-color-mode='light'] .presentation-kind-option {
+  background: rgba(255, 255, 255, 0.78);
+  border-color: rgba(21, 56, 42, 0.18);
+  color: #213c31;
+}
+
+:root[data-color-mode='light'] .presentation-slide-picker:hover,
+:root[data-color-mode='light'] .presentation-slide-picker.is-active,
+:root[data-color-mode='light'] .presentation-kind-option:hover,
+:root[data-color-mode='light'] .presentation-kind-option.is-active {
+  background: rgba(241, 199, 95, 0.18);
+  border-color: rgba(150, 106, 16, 0.34);
+  color: #173328;
+}
+
+:root[data-color-mode='light'] .presentation-kind-option small {
+  color: #5b7065;
+}
+
 .page-grid {
   @apply grid gap-5 xl:grid-cols-2;
 }
@@ -1074,6 +1290,24 @@ select.input-compact option:checked {
   .choice-public-shell footer.panel {
     margin-top: 0.55rem;
     border-radius: 22px;
+  }
+
+  .presentation-display-frame {
+    padding: 1.4rem;
+  }
+
+  .presentation-display-content h1 {
+    font-size: clamp(2.4rem, 13vw, 4.4rem);
+  }
+
+  .presentation-display-body {
+    font-size: clamp(1.55rem, 8vw, 2.75rem);
+  }
+
+  .presentation-display-footer {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
   }
 
   .brand-logo-wrap.h-\[136px\] {

@@ -9,6 +9,7 @@ import {
   LogOut,
   Menu,
   MessageSquareText,
+  MonitorPlay,
   Moon,
   Palette,
   Send,
@@ -88,6 +89,11 @@ const churchLinks = [
     icon: ShieldCheck,
     permission: 'reports.view',
   },
+  {
+    to: '/church/presentation',
+    label: 'Presentation',
+    icon: MonitorPlay,
+  },
 ];
 
 const themeOptions = [
@@ -155,6 +161,7 @@ const pageMeta = {
     },
     { prefix: '/church/users', title: 'Staff users', variant: 'compact' },
     { prefix: '/church/reports', title: 'Reports', variant: 'compact' },
+    { prefix: '/church/presentation', title: 'Presentation', variant: 'compact' },
   ],
 } as const;
 
