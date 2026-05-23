@@ -6,6 +6,30 @@ export type PresentationSlideKind =
   | 'blank';
 
 export type PresentationTheme = 'midnight' | 'sanctuary' | 'paper';
+export type PresentationBackgroundId =
+  | 'theme'
+  | 'spotlight'
+  | 'cross'
+  | 'default_1'
+  | 'default_2'
+  | 'default_3'
+  | 'default_4'
+  | 'default_5';
+
+export interface PresentationBackground {
+  id: PresentationBackgroundId;
+  label: string;
+  kind: 'theme' | 'gradient' | 'image';
+  imageUrl?: string;
+}
+
+export interface PresentationSong {
+  id: string;
+  title: string;
+  lyrics: string;
+  note: string;
+  updatedAt: string;
+}
 
 export interface PresentationSlide {
   id: string;
@@ -13,6 +37,9 @@ export interface PresentationSlide {
   title: string;
   body: string;
   note: string;
+  bibleVersion?: string | null;
+  bibleVersionLabel?: string | null;
+  backgroundId: PresentationBackgroundId;
 }
 
 export interface PresentationState {
@@ -25,16 +52,63 @@ export interface PresentationState {
 }
 
 const STORAGE_KEY = 'church_saas_live_presentation';
+const SONG_LIBRARY_KEY = 'church_saas_presentation_songs';
 const CHANNEL_NAME = 'church_saas_live_presentation_channel';
+
+export const presentationBackgrounds: PresentationBackground[] = [
+  { id: 'theme', label: 'Theme color', kind: 'theme' },
+  { id: 'spotlight', label: 'Soft spotlight', kind: 'gradient' },
+  { id: 'cross', label: 'Sanctuary glow', kind: 'gradient' },
+  {
+    id: 'default_1',
+    label: 'Default 1',
+    kind: 'image',
+    imageUrl: '/congregation-defaults/default_1.jpg',
+  },
+  {
+    id: 'default_2',
+    label: 'Default 2',
+    kind: 'image',
+    imageUrl: '/congregation-defaults/default_2.jpg',
+  },
+  {
+    id: 'default_3',
+    label: 'Default 3',
+    kind: 'image',
+    imageUrl: '/congregation-defaults/default_3.avif',
+  },
+  {
+    id: 'default_4',
+    label: 'Default 4',
+    kind: 'image',
+    imageUrl: '/congregation-defaults/default_4.jpg',
+  },
+  {
+    id: 'default_5',
+    label: 'Default 5',
+    kind: 'image',
+    imageUrl: '/congregation-defaults/default_5.jpg',
+  },
+];
 
 function createId() {
   return crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
 }
 
+export function getPresentationBackground(id?: string | null) {
+  return (
+    presentationBackgrounds.find((background) => background.id === id) ||
+    presentationBackgrounds[0]
+  );
+}
+
 export function createPresentationSlide(
   kind: PresentationSlideKind = 'announcement',
 ): PresentationSlide {
-  const defaults: Record<PresentationSlideKind, Omit<PresentationSlide, 'id'>> = {
+  const defaults: Record<
+    PresentationSlideKind,
+    Omit<PresentationSlide, 'id' | 'backgroundId'>
+  > = {
     song: {
       kind: 'song',
       title: 'Worship song',
@@ -70,6 +144,7 @@ export function createPresentationSlide(
   return {
     id: createId(),
     ...defaults[kind],
+    backgroundId: 'theme',
   };
 }
 
@@ -83,6 +158,7 @@ export function createDefaultPresentationState(
       title: 'Welcome to Worship',
       body: 'We are glad you are here.',
       note: 'Service begins shortly',
+      backgroundId: 'spotlight',
     },
     {
       id: createId(),
@@ -90,6 +166,9 @@ export function createDefaultPresentationState(
       title: 'Psalm 100:2',
       body: 'Worship the Lord with gladness; come before him with joyful songs.',
       note: 'Opening scripture',
+      bibleVersion: 'kjv',
+      bibleVersionLabel: 'KJV',
+      backgroundId: 'cross',
     },
     {
       id: createId(),
@@ -97,6 +176,7 @@ export function createDefaultPresentationState(
       title: 'Giving & Offerings',
       body: 'Use the church paybill or giving instructions shared by the finance team.',
       note: 'Thank you for your generosity',
+      backgroundId: 'default_1',
     },
   ];
 
@@ -131,6 +211,9 @@ function normalizePresentationState(
           title: slide.title || '',
           body: slide.body || '',
           note: slide.note || '',
+          bibleVersion: slide.bibleVersion || null,
+          bibleVersionLabel: slide.bibleVersionLabel || null,
+          backgroundId: getPresentationBackground(slide.backgroundId).id,
         }))
       : fallback.slides;
   const currentSlideId =
@@ -149,6 +232,41 @@ function normalizePresentationState(
     slides,
     theme,
     updatedAt: value?.updatedAt || fallback.updatedAt,
+  };
+}
+
+export function readPresentationSongs(): PresentationSong[] {
+  try {
+    const raw = localStorage.getItem(SONG_LIBRARY_KEY);
+    const songs = raw ? JSON.parse(raw) : [];
+    return Array.isArray(songs)
+      ? songs
+          .map((song: any) => ({
+            id: song.id || createId(),
+            title: song.title || '',
+            lyrics: song.lyrics || '',
+            note: song.note || '',
+            updatedAt: song.updatedAt || new Date().toISOString(),
+          }))
+          .filter((song) => song.title || song.lyrics)
+      : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+export function savePresentationSongs(songs: PresentationSong[]) {
+  localStorage.setItem(SONG_LIBRARY_KEY, JSON.stringify(songs));
+  return songs;
+}
+
+export function createPresentationSongFromSlide(slide: PresentationSlide) {
+  return {
+    id: createId(),
+    title: slide.title || 'Saved song',
+    lyrics: slide.body || '',
+    note: slide.note || '',
+    updatedAt: new Date().toISOString(),
   };
 }
 

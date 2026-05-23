@@ -843,6 +843,8 @@ export class ChurchService {
           id: randomUUID(),
           date: new Date().toISOString().slice(0, 10),
           reference: 'Psalm 122:1',
+          version: 'kjv',
+          versionLabel: 'KJV',
           text: 'I rejoiced with those who said to me, let us go to the house of the Lord.',
         },
       ],
@@ -917,6 +919,8 @@ export class ChurchService {
         id: this.normalizeOptionalText(item.id, 80) || randomUUID(),
         date: this.normalizeOptionalText(item.date, 40),
         reference: this.normalizeOptionalText(item.reference, 180),
+        version: this.normalizeOptionalText(item.version, 40),
+        versionLabel: this.normalizeOptionalText(item.versionLabel, 80),
         text: this.normalizeOptionalText(item.text, 900),
       }))
       .filter((item) => item.text) as CongregationDailyVerse[];

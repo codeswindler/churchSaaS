@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   BibleSelector,
+  getBibleVersionLabel,
   type SelectedBibleVerse,
 } from '../../components/BibleSelector';
 import api, { getSession } from '../../services/api';
@@ -112,6 +113,8 @@ function createDailyVerse(date = getTodayInputDate()) {
     id: createId(),
     date,
     reference: '',
+    version: 'kjv',
+    versionLabel: 'KJV',
     text: '',
   };
 }
@@ -185,6 +188,8 @@ function normalizeForm(data: any) {
               id: createId(),
               date: getTodayInputDate(),
               reference: data.verseReference || '',
+              version: 'kjv',
+              versionLabel: 'KJV',
               text: data.verseText || '',
             },
           ]
@@ -376,6 +381,8 @@ export default function ChurchCongregation() {
       dailyVerses[index] = {
         ...dailyVerses[index],
         reference: selectedVerse.reference,
+        version: selectedVerse.version,
+        versionLabel: selectedVerse.versionLabel,
         text: selectedVerse.text || dailyVerses[index]?.text || '',
       };
       return { ...current, dailyVerses };
@@ -598,47 +605,73 @@ export default function ChurchCongregation() {
                   {currentDailyVerses.map((item) => (
                     <div
                       key={item.id || item.originalIndex}
-                      className="grid gap-3 rounded-2xl border border-white/10 bg-white/5 p-3 md:grid-cols-[150px_190px_1fr_auto]"
+                      className="rounded-2xl border border-white/10 bg-white/5 p-4"
                     >
-                      {[
-                        ['date', 'Date', 'date'],
-                        ['reference', 'Reference', 'text'],
-                        ['text', 'Verse text', 'text'],
-                      ].map(([field, label, type]) => (
-                        <div key={field}>
-                          <label className="label-compact">{label}</label>
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                        <div className="w-full max-w-xs">
+                          <label className="label-compact">Date</label>
                           <input
                             className="input-compact mt-1.5"
-                            type={type}
-                            value={item[field] || ''}
+                            type="date"
+                            value={item.date || ''}
                             onChange={(event) =>
                               updateListItem(
                                 'dailyVerses',
                                 item.originalIndex,
-                                field,
+                                'date',
                                 event.target.value,
                               )
                             }
                           />
                         </div>
-                      ))}
-                      <button
-                        aria-label="Remove verse"
-                        className="btn-secondary self-end px-3 py-2"
-                        type="button"
-                        onClick={() =>
-                          removeListItem('dailyVerses', item.originalIndex)
-                        }
-                      >
-                        <Trash2 size={16} />
-                      </button>
+
+                        <button
+                          aria-label="Remove verse"
+                          className="btn-secondary justify-center px-3 py-2"
+                          type="button"
+                          onClick={() =>
+                            removeListItem('dailyVerses', item.originalIndex)
+                          }
+                        >
+                          <Trash2 size={16} />
+                          Remove
+                        </button>
+                      </div>
+
                       <BibleSelector
-                        className="md:col-span-4"
+                        className="mt-4"
                         defaultReference={item.reference}
+                        defaultVersion={item.version}
                         onSelect={(selectedVerse) =>
                           applyBibleVerse(item.originalIndex, selectedVerse)
                         }
                       />
+
+                      <div className="mt-4 rounded-2xl border border-white/10 bg-black/10 p-4">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">
+                            Selected verse
+                          </p>
+                          <p className="text-sm font-semibold text-amber-200">
+                            {item.reference
+                              ? `${item.reference} (${item.versionLabel || getBibleVersionLabel(item.version)})`
+                              : 'Choose a verse above'}
+                          </p>
+                        </div>
+                        <textarea
+                          className="input mt-3 min-h-24 resize-y"
+                          value={item.text || ''}
+                          onChange={(event) =>
+                            updateListItem(
+                              'dailyVerses',
+                              item.originalIndex,
+                              'text',
+                              event.target.value,
+                            )
+                          }
+                          placeholder="Verse text appears here. Paste licensed NIV or Good News text here when needed."
+                        />
+                      </div>
                     </div>
                   ))}
                 </div>

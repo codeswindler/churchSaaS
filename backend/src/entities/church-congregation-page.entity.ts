@@ -37,6 +37,8 @@ export interface CongregationDailyVerse {
   id?: string;
   date?: string | null;
   reference?: string | null;
+  version?: string | null;
+  versionLabel?: string | null;
   text: string;
 }
 

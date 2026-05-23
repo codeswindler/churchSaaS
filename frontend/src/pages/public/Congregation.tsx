@@ -152,6 +152,7 @@ export default function PublicCongregation() {
               id: 'legacy-verse',
               date: page.updatedAt || null,
               reference: page.verseReference,
+              versionLabel: 'KJV',
               text: page.verseText,
             },
           ]
@@ -373,6 +374,11 @@ export default function PublicCongregation() {
                 {activeVerse?.reference ? (
                   <p className="mt-4 text-sm font-semibold text-amber-100 drop-shadow-[0_2px_5px_rgba(0,0,0,0.9)]">
                     {activeVerse.reference}
+                    {activeVerse.versionLabel || activeVerse.version ? (
+                      <span className="ml-2">
+                        ({activeVerse.versionLabel || activeVerse.version})
+                      </span>
+                    ) : null}
                   </p>
                 ) : null}
 

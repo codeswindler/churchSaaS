@@ -158,6 +158,8 @@ export class PublicController {
             {
               date: new Date().toISOString().slice(0, 10),
               reference: 'Psalm 122:1',
+              version: 'kjv',
+              versionLabel: 'KJV',
               text: 'I rejoiced with those who said to me, let us go to the house of the Lord.',
             },
           ],

@@ -1,28 +1,44 @@
 import {
+  BookOpen,
   ChevronLeft,
   ChevronRight,
   Copy,
   Eye,
   ExternalLink,
+  Image as ImageIcon,
   MonitorPlay,
+  Music,
   Pause,
   Play,
   Plus,
   RotateCcw,
+  Save,
   Trash2,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
+import {
+  BibleSelector,
+  getBibleVersionLabel,
+  type SelectedBibleVerse,
+} from '../../components/BibleSelector';
 import { getSession } from '../../services/api';
 import {
   createDefaultPresentationState,
   createPresentationSlide,
+  createPresentationSongFromSlide,
   getCurrentPresentationSlide,
+  getPresentationBackground,
   publishPresentationState,
   readPresentationState,
+  readPresentationSongs,
+  savePresentationSongs,
   subscribePresentationState,
+  presentationBackgrounds,
+  type PresentationBackgroundId,
   type PresentationSlide,
   type PresentationSlideKind,
+  type PresentationSong,
   type PresentationState,
   type PresentationTheme,
 } from '../../services/presentation';
@@ -77,6 +93,22 @@ function slideIndex(state: PresentationState) {
   return index >= 0 ? index : 0;
 }
 
+function SlideBackground({ backgroundId }: { backgroundId?: string | null }) {
+  const background = getPresentationBackground(backgroundId);
+
+  if (background.kind !== 'image' || !background.imageUrl) {
+    return null;
+  }
+
+  return (
+    <img
+      alt=""
+      className="presentation-background-image"
+      src={background.imageUrl}
+    />
+  );
+}
+
 function PreviewSlide({
   isLive,
   slide,
@@ -86,8 +118,12 @@ function PreviewSlide({
   slide: PresentationSlide;
   theme: PresentationTheme;
 }) {
+  const background = getPresentationBackground(slide.backgroundId);
   return (
-    <div className={`presentation-stage-preview presentation-theme-${theme}`}>
+    <div
+      className={`presentation-stage-preview presentation-theme-${theme} presentation-background-${background.id}`}
+    >
+      <SlideBackground backgroundId={slide.backgroundId} />
       <div className="presentation-stage-inner">
         {!isLive ? (
           <div className="presentation-paused-preview">
@@ -112,6 +148,10 @@ function PreviewSlide({
 export default function ChurchPresentation() {
   const churchName = useMemo(resolveChurchName, []);
   const [state, setState] = useState(() => readPresentationState(churchName));
+  const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
+  const [savedSongs, setSavedSongs] = useState<PresentationSong[]>(() =>
+    readPresentationSongs(),
+  );
   const currentIndex = slideIndex(state);
   const currentSlide = getCurrentPresentationSlide(state);
   const displayUrl =
@@ -141,6 +181,7 @@ export default function ChurchPresentation() {
       currentSlideId: slide.id,
       slides: [...state.slides, slide],
     });
+    setIsAddMenuOpen(false);
     toast.success('Slide added');
   };
 
@@ -185,6 +226,47 @@ export default function ChurchPresentation() {
   const resetDeck = () => {
     commitState(createDefaultPresentationState(churchName));
     toast.success('Presentation reset');
+  };
+
+  const applyBibleVerse = (verse: SelectedBibleVerse) => {
+    updateSlide({
+      kind: 'scripture',
+      title: `${verse.reference} (${verse.versionLabel})`,
+      body: verse.text || currentSlide.body,
+      note: 'Scripture',
+      bibleVersion: verse.version,
+      bibleVersionLabel: verse.versionLabel,
+    });
+  };
+
+  const saveCurrentSong = () => {
+    if (currentSlide.kind !== 'song') {
+      toast.error('Switch this slide to Song first');
+      return;
+    }
+
+    const nextSong = createPresentationSongFromSlide(currentSlide);
+    const nextSongs = savePresentationSongs([nextSong, ...savedSongs]);
+    setSavedSongs(nextSongs);
+    toast.success('Song saved');
+  };
+
+  const loadSong = (song: PresentationSong) => {
+    updateSlide({
+      kind: 'song',
+      title: song.title,
+      body: song.lyrics,
+      note: song.note,
+    });
+    toast.success('Song loaded');
+  };
+
+  const deleteSong = (songId: string) => {
+    const nextSongs = savePresentationSongs(
+      savedSongs.filter((song) => song.id !== songId),
+    );
+    setSavedSongs(nextSongs);
+    toast.success('Song removed');
   };
 
   return (
@@ -257,11 +339,27 @@ export default function ChurchPresentation() {
               className="shell-icon-button"
               type="button"
               aria-label="Add slide"
-              onClick={() => addSlide()}
+              onClick={() => setIsAddMenuOpen((current) => !current)}
             >
               <Plus size={18} />
             </button>
           </div>
+
+          {isAddMenuOpen ? (
+            <div className="mt-5 grid gap-2">
+              {slideKindOptions.map((option) => (
+                <button
+                  key={option.value}
+                  className="presentation-kind-option"
+                  type="button"
+                  onClick={() => addSlide(option.value)}
+                >
+                  <span>Add {option.label}</span>
+                  <small>{option.description}</small>
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           <div className="mt-5 space-y-3">
             {state.slides.map((slide, index) => (
@@ -383,6 +481,90 @@ export default function ChurchPresentation() {
                 </div>
               </div>
 
+              {currentSlide.kind === 'scripture' ? (
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="flex items-start gap-3">
+                    <BookOpen size={17} className="mt-1 shrink-0 text-amber-200" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-white">
+                        Select scripture
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-stone-300">
+                        KJV text can be fetched automatically. NIV and Good News
+                        are saved as the selected version so you can paste the
+                        licensed text.
+                      </p>
+                    </div>
+                  </div>
+                  <BibleSelector
+                    className="mt-4"
+                    defaultReference={currentSlide.title}
+                    defaultVersion={currentSlide.bibleVersion}
+                    onSelect={applyBibleVerse}
+                  />
+                </div>
+              ) : null}
+
+              {currentSlide.kind === 'song' ? (
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="flex items-center gap-2 text-sm font-semibold text-white">
+                        <Music size={16} className="text-amber-200" />
+                        Saved songs
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-stone-300">
+                        Edit lyrics below, then save them for future services.
+                      </p>
+                    </div>
+                    <button
+                      className="btn-secondary justify-center"
+                      type="button"
+                      onClick={saveCurrentSong}
+                    >
+                      <Save size={16} />
+                      Save song
+                    </button>
+                  </div>
+
+                  <div className="mt-4 grid gap-2">
+                    {savedSongs.length === 0 ? (
+                      <p className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-sm text-stone-300">
+                        No saved songs yet.
+                      </p>
+                    ) : (
+                      savedSongs.map((song) => (
+                        <div
+                          key={song.id}
+                          className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/10 px-3 py-2"
+                        >
+                          <button
+                            className="min-w-0 flex-1 text-left"
+                            type="button"
+                            onClick={() => loadSong(song)}
+                          >
+                            <span className="block truncate text-sm font-semibold text-white">
+                              {song.title}
+                            </span>
+                            <span className="block truncate text-xs text-stone-400">
+                              {song.note || 'Saved lyrics'}
+                            </span>
+                          </button>
+                          <button
+                            aria-label={`Delete ${song.title}`}
+                            className="shell-icon-button shell-icon-button-sm"
+                            type="button"
+                            onClick={() => deleteSong(song.id)}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <label className="label">Display theme</label>
@@ -415,12 +597,52 @@ export default function ChurchPresentation() {
               </div>
 
               <div>
+                <label className="label">Slide background</label>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                  {presentationBackgrounds.map((background) => (
+                    <button
+                      key={background.id}
+                      className={`presentation-background-option ${
+                        currentSlide.backgroundId === background.id
+                          ? 'is-active'
+                          : ''
+                      }`}
+                      type="button"
+                      onClick={() =>
+                        updateSlide({
+                          backgroundId:
+                            background.id as PresentationBackgroundId,
+                        })
+                      }
+                    >
+                      <span
+                        className={`presentation-background-swatch presentation-background-${background.id}`}
+                      >
+                        {background.imageUrl ? (
+                          <img alt="" src={background.imageUrl} />
+                        ) : (
+                          <ImageIcon size={16} />
+                        )}
+                      </span>
+                      <span>{background.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
                 <label className="label">Title or reference</label>
                 <input
                   className="input"
                   value={currentSlide.title}
                   onChange={(event) => updateSlide({ title: event.target.value })}
-                  placeholder="Psalm 100:2"
+                  placeholder={
+                    currentSlide.kind === 'song'
+                      ? 'Song title'
+                      : currentSlide.kind === 'scripture'
+                        ? 'Psalm 100:2 (KJV)'
+                        : 'Slide title'
+                  }
                 />
               </div>
 
@@ -430,7 +652,13 @@ export default function ChurchPresentation() {
                   className="input min-h-44 resize-y leading-7"
                   value={currentSlide.body}
                   onChange={(event) => updateSlide({ body: event.target.value })}
-                  placeholder="Type lyrics, scripture, announcement, or giving instructions"
+                  placeholder={
+                    currentSlide.kind === 'song'
+                      ? 'Type or paste song lyrics'
+                      : currentSlide.kind === 'scripture'
+                        ? `Selected ${currentSlide.bibleVersionLabel || getBibleVersionLabel(currentSlide.bibleVersion)} text appears here`
+                        : 'Type announcement or giving instructions'
+                  }
                 />
               </div>
 

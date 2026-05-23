@@ -559,6 +559,27 @@ textarea {
   @apply mt-1 block text-xs leading-5 text-stone-400;
 }
 
+.presentation-background-option {
+  @apply flex items-center gap-3 rounded-2xl border border-white/10 bg-black/10 px-3 py-2 text-left text-sm font-semibold text-stone-300 transition;
+}
+
+.presentation-background-option:hover,
+.presentation-background-option.is-active {
+  @apply border-amber-200/35 bg-amber-200/10 text-white;
+}
+
+.presentation-background-swatch {
+  @apply inline-flex h-12 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10;
+  background: var(--presentation-bg);
+  color: var(--presentation-accent);
+}
+
+.presentation-background-swatch img {
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+}
+
 .presentation-theme-midnight {
   --presentation-bg: linear-gradient(135deg, #071018 0%, #10253a 48%, #05080d 100%);
   --presentation-glow: radial-gradient(circle at top left, rgba(56, 189, 248, 0.24), transparent 32%),
@@ -587,12 +608,41 @@ textarea {
 }
 
 .presentation-stage-preview {
+  position: relative;
   aspect-ratio: 16 / 9;
   overflow: hidden;
   border-radius: 28px;
   background: var(--presentation-bg);
   color: var(--presentation-fg);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.presentation-background-image {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+}
+
+.presentation-background-spotlight {
+  --presentation-glow: radial-gradient(circle at 50% 34%, rgba(255, 255, 255, 0.22), transparent 22%),
+    radial-gradient(circle at top left, rgba(56, 189, 248, 0.22), transparent 32%),
+    linear-gradient(135deg, rgba(8, 17, 28, 0.4), rgba(8, 12, 18, 0.12));
+}
+
+.presentation-background-cross {
+  --presentation-glow: linear-gradient(90deg, transparent 47%, rgba(250, 204, 21, 0.18) 48%, rgba(250, 204, 21, 0.22) 52%, transparent 53%),
+    linear-gradient(0deg, transparent 42%, rgba(250, 204, 21, 0.14) 43%, rgba(250, 204, 21, 0.18) 47%, transparent 48%),
+    radial-gradient(circle at 50% 44%, rgba(250, 204, 21, 0.18), transparent 42%);
+}
+
+.presentation-background-default_1,
+.presentation-background-default_2,
+.presentation-background-default_3,
+.presentation-background-default_4,
+.presentation-background-default_5 {
+  --presentation-glow: linear-gradient(180deg, rgba(0, 0, 0, 0.46), rgba(0, 0, 0, 0.78));
 }
 
 .presentation-stage-inner {
@@ -643,6 +693,7 @@ textarea {
 }
 
 .presentation-display {
+  position: relative;
   min-height: 100vh;
   width: 100vw;
   overflow: hidden;
@@ -726,7 +777,8 @@ textarea {
 }
 
 :root[data-color-mode='light'] .presentation-slide-picker,
-:root[data-color-mode='light'] .presentation-kind-option {
+:root[data-color-mode='light'] .presentation-kind-option,
+:root[data-color-mode='light'] .presentation-background-option {
   background: rgba(255, 255, 255, 0.78);
   border-color: rgba(21, 56, 42, 0.18);
   color: #213c31;
@@ -735,7 +787,9 @@ textarea {
 :root[data-color-mode='light'] .presentation-slide-picker:hover,
 :root[data-color-mode='light'] .presentation-slide-picker.is-active,
 :root[data-color-mode='light'] .presentation-kind-option:hover,
-:root[data-color-mode='light'] .presentation-kind-option.is-active {
+:root[data-color-mode='light'] .presentation-kind-option.is-active,
+:root[data-color-mode='light'] .presentation-background-option:hover,
+:root[data-color-mode='light'] .presentation-background-option.is-active {
   background: rgba(241, 199, 95, 0.18);
   border-color: rgba(150, 106, 16, 0.34);
   color: #173328;

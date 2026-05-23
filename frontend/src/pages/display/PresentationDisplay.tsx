@@ -2,6 +2,7 @@ import { Pause } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import {
   getCurrentPresentationSlide,
+  getPresentationBackground,
   readPresentationState,
   subscribePresentationState,
 } from '../../services/presentation';
@@ -9,6 +10,7 @@ import {
 export default function PresentationDisplay() {
   const [state, setState] = useState(() => readPresentationState());
   const slide = useMemo(() => getCurrentPresentationSlide(state), [state]);
+  const background = getPresentationBackground(slide.backgroundId);
 
   useEffect(() => subscribePresentationState(setState), []);
 
@@ -21,7 +23,16 @@ export default function PresentationDisplay() {
   }, []);
 
   return (
-    <main className={`presentation-display presentation-theme-${state.theme}`}>
+    <main
+      className={`presentation-display presentation-theme-${state.theme} presentation-background-${background.id}`}
+    >
+      {background.kind === 'image' && background.imageUrl ? (
+        <img
+          alt=""
+          className="presentation-background-image"
+          src={background.imageUrl}
+        />
+      ) : null}
       <div className="presentation-display-frame">
         {!state.isLive ? (
           <section className="presentation-display-paused">

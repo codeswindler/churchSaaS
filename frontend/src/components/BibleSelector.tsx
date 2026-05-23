@@ -3,7 +3,21 @@ import { useEffect, useMemo, useState } from 'react';
 export type SelectedBibleVerse = {
   reference: string;
   text: string;
+  version: BibleVersionCode;
+  versionLabel: string;
 };
+
+export type BibleVersionCode = 'kjv' | 'niv' | 'gnt';
+
+export const bibleVersions: Array<{
+  code: BibleVersionCode;
+  label: string;
+  lookupCode?: string;
+}> = [
+  { code: 'kjv', label: 'KJV', lookupCode: 'kjv' },
+  { code: 'niv', label: 'NIV' },
+  { code: 'gnt', label: 'Good News' },
+];
 
 export const bibleBooks = [
   ['Genesis', 50],
@@ -76,6 +90,19 @@ export const bibleBooks = [
 
 const chapterVerseCountCache = new Map<string, number>();
 
+export function getBibleVersionLabel(version?: string | null) {
+  return (
+    bibleVersions.find((item) => item.code === version)?.label ||
+    bibleVersions[0].label
+  );
+}
+
+function getBibleVersion(version?: string | null) {
+  return (
+    bibleVersions.find((item) => item.code === version) || bibleVersions[0]
+  );
+}
+
 export function parseBibleReference(reference?: string | null) {
   const cleanReference = `${reference || ''}`.trim();
   const lowerReference = cleanReference.toLowerCase();
@@ -133,12 +160,14 @@ export function getBibleChapterCount(book: string) {
 }
 
 async function fetchChapterVerseCount(book: string, chapter: number) {
-  const cacheKey = `${book}:${chapter}`;
+  const cacheKey = `${book}:${chapter}:kjv`;
   const cachedCount = chapterVerseCountCache.get(cacheKey);
   if (cachedCount) return cachedCount;
 
   const response = await fetch(
-    `https://bible-api.com/${encodeURIComponent(`${book} ${chapter}`)}`,
+    `https://thebibleapi.netlify.app/.netlify/functions/getChapter?book=${encodeURIComponent(
+      book,
+    )}&chapter=${chapter}&translation=kjv`,
   );
 
   if (!response.ok) {
@@ -146,9 +175,7 @@ async function fetchChapterVerseCount(book: string, chapter: number) {
   }
 
   const data = await response.json();
-  const verseCount = Array.isArray(data?.verses)
-    ? Math.max(...data.verses.map((item: any) => Number(item.verse || 0)))
-    : 0;
+  const verseCount = Array.isArray(data?.verses) ? data.verses.length : 0;
 
   if (!verseCount) {
     throw new Error('Chapter has no verses');
@@ -158,9 +185,22 @@ async function fetchChapterVerseCount(book: string, chapter: number) {
   return verseCount;
 }
 
-async function fetchVerse(reference: string) {
+async function fetchVerseRange(
+  book: string,
+  chapter: number,
+  startVerse: number,
+  endVerse: number,
+  version: BibleVersionCode,
+) {
+  const bibleVersion = getBibleVersion(version);
+  if (!bibleVersion.lookupCode) {
+    throw new Error('Translation text lookup is not configured');
+  }
+
   const response = await fetch(
-    `https://bible-api.com/${encodeURIComponent(reference)}`,
+    `https://thebibleapi.netlify.app/.netlify/functions/getChapter?book=${encodeURIComponent(
+      book,
+    )}&chapter=${chapter}&translation=${bibleVersion.lookupCode}`,
   );
 
   if (!response.ok) {
@@ -168,7 +208,12 @@ async function fetchVerse(reference: string) {
   }
 
   const data = await response.json();
-  return `${data?.text || ''}`.replace(/\s+/g, ' ').trim();
+  const verses = Array.isArray(data?.verses) ? data.verses : [];
+  return verses
+    .slice(startVerse - 1, endVerse)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 type BibleSelectorProps = {
@@ -177,6 +222,7 @@ type BibleSelectorProps = {
   defaultReference?: string | null;
   inputClassName?: string;
   labelClassName?: string;
+  defaultVersion?: string | null;
   onSelect: (verse: SelectedBibleVerse) => void;
 };
 
@@ -184,6 +230,7 @@ export function BibleSelector({
   buttonClassName = 'btn-secondary justify-center',
   className = '',
   defaultReference,
+  defaultVersion,
   inputClassName = 'input-compact mt-1.5',
   labelClassName = 'label-compact',
   onSelect,
@@ -197,30 +244,32 @@ export function BibleSelector({
     parsedReference.startChapter,
   );
   const [startVerse, setStartVerse] = useState(parsedReference.startVerse);
-  const [endChapter, setEndChapter] = useState(parsedReference.endChapter);
   const [endVerse, setEndVerse] = useState(parsedReference.endVerse);
+  const [version, setVersion] = useState<BibleVersionCode>(
+    getBibleVersion(defaultVersion).code,
+  );
   const [startVerseCount, setStartVerseCount] = useState(1);
-  const [endVerseCount, setEndVerseCount] = useState(1);
   const [isValidating, setIsValidating] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [validationError, setValidationError] = useState('');
   const [lookupError, setLookupError] = useState('');
   const chapterCount = getBibleChapterCount(book);
-  const endVerseMinimum = endChapter === startChapter ? startVerse : 1;
   const reference =
-    startChapter === endChapter && startVerse === endVerse
+    startVerse === endVerse
       ? `${book} ${startChapter}:${startVerse}`
-      : startChapter === endChapter
-        ? `${book} ${startChapter}:${startVerse}-${endVerse}`
-        : `${book} ${startChapter}:${startVerse}-${endChapter}:${endVerse}`;
+      : `${book} ${startChapter}:${startVerse}-${endVerse}`;
+  const selectedVersion = getBibleVersion(version);
 
   useEffect(() => {
     setBook(parsedReference.book);
     setStartChapter(parsedReference.startChapter);
     setStartVerse(parsedReference.startVerse);
-    setEndChapter(parsedReference.endChapter);
     setEndVerse(parsedReference.endVerse);
   }, [parsedReference]);
+
+  useEffect(() => {
+    setVersion(getBibleVersion(defaultVersion).code);
+  }, [defaultVersion]);
 
   useEffect(() => {
     let isActive = true;
@@ -230,23 +279,19 @@ export function BibleSelector({
       setValidationError('');
 
       try {
-        const [nextStartVerseCount, nextEndVerseCount] = await Promise.all([
-          fetchChapterVerseCount(book, startChapter),
-          endChapter === startChapter
-            ? fetchChapterVerseCount(book, startChapter)
-            : fetchChapterVerseCount(book, endChapter),
-        ]);
+        const nextStartVerseCount = await fetchChapterVerseCount(
+          book,
+          startChapter,
+        );
 
         if (!isActive) return;
 
         setStartVerseCount(nextStartVerseCount);
-        setEndVerseCount(nextEndVerseCount);
         setStartVerse((current) =>
           Math.min(Math.max(1, current), nextStartVerseCount),
         );
         setEndVerse((current) => {
-          const minimum = endChapter === startChapter ? startVerse : 1;
-          return Math.min(Math.max(minimum, current), nextEndVerseCount);
+          return Math.min(Math.max(startVerse, current), nextStartVerseCount);
         });
       } catch {
         if (!isActive) return;
@@ -263,17 +308,16 @@ export function BibleSelector({
     return () => {
       isActive = false;
     };
-  }, [book, endChapter, startChapter, startVerse]);
+  }, [book, startChapter, startVerse]);
 
   const chapters = Array.from({ length: chapterCount }, (_, index) => index + 1);
-  const endChapters = chapters.filter((chapter) => chapter >= startChapter);
   const startVerses = Array.from(
     { length: startVerseCount },
     (_, index) => index + 1,
   );
   const endVerses = Array.from(
-    { length: Math.max(0, endVerseCount - endVerseMinimum + 1) },
-    (_, index) => endVerseMinimum + index,
+    { length: Math.max(0, startVerseCount - startVerse + 1) },
+    (_, index) => startVerse + index,
   );
 
   const selectVerse = async () => {
@@ -281,11 +325,31 @@ export function BibleSelector({
     setLookupError('');
 
     try {
-      const text = await fetchVerse(reference);
-      onSelect({ reference, text });
+      const text = await fetchVerseRange(
+        book,
+        startChapter,
+        startVerse,
+        endVerse,
+        version,
+      );
+      onSelect({
+        reference,
+        text,
+        version,
+        versionLabel: selectedVersion.label,
+      });
     } catch {
-      setLookupError('Could not fetch the text. Reference was applied.');
-      onSelect({ reference, text: '' });
+      setLookupError(
+        selectedVersion.lookupCode
+          ? 'Could not fetch the text. Reference was applied.'
+          : `${selectedVersion.label} text needs a licensed Bible source. Reference was applied so you can paste the text.`,
+      );
+      onSelect({
+        reference,
+        text: '',
+        version,
+        versionLabel: selectedVersion.label,
+      });
     } finally {
       setIsLoading(false);
     }
@@ -293,7 +357,23 @@ export function BibleSelector({
 
   return (
     <div className={className}>
-      <div className="grid gap-3 md:grid-cols-[minmax(150px,1.3fr)_96px_96px_96px_96px_auto]">
+      <div className="grid gap-3 md:grid-cols-[120px_minmax(150px,1.2fr)_96px_96px_96px_auto]">
+        <div>
+          <label className={labelClassName}>Version</label>
+          <select
+            className={inputClassName}
+            value={version}
+            onChange={(event) =>
+              setVersion(event.target.value as BibleVersionCode)
+            }
+          >
+            {bibleVersions.map((bibleVersion) => (
+              <option key={bibleVersion.code} value={bibleVersion.code}>
+                {bibleVersion.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <div>
           <label className={labelClassName}>Book</label>
           <select
@@ -303,7 +383,6 @@ export function BibleSelector({
               setBook(event.target.value);
               setStartChapter(1);
               setStartVerse(1);
-              setEndChapter(1);
               setEndVerse(1);
             }}
           >
@@ -315,7 +394,7 @@ export function BibleSelector({
           </select>
         </div>
         <div>
-          <label className={labelClassName}>Start ch.</label>
+          <label className={labelClassName}>Chapter</label>
           <select
             className={inputClassName}
             value={startChapter}
@@ -323,7 +402,6 @@ export function BibleSelector({
               const nextChapter = Number(event.target.value);
               setStartChapter(nextChapter);
               setStartVerse(1);
-              setEndChapter(nextChapter);
               setEndVerse(1);
             }}
           >
@@ -335,7 +413,7 @@ export function BibleSelector({
           </select>
         </div>
         <div>
-          <label className={labelClassName}>Start vs.</label>
+          <label className={labelClassName}>From</label>
           <select
             className={inputClassName}
             disabled={isValidating}
@@ -343,7 +421,7 @@ export function BibleSelector({
             onChange={(event) => {
               const nextVerse = Number(event.target.value);
               setStartVerse(nextVerse);
-              if (endChapter === startChapter && endVerse < nextVerse) {
+              if (endVerse < nextVerse) {
                 setEndVerse(nextVerse);
               }
             }}
@@ -356,25 +434,7 @@ export function BibleSelector({
           </select>
         </div>
         <div>
-          <label className={labelClassName}>End ch.</label>
-          <select
-            className={inputClassName}
-            value={endChapter}
-            onChange={(event) => {
-              const nextChapter = Number(event.target.value);
-              setEndChapter(nextChapter);
-              setEndVerse(nextChapter === startChapter ? startVerse : 1);
-            }}
-          >
-            {endChapters.map((chapterNumber) => (
-              <option key={chapterNumber} value={chapterNumber}>
-                {chapterNumber}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className={labelClassName}>End vs.</label>
+          <label className={labelClassName}>To</label>
           <select
             className={inputClassName}
             disabled={isValidating}
@@ -399,6 +459,12 @@ export function BibleSelector({
           </button>
         </div>
       </div>
+      {!selectedVersion.lookupCode ? (
+        <p className="mt-2 text-xs font-medium text-amber-300">
+          {selectedVersion.label} is selectable and saved, but the text must be
+          pasted because this translation requires a licensed source.
+        </p>
+      ) : null}
       {validationError ? (
         <p className="mt-2 text-xs font-medium text-amber-300">
           {validationError}
