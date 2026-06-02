@@ -1,9 +1,10 @@
 import { Pause } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   getCurrentPresentationSlide,
   getPresentationBackground,
   getPresentationTransitionMs,
+  publishPresentationState,
   readPresentationState,
   subscribePresentationState,
   type PresentationSlide,
@@ -90,7 +91,6 @@ function DisplaySlideLayer({
 
         <div className="presentation-display-footer">
           <span>{churchName}</span>
-          <span>Live display</span>
         </div>
       </div>
     </div>
@@ -104,7 +104,52 @@ export default function PresentationDisplay() {
   const background = getPresentationBackground(activeSlide.backgroundId);
   const transitionId = activeSlide.transitionId || 'fade';
 
+  const moveSlide = useCallback((direction: -1 | 1) => {
+    setState((currentState) => {
+      if (!currentState.slides.length) {
+        return currentState;
+      }
+
+      const currentIndex = currentState.slides.findIndex(
+        (item) => item.id === currentState.currentSlideId,
+      );
+      const safeCurrentIndex = currentIndex >= 0 ? currentIndex : 0;
+      const nextIndex = Math.min(
+        Math.max(safeCurrentIndex + direction, 0),
+        currentState.slides.length - 1,
+      );
+      const nextSlide = currentState.slides[nextIndex];
+
+      if (!nextSlide || nextSlide.id === currentState.currentSlideId) {
+        return currentState;
+      }
+
+      return publishPresentationState({
+        ...currentState,
+        currentSlideId: nextSlide.id,
+      });
+    });
+  }, []);
+
   useEffect(() => subscribePresentationState(setState), []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (['ArrowRight', 'PageDown', '>', '.'].includes(event.key)) {
+        event.preventDefault();
+        moveSlide(1);
+        return;
+      }
+
+      if (['ArrowLeft', 'PageUp', '<', ','].includes(event.key)) {
+        event.preventDefault();
+        moveSlide(-1);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [moveSlide]);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -117,6 +162,9 @@ export default function PresentationDisplay() {
   return (
     <main
       className={`presentation-display presentation-theme-${state.theme} presentation-background-${background.id} presentation-transition-${transitionId}`}
+      onClick={(event) => {
+        moveSlide(event.clientX < window.innerWidth / 2 ? -1 : 1);
+      }}
     >
       {previousSlide ? (
         <DisplaySlideLayer

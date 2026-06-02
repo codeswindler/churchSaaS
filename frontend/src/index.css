@@ -812,7 +812,7 @@ textarea {
   bottom: clamp(1.2rem, 2.5vw, 3rem);
   left: clamp(1.4rem, 3vw, 3.5rem);
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 1rem;
   color: var(--presentation-muted);
   font-size: clamp(0.8rem, 1.1vw, 1.2rem);
