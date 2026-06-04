@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
 import { In, Repository } from 'typeorm';
 import { buildChurchIntegrationSummary } from '../common/church.utils';
+import { getDefaultReceiptTemplateForFundCode } from '../common/receipt-templates';
 import {
   ChurchPermission,
   DEFAULT_CHURCH_FEATURES,
@@ -1211,8 +1212,7 @@ export class PlatformService {
           description: template.description,
           displayOrder: index + 1,
           isActive: true,
-          receiptTemplate:
-            'Dear {name}, we acknowledge receipt of KES {amount} towards {account}',
+          receiptTemplate: getDefaultReceiptTemplateForFundCode(template.code),
         }),
       );
     }

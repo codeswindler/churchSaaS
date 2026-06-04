@@ -12,6 +12,10 @@ import { Repository } from 'typeorm';
 import { formatCurrency } from '../common/subscription.utils';
 import { ChurchSmsConfig } from '../common/church.utils';
 import {
+  getDefaultReceiptTemplateForFundCode,
+  normalizeReceiptTemplateDefaultWording,
+} from '../common/receipt-templates';
+import {
   Church,
   ChurchBillingModel,
   ChurchStatus,
@@ -744,8 +748,7 @@ export class ContributionsService {
           'Fallback account for C2B payments whose account reference does not match an existing fund account.',
         displayOrder: 999,
         isActive: true,
-        receiptTemplate:
-          'Dear {name}, we acknowledge receipt of KES {amount} towards {account}',
+        receiptTemplate: getDefaultReceiptTemplateForFundCode('general'),
       }),
     );
   }
@@ -985,9 +988,10 @@ export class ContributionsService {
   }
 
   private renderReceiptMessage(contribution: Contribution) {
-    const template =
-      contribution.fundAccount?.receiptTemplate ||
-      'Dear {name}, we acknowledge receipt of KES {amount} towards {account}';
+    const template = normalizeReceiptTemplateDefaultWording(
+      contribution.fundAccount?.receiptTemplate,
+      contribution.fundAccount?.code,
+    );
 
     const values: Record<string, string> = {
       name: contribution.contributor?.name || 'Friend',

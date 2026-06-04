@@ -9,8 +9,17 @@ import {
   renderSmsPreviewPlaceholders,
 } from '../../services/smsMetrics';
 
-const RECEIPT_TEMPLATE_PREFIX =
+const FUND_RECEIPT_TEMPLATE_PREFIX =
+  'Dear {name}, we acknowledge receipt of your {account} contribution of KES {amount}';
+const GENERAL_RECEIPT_TEMPLATE_PREFIX =
+  'Dear {name}, we acknowledge receipt of your contribution of KES {amount}';
+const OLD_FUND_RECEIPT_TEMPLATE_PREFIX =
   'Dear {name}, we acknowledge receipt of KES {amount} towards {account}';
+const RECEIPT_TEMPLATE_PREFIXES = [
+  FUND_RECEIPT_TEMPLATE_PREFIX,
+  GENERAL_RECEIPT_TEMPLATE_PREFIX,
+  OLD_FUND_RECEIPT_TEMPLATE_PREFIX,
+];
 const LEGACY_RECEIPT_TEMPLATE_PATTERNS = [
   /^Dear \{name\}, we confirm receipt of KES \{amount\} towards \{account\}\.?\s*/i,
   /^Dear \{name\}, receipt confirmed: KES \{amount\} for \{account\}\.\s*(?:Ref:?\s*\{reference\}\.\s*)?(?:Thank you\.\s*)?/i,
@@ -23,27 +32,72 @@ const initialForm = {
   description: '',
   displayOrder: 0,
   isActive: true,
-  receiptTemplate: RECEIPT_TEMPLATE_PREFIX,
+  receiptTemplate: FUND_RECEIPT_TEMPLATE_PREFIX,
 };
 
 const RECEIPT_TEMPLATE_LIMIT = 306;
 
-function buildReceiptTemplate(extraMessage: string) {
-  const extra = extraMessage.trim();
-  return extra ? `${RECEIPT_TEMPLATE_PREFIX} ${extra}` : RECEIPT_TEMPLATE_PREFIX;
+function isGeneralFundAccount(account: any) {
+  return `${account?.code || account?.name || ''}`.trim().toLowerCase() === 'general';
 }
 
-function getReceiptExtraMessage(template: string) {
-  const normalized = `${template || ''}`.trim();
+function getReceiptTemplatePrefix(account: any) {
+  return isGeneralFundAccount(account)
+    ? GENERAL_RECEIPT_TEMPLATE_PREFIX
+    : FUND_RECEIPT_TEMPLATE_PREFIX;
+}
+
+function normalizeReceiptExtraStart(extraMessage: string) {
+  return `${extraMessage || ''}`.replace(/^[ \t]+/, '');
+}
+
+function hasLeadingLineBreak(value: string) {
+  return /^\r?\n/.test(value);
+}
+
+function buildReceiptTemplate(
+  extraMessage: string,
+  prefix = FUND_RECEIPT_TEMPLATE_PREFIX,
+  collapseBlankExtra = false,
+) {
+  const extra = normalizeReceiptExtraStart(extraMessage);
+  if (!extra || (collapseBlankExtra && !extra.trim())) {
+    return prefix;
+  }
+  return hasLeadingLineBreak(extra) ? `${prefix}${extra}` : `${prefix} ${extra}`;
+}
+
+function normalizeExtractedReceiptExtra(value: string) {
+  if (hasLeadingLineBreak(value)) {
+    return value;
+  }
+  return value.replace(/^[ \t]+/, '');
+}
+
+function getReceiptExtraMessage(
+  template: string,
+  prefix = FUND_RECEIPT_TEMPLATE_PREFIX,
+) {
+  const normalized = `${template || ''}`.trimStart();
   if (!normalized) {
     return '';
   }
-  if (normalized.startsWith(RECEIPT_TEMPLATE_PREFIX)) {
-    return normalized.slice(RECEIPT_TEMPLATE_PREFIX.length).trimStart();
+  const knownPrefixes = [
+    prefix,
+    ...RECEIPT_TEMPLATE_PREFIXES.filter((item) => item !== prefix),
+  ];
+  for (const knownPrefix of knownPrefixes) {
+    if (normalized.startsWith(knownPrefix)) {
+      return normalizeExtractedReceiptExtra(
+        normalized.slice(knownPrefix.length),
+      );
+    }
   }
   for (const legacyPattern of LEGACY_RECEIPT_TEMPLATE_PATTERNS) {
     if (legacyPattern.test(normalized)) {
-      return normalized.replace(legacyPattern, '').trimStart();
+      return normalizeExtractedReceiptExtra(
+        normalized.replace(legacyPattern, ''),
+      );
     }
   }
   return normalized;
@@ -64,10 +118,13 @@ export default function ChurchFundAccounts() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const receiptPrefix = getReceiptTemplatePrefix(form);
       const payload = {
         ...form,
         receiptTemplate: buildReceiptTemplate(
-          getReceiptExtraMessage(form.receiptTemplate),
+          getReceiptExtraMessage(form.receiptTemplate, receiptPrefix),
+          receiptPrefix,
+          true,
         ),
       };
       if (editingId) {
@@ -94,17 +151,33 @@ export default function ChurchFundAccounts() {
   });
 
   const accounts = useMemo(() => data || [], [data]);
-  const receiptExtraMessage = getReceiptExtraMessage(form.receiptTemplate);
+  const receiptTemplatePrefix = getReceiptTemplatePrefix(form);
+  const receiptExtraMessage = getReceiptExtraMessage(
+    form.receiptTemplate,
+    receiptTemplatePrefix,
+  );
+  const receiptExtraJoinerLength =
+    receiptExtraMessage && !hasLeadingLineBreak(receiptExtraMessage) ? 1 : 0;
   const receiptExtraLimit = Math.max(
-    RECEIPT_TEMPLATE_LIMIT - RECEIPT_TEMPLATE_PREFIX.length - 1,
+    RECEIPT_TEMPLATE_LIMIT -
+      receiptTemplatePrefix.length -
+      receiptExtraJoinerLength,
     0,
   );
-  const composedReceiptTemplate = buildReceiptTemplate(receiptExtraMessage);
+  const composedReceiptTemplate = buildReceiptTemplate(
+    receiptExtraMessage,
+    receiptTemplatePrefix,
+  );
   const templateMetrics = getGsm7SmsMetrics(composedReceiptTemplate);
   const templateRemaining = RECEIPT_TEMPLATE_LIMIT - templateMetrics.length;
   const accountPreview = previewAccount || accounts[0] || null;
+  const accountPreviewPrefix = getReceiptTemplatePrefix(accountPreview);
   const accountPreviewTemplate = buildReceiptTemplate(
-    getReceiptExtraMessage(accountPreview?.receiptTemplate || ''),
+    getReceiptExtraMessage(
+      accountPreview?.receiptTemplate || '',
+      accountPreviewPrefix,
+    ),
+    accountPreviewPrefix,
   );
   const accountPreviewMessage = renderSmsPreviewPlaceholders(
     accountPreviewTemplate,
@@ -309,7 +382,7 @@ export default function ChurchFundAccounts() {
                     </p>
 
                     <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-stone-400">
-                      {RECEIPT_TEMPLATE_PREFIX}
+                      {receiptTemplatePrefix}
                     </div>
 
                     <div className="mt-4">
@@ -324,6 +397,7 @@ export default function ChurchFundAccounts() {
                             ...current,
                             receiptTemplate: buildReceiptTemplate(
                               event.target.value,
+                              receiptTemplatePrefix,
                             ),
                           }))
                         }

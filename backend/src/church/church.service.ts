@@ -16,6 +16,7 @@ import {
   normalizeFeatureList,
 } from '../common/access-control';
 import { sanitizeChurchForTenant } from '../common/church.utils';
+import { getDefaultReceiptTemplateForFundCode } from '../common/receipt-templates';
 import { ContributionsService } from '../contributions/contributions.service';
 import {
   ChurchCongregationPage,
@@ -222,7 +223,7 @@ export class ChurchService {
       displayOrder: Number(body.displayOrder || 0),
       receiptTemplate:
         this.normalizeReceiptTemplate(body.receiptTemplate) ||
-        'Dear {name}, we acknowledge receipt of KES {amount} towards {account}',
+        getDefaultReceiptTemplateForFundCode(code),
     });
 
     return this.fundAccountRepo.save(fundAccount);
@@ -1059,8 +1060,7 @@ export class ChurchService {
           'Fallback account for payments whose account reference does not match a configured fund account.',
         isActive: true,
         displayOrder: 999,
-        receiptTemplate:
-          'Dear {name}, we acknowledge receipt of KES {amount} towards {account}',
+        receiptTemplate: getDefaultReceiptTemplateForFundCode('general'),
       }),
     );
   }

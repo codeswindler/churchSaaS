@@ -15,6 +15,7 @@ import {
   buildChurchIntegrationSummary,
   ChurchSmsConfig,
 } from '../common/church.utils';
+import { getDefaultReceiptTemplateForFundCode } from '../common/receipt-templates';
 import { ContributionsService } from '../contributions/contributions.service';
 import { ChurchCongregationPage } from '../entities/church-congregation-page.entity';
 import { ChurchUser, ChurchUserRole } from '../entities/church-user.entity';
@@ -782,8 +783,7 @@ export class PublicController {
           description: template.description,
           displayOrder: index + 1,
           isActive: true,
-          receiptTemplate:
-            'Dear {name}, we acknowledge receipt of KES {amount} towards {account}',
+          receiptTemplate: getDefaultReceiptTemplateForFundCode(template.code),
         }),
       );
     }
