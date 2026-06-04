@@ -626,33 +626,35 @@ textarea {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: clamp(1rem, 4vw, 2.6rem) 1.2rem 5.75rem;
-  text-align: center;
+  padding: 1.65rem 1rem 5.75rem;
 }
 
 .sms-phone-preview__meta {
   color: #64748b;
   font-size: 0.66rem;
   font-weight: 700;
+  text-align: center;
 }
 
 .sms-phone-preview__time {
   margin-top: 0.1rem;
   color: #94a3b8;
   font-size: 0.66rem;
+  text-align: center;
 }
 
 .sms-phone-preview__bubble {
-  margin: 0.9rem auto 0;
-  max-width: 16.3rem;
+  width: fit-content;
+  max-width: min(92%, 21rem);
+  margin: 1rem auto 0 0;
   border-radius: 1.2rem;
   border: 1px solid rgba(15, 23, 42, 0.08);
   background: #e5e7eb;
-  padding: 0.9rem 1rem;
+  padding: 0.82rem 0.95rem;
   color: #111827;
   text-align: left;
-  font-size: clamp(0.82rem, 2.8vw, 0.96rem);
-  line-height: 1.52;
+  font-size: clamp(0.94rem, 2vw, 1.08rem);
+  line-height: 1.42;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   box-shadow: 0 12px 28px -22px rgba(15, 23, 42, 0.36);
