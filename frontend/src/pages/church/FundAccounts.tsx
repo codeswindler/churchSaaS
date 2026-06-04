@@ -144,10 +144,10 @@ export default function ChurchFundAccounts() {
   };
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,28rem)] xl:items-start">
+    <div className="grid gap-5 xl:grid-cols-[minmax(22rem,26rem)_minmax(0,1fr)] xl:items-start">
       <section className="table-shell">
         <div className="border-b border-white/10 px-6 py-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-4">
             <div>
               <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
                 Available Accounts
@@ -157,7 +157,7 @@ export default function ChurchFundAccounts() {
               </h3>
             </div>
             <button
-              className="btn-primary justify-center"
+              className="btn-primary w-full justify-center"
               type="button"
               onClick={openCreateEditor}
             >
@@ -212,7 +212,7 @@ export default function ChurchFundAccounts() {
         )}
       </section>
 
-      <section className="panel p-5 xl:sticky xl:top-6">
+      <section className="panel p-5 xl:sticky xl:top-6 xl:p-6">
         <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
           Receipt Preview
         </p>

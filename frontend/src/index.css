@@ -522,7 +522,13 @@ textarea {
 }
 
 .table-shell table.fund-account-table {
-  min-width: 420px;
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.fund-account-table th:last-child,
+.fund-account-table td:last-child {
+  width: 7.5rem;
 }
 
 .mono {
@@ -538,7 +544,7 @@ textarea {
 }
 
 .sms-phone-preview__device {
-  width: min(100%, 25rem);
+  width: min(100%, 28rem);
   aspect-ratio: 430 / 932;
   border-radius: 3.1rem;
   padding: 0.72rem;
