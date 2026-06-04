@@ -521,6 +521,10 @@ textarea {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.table-shell table.fund-account-table {
+  min-width: 420px;
+}
+
 .mono {
   font-family: 'IBM Plex Mono', monospace;
 }

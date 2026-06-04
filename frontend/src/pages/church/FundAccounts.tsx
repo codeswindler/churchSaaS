@@ -10,7 +10,12 @@ import {
 } from '../../services/smsMetrics';
 
 const RECEIPT_TEMPLATE_PREFIX =
-  'Dear {name}, we confirm receipt of KES {amount} towards {account}';
+  'Dear {name}, we acknowledge receipt of KES {amount} towards {account}';
+const LEGACY_RECEIPT_TEMPLATE_PATTERNS = [
+  /^Dear \{name\}, we confirm receipt of KES \{amount\} towards \{account\}\.?\s*/i,
+  /^Dear \{name\}, receipt confirmed: KES \{amount\} for \{account\}\.\s*(?:Ref:?\s*\{reference\}\.\s*)?(?:Thank you\.\s*)?/i,
+  /^Dear \{name\}, receipt confirmed: KES \{amount\} for \{account\}\s*/i,
+];
 
 const initialForm = {
   name: '',
@@ -35,6 +40,11 @@ function getReceiptExtraMessage(template: string) {
   }
   if (normalized.startsWith(RECEIPT_TEMPLATE_PREFIX)) {
     return normalized.slice(RECEIPT_TEMPLATE_PREFIX.length).trimStart();
+  }
+  for (const legacyPattern of LEGACY_RECEIPT_TEMPLATE_PATTERNS) {
+    if (legacyPattern.test(normalized)) {
+      return normalized.replace(legacyPattern, '').trimStart();
+    }
   }
   return normalized;
 }
@@ -93,8 +103,11 @@ export default function ChurchFundAccounts() {
   const templateMetrics = getGsm7SmsMetrics(composedReceiptTemplate);
   const templateRemaining = RECEIPT_TEMPLATE_LIMIT - templateMetrics.length;
   const accountPreview = previewAccount || accounts[0] || null;
+  const accountPreviewTemplate = buildReceiptTemplate(
+    getReceiptExtraMessage(accountPreview?.receiptTemplate || ''),
+  );
   const accountPreviewMessage = renderSmsPreviewPlaceholders(
-    accountPreview?.receiptTemplate || initialForm.receiptTemplate,
+    accountPreviewTemplate,
     { account: accountPreview?.name || 'Account' },
   );
   const formPreviewMessage = renderSmsPreviewPlaceholders(
@@ -131,7 +144,7 @@ export default function ChurchFundAccounts() {
   };
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] xl:items-start">
+    <div className="grid gap-5 min-[1700px]:grid-cols-[minmax(0,1fr)_minmax(18rem,21rem)] min-[1700px]:items-start">
       <section className="table-shell">
         <div className="border-b border-white/10 px-6 py-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -161,53 +174,45 @@ export default function ChurchFundAccounts() {
         {isLoading ? (
           <div className="p-6 text-stone-300">Loading fund accounts...</div>
         ) : (
-          <table className="mobile-card-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Code</th>
-                <th>Status</th>
-                <th>Order</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {accounts.map((item: any) => (
-                <tr
-                  key={item.id}
-                  onFocus={() => setPreviewAccount(item)}
-                  onMouseEnter={() => setPreviewAccount(item)}
-                >
-                  <td data-label="Name">
-                    <div className="font-medium text-white">{item.name}</div>
-                    <div className="text-xs text-stone-400">
-                      {item.description || 'No description'}
-                    </div>
-                  </td>
-                  <td className="mono" data-label="Code">
-                    {item.code}
-                  </td>
-                  <td data-label="Status">
-                    {item.isActive ? 'Active' : 'Inactive'}
-                  </td>
-                  <td data-label="Order">{item.displayOrder}</td>
-                  <td data-label="Actions">
-                    <button
-                      className="btn-secondary px-3 py-2"
-                      onFocus={() => setPreviewAccount(item)}
-                      onClick={() => openEditEditor(item)}
-                    >
-                      Edit
-                    </button>
-                  </td>
+          <div className="table-scroll-region">
+            <table className="mobile-card-table fund-account-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {accounts.map((item: any) => (
+                  <tr
+                    key={item.id}
+                    onFocus={() => setPreviewAccount(item)}
+                    onMouseEnter={() => setPreviewAccount(item)}
+                  >
+                    <td data-label="Name">
+                      <div className="font-medium text-white">{item.name}</div>
+                      <div className="text-xs text-stone-400">
+                        {item.description || 'No description'}
+                      </div>
+                    </td>
+                    <td data-label="Actions">
+                      <button
+                        className="btn-secondary px-3 py-2"
+                        onFocus={() => setPreviewAccount(item)}
+                        onClick={() => openEditEditor(item)}
+                      >
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 
-      <section className="panel p-4 xl:sticky xl:top-6">
+      <section className="panel p-4 min-[1700px]:sticky min-[1700px]:top-6">
         <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
           Receipt Preview
         </p>

@@ -783,7 +783,7 @@ export class PublicController {
           displayOrder: index + 1,
           isActive: true,
           receiptTemplate:
-            'Dear {name}, we confirm receipt of KES {amount} towards {account}',
+            'Dear {name}, we acknowledge receipt of KES {amount} towards {account}',
         }),
       );
     }

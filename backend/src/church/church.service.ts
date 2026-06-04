@@ -222,7 +222,7 @@ export class ChurchService {
       displayOrder: Number(body.displayOrder || 0),
       receiptTemplate:
         this.normalizeReceiptTemplate(body.receiptTemplate) ||
-        'Dear {name}, we confirm receipt of KES {amount} towards {account}',
+        'Dear {name}, we acknowledge receipt of KES {amount} towards {account}',
     });
 
     return this.fundAccountRepo.save(fundAccount);
@@ -1060,7 +1060,7 @@ export class ChurchService {
         isActive: true,
         displayOrder: 999,
         receiptTemplate:
-          'Dear {name}, we confirm receipt of KES {amount} towards {account}',
+          'Dear {name}, we acknowledge receipt of KES {amount} towards {account}',
       }),
     );
   }
