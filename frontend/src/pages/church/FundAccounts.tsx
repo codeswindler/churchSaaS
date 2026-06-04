@@ -95,9 +95,11 @@ export default function ChurchFundAccounts() {
   const accountPreview = previewAccount || accounts[0] || null;
   const accountPreviewMessage = renderSmsPreviewPlaceholders(
     accountPreview?.receiptTemplate || initialForm.receiptTemplate,
+    { account: accountPreview?.name || 'Account' },
   );
   const formPreviewMessage = renderSmsPreviewPlaceholders(
     composedReceiptTemplate,
+    { account: form.name || 'Account' },
   );
 
   const closeEditor = () => {

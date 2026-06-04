@@ -24,12 +24,33 @@ export function getGsm7SmsMetrics(value: string) {
   };
 }
 
-export function renderSmsPreviewPlaceholders(value: string) {
+interface SmsPreviewPlaceholderValues {
+  account?: string;
+  amount?: string;
+  date?: string;
+  firstName?: string;
+  name?: string;
+  reference?: string;
+}
+
+export function renderSmsPreviewPlaceholders(
+  value: string,
+  values: SmsPreviewPlaceholderValues = {},
+) {
+  const previewValues = {
+    account: values.account || 'Account',
+    amount: values.amount || '1.00',
+    date: values.date || 'Jun 4, 2026',
+    firstName: values.firstName || values.name || 'JOSEPH',
+    name: values.name || 'JOSEPH',
+    reference: values.reference || 'ABC123',
+  };
+
   return value
-    .replace(/\{name\}/gi, 'JOSEPH')
-    .replace(/\{firstName\}/gi, 'JOSEPH')
-    .replace(/\{amount\}/gi, '1.00')
-    .replace(/\{account\}/gi, 'Sadaka')
-    .replace(/\{date\}/gi, 'Jun 4, 2026')
-    .replace(/\{reference\}/gi, 'ABC123');
+    .replace(/\{name\}/gi, previewValues.name)
+    .replace(/\{firstName\}/gi, previewValues.firstName)
+    .replace(/\{amount\}/gi, previewValues.amount)
+    .replace(/\{account\}/gi, previewValues.account)
+    .replace(/\{date\}/gi, previewValues.date)
+    .replace(/\{reference\}/gi, previewValues.reference);
 }
