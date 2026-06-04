@@ -41,8 +41,8 @@ export function renderSmsPreviewPlaceholders(
     account: values.account || 'Account',
     amount: values.amount || '1.00',
     date: values.date || 'Jun 4, 2026',
-    firstName: values.firstName || values.name || 'JOSEPH',
-    name: values.name || 'JOSEPH',
+    firstName: values.firstName || values.name || 'Geoffrey',
+    name: values.name || 'Geoffrey',
     reference: values.reference || 'ABC123',
   };
 
