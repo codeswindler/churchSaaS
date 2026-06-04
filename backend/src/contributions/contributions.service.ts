@@ -745,7 +745,7 @@ export class ContributionsService {
         displayOrder: 999,
         isActive: true,
         receiptTemplate:
-          'Dear {name}, receipt confirmed: KES {amount} for {account}. Ref {reference}. Thank you.',
+          'Dear {name}, we confirm receipt of KES {amount} towards {account}',
       }),
     );
   }
@@ -987,7 +987,7 @@ export class ContributionsService {
   private renderReceiptMessage(contribution: Contribution) {
     const template =
       contribution.fundAccount?.receiptTemplate ||
-      'Dear {name}, receipt confirmed: KES {amount} for {account}. Ref {reference}. Thank you.';
+      'Dear {name}, we confirm receipt of KES {amount} towards {account}';
 
     const values: Record<string, string> = {
       name: contribution.contributor?.name || 'Friend',

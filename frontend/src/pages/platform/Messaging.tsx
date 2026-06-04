@@ -15,7 +15,9 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
+import SmsPhonePreview from "../../components/SmsPhonePreview";
 import api from "../../services/api";
+import { getGsm7SmsMetrics } from "../../services/smsMetrics";
 
 type Workspace = "compose" | "addressBox" | "sender" | "outbox";
 
@@ -41,10 +43,6 @@ const initialSenderForm = {
 };
 
 const undoSeconds = 6;
-
-function smsUnits(value: string) {
-  return Math.max(1, Math.ceil(value.length / 160));
-}
 
 function toQueryString(filters: Record<string, string>) {
   const params = new URLSearchParams();
@@ -79,9 +77,7 @@ export default function PlatformMessaging() {
   }>(null);
 
   const queryString = useMemo(() => toQueryString(filters), [filters]);
-  const currentPageUsage = form.message.length % 160;
-  const remainingCharacters =
-    currentPageUsage === 0 ? 160 : 160 - currentPageUsage;
+  const messageMetrics = getGsm7SmsMetrics(form.message);
 
   const { data: config, isLoading: configLoading } = useQuery({
     queryKey: ["platform-messaging-config"],
@@ -396,7 +392,8 @@ export default function PlatformMessaging() {
               </div>
             </div>
 
-            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] xl:items-start">
+              <div className="grid gap-4 lg:grid-cols-2">
               <div className="lg:col-span-2">
                 <label className="label">Audience</label>
                 <div className="grid gap-2 md:grid-cols-2">
@@ -475,9 +472,10 @@ export default function PlatformMessaging() {
                 <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
                   <label className="label mb-0">Message</label>
                   <span className="text-xs text-stone-400">
-                    {form.message.length} chars | {smsUnits(form.message)} unit
-                    {smsUnits(form.message) === 1 ? "" : "s"} |{" "}
-                    {remainingCharacters} left on current page
+                    {messageMetrics.length} chars | {messageMetrics.segments}{" "}
+                    unit{messageMetrics.segments === 1 ? "" : "s"} |{" "}
+                    {messageMetrics.remainingInCurrentSegment} left on current
+                    segment
                   </span>
                 </div>
                 <textarea
@@ -532,6 +530,18 @@ export default function PlatformMessaging() {
                     ? `Sending in ${pendingSend.seconds}s`
                     : "Send platform SMS"}
               </button>
+              </div>
+
+              <div className="xl:sticky xl:top-6">
+                <SmsPhonePreview
+                  message={form.message}
+                  sender={
+                    senderForm.smsShortcode ||
+                    smsConfig?.smsShortcode ||
+                    "Choice SMS"
+                  }
+                />
+              </div>
             </div>
           </form>
         </section>

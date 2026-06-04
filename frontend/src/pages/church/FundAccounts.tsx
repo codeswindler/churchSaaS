@@ -2,7 +2,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
+import SmsPhonePreview from '../../components/SmsPhonePreview';
 import api from '../../services/api';
+import {
+  getGsm7SmsMetrics,
+  renderSmsPreviewPlaceholders,
+} from '../../services/smsMetrics';
+
+const RECEIPT_TEMPLATE_PREFIX =
+  'Dear {name}, we confirm receipt of KES {amount} towards {account}';
 
 const initialForm = {
   name: '',
@@ -10,17 +18,33 @@ const initialForm = {
   description: '',
   displayOrder: 0,
   isActive: true,
-  receiptTemplate:
-    'Dear {name}, receipt confirmed: KES {amount} for {account}. Ref {reference}. Thank you.',
+  receiptTemplate: RECEIPT_TEMPLATE_PREFIX,
 };
 
-const RECEIPT_TEMPLATE_LIMIT = 160;
+const RECEIPT_TEMPLATE_LIMIT = 306;
+
+function buildReceiptTemplate(extraMessage: string) {
+  const extra = extraMessage.trim();
+  return extra ? `${RECEIPT_TEMPLATE_PREFIX} ${extra}` : RECEIPT_TEMPLATE_PREFIX;
+}
+
+function getReceiptExtraMessage(template: string) {
+  const normalized = `${template || ''}`.trim();
+  if (!normalized) {
+    return '';
+  }
+  if (normalized.startsWith(RECEIPT_TEMPLATE_PREFIX)) {
+    return normalized.slice(RECEIPT_TEMPLATE_PREFIX.length).trimStart();
+  }
+  return normalized;
+}
 
 export default function ChurchFundAccounts() {
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [form, setForm] = useState<any>(initialForm);
+  const [previewAccount, setPreviewAccount] = useState<any | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['church-fund-accounts'],
@@ -30,12 +54,21 @@ export default function ChurchFundAccounts() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const payload = {
+        ...form,
+        receiptTemplate: buildReceiptTemplate(
+          getReceiptExtraMessage(form.receiptTemplate),
+        ),
+      };
       if (editingId) {
-        const response = await api.patch(`/church/fund-accounts/${editingId}`, form);
+        const response = await api.patch(
+          `/church/fund-accounts/${editingId}`,
+          payload,
+        );
         return response.data;
       }
 
-      const response = await api.post('/church/fund-accounts', form);
+      const response = await api.post('/church/fund-accounts', payload);
       return response.data;
     },
     onSuccess: () => {
@@ -51,8 +84,21 @@ export default function ChurchFundAccounts() {
   });
 
   const accounts = useMemo(() => data || [], [data]);
-  const templateLength = `${form.receiptTemplate || ''}`.length;
-  const templateRemaining = RECEIPT_TEMPLATE_LIMIT - templateLength;
+  const receiptExtraMessage = getReceiptExtraMessage(form.receiptTemplate);
+  const receiptExtraLimit = Math.max(
+    RECEIPT_TEMPLATE_LIMIT - RECEIPT_TEMPLATE_PREFIX.length - 1,
+    0,
+  );
+  const composedReceiptTemplate = buildReceiptTemplate(receiptExtraMessage);
+  const templateMetrics = getGsm7SmsMetrics(composedReceiptTemplate);
+  const templateRemaining = RECEIPT_TEMPLATE_LIMIT - templateMetrics.length;
+  const accountPreview = previewAccount || accounts[0] || null;
+  const accountPreviewMessage = renderSmsPreviewPlaceholders(
+    accountPreview?.receiptTemplate || initialForm.receiptTemplate,
+  );
+  const formPreviewMessage = renderSmsPreviewPlaceholders(
+    composedReceiptTemplate,
+  );
 
   const closeEditor = () => {
     if (saveMutation.isPending) {
@@ -83,7 +129,7 @@ export default function ChurchFundAccounts() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] xl:items-start">
       <section className="table-shell">
         <div className="border-b border-white/10 px-6 py-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -125,7 +171,11 @@ export default function ChurchFundAccounts() {
             </thead>
             <tbody>
               {accounts.map((item: any) => (
-                <tr key={item.id}>
+                <tr
+                  key={item.id}
+                  onFocus={() => setPreviewAccount(item)}
+                  onMouseEnter={() => setPreviewAccount(item)}
+                >
                   <td data-label="Name">
                     <div className="font-medium text-white">{item.name}</div>
                     <div className="text-xs text-stone-400">
@@ -142,6 +192,7 @@ export default function ChurchFundAccounts() {
                   <td data-label="Actions">
                     <button
                       className="btn-secondary px-3 py-2"
+                      onFocus={() => setPreviewAccount(item)}
                       onClick={() => openEditEditor(item)}
                     >
                       Edit
@@ -152,6 +203,24 @@ export default function ChurchFundAccounts() {
             </tbody>
           </table>
         )}
+      </section>
+
+      <section className="panel p-4 xl:sticky xl:top-6">
+        <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+          Receipt Preview
+        </p>
+        <h3 className="mt-2 text-xl font-semibold text-white">
+          {accountPreview ? `${accountPreview.name} message` : 'Fund message'}
+        </h3>
+        <p className="mt-2 text-sm text-stone-300">
+          Hover or focus a fund account to preview the SMS receipt wording.
+        </p>
+        <div className="mt-4">
+          <SmsPhonePreview
+            message={accountPreviewMessage}
+            sender="Church SMS"
+          />
+        </div>
       </section>
 
       {isEditorOpen ? (
@@ -219,47 +288,72 @@ export default function ChurchFundAccounts() {
                   ))}
                 </div>
 
-                <section className="rounded-3xl border border-white/10 bg-black/10 p-5">
-                  <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-                    Receipt Template
-                  </p>
-                  <h4 className="mt-2 text-lg font-semibold text-white">
-                    Personalized confirmation message
-                  </h4>
-                  <p className="mt-2 text-sm text-stone-300">
-                    Use placeholders like <code>{'{name}'}</code>,{' '}
-                    <code>{'{amount}'}</code>, <code>{'{account}'}</code>,{' '}
-                    <code>{'{date}'}</code>, and <code>{'{reference}'}</code>.
-                    The General account template is used when a payer enters an
-                    account reference that does not exist.
-                  </p>
-                  <textarea
-                    className="input mt-4 min-h-44"
-                    maxLength={RECEIPT_TEMPLATE_LIMIT}
-                    value={form.receiptTemplate}
-                    onChange={(event) =>
-                      setForm((current: any) => ({
-                        ...current,
-                        receiptTemplate: event.target.value,
-                      }))
-                    }
-                  />
-                  <div className="mt-3 flex flex-col gap-2 text-xs text-stone-400 sm:flex-row sm:items-center sm:justify-between">
-                    <span>
-                      GSM-7 receipt template limit: {RECEIPT_TEMPLATE_LIMIT}{' '}
-                      characters for one SMS page.
-                    </span>
-                    <span
-                      className={
-                        templateRemaining < 20
-                          ? 'text-amber-200'
-                          : 'text-stone-300'
-                      }
-                    >
-                      {templateRemaining} characters remaining
-                    </span>
+                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] xl:items-start">
+                  <section className="rounded-3xl border border-white/10 bg-black/10 p-5">
+                    <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+                      Receipt Template
+                    </p>
+                    <h4 className="mt-2 text-lg font-semibold text-white">
+                      Personalized confirmation message
+                    </h4>
+                    <p className="mt-2 text-sm text-stone-300">
+                      The base receipt text is locked. Add optional wording
+                      after it if this fund account needs more detail.
+                    </p>
+
+                    <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-stone-400">
+                      {RECEIPT_TEMPLATE_PREFIX}
+                    </div>
+
+                    <div className="mt-4">
+                      <label className="label">Additional message</label>
+                      <textarea
+                        className="input min-h-36"
+                        maxLength={receiptExtraLimit}
+                        placeholder="Optional. Example: Thank you for supporting the ministry."
+                        value={receiptExtraMessage}
+                        onChange={(event) =>
+                          setForm((current: any) => ({
+                            ...current,
+                            receiptTemplate: buildReceiptTemplate(
+                              event.target.value,
+                            ),
+                          }))
+                        }
+                      />
+                    </div>
+
+                    <div className="mt-3 flex flex-col gap-2 text-xs text-stone-400 sm:flex-row sm:items-center sm:justify-between">
+                      <span>
+                        GSM-7 receipt template limit: {RECEIPT_TEMPLATE_LIMIT}{' '}
+                        characters, up to 2 SMS parts.
+                      </span>
+                      <span
+                        className={
+                          templateRemaining < 0
+                            ? 'text-rose-200'
+                            : templateRemaining < 20
+                            ? 'text-amber-200'
+                            : 'text-stone-300'
+                        }
+                      >
+                        {templateMetrics.length} chars |{' '}
+                        {templateMetrics.segments} unit
+                        {templateMetrics.segments === 1 ? '' : 's'} |{' '}
+                        {templateRemaining >= 0
+                          ? `${templateRemaining} remaining`
+                          : `${Math.abs(templateRemaining)} over limit`}
+                      </span>
+                    </div>
+                  </section>
+
+                  <div className="xl:sticky xl:top-5">
+                    <SmsPhonePreview
+                      message={formPreviewMessage}
+                      sender="Church SMS"
+                    />
                   </div>
-                </section>
+                </div>
 
                 <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-sm text-stone-100">
                   <input

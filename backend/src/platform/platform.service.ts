@@ -1212,7 +1212,7 @@ export class PlatformService {
           displayOrder: index + 1,
           isActive: true,
           receiptTemplate:
-            'Dear {name}, receipt confirmed: KES {amount} for {account}. Ref {reference}. Thank you.',
+            'Dear {name}, we confirm receipt of KES {amount} towards {account}',
         }),
       );
     }

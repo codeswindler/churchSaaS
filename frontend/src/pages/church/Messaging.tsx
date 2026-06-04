@@ -13,7 +13,12 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
+import SmsPhonePreview from '../../components/SmsPhonePreview';
 import api from '../../services/api';
+import {
+  getGsm7SmsMetrics,
+  renderSmsPreviewPlaceholders,
+} from '../../services/smsMetrics';
 
 const initialMessageForm = {
   genderFilter: '',
@@ -77,10 +82,6 @@ function toQueryString(filters: Record<string, string>) {
   return params.toString();
 }
 
-function smsUnits(value: string) {
-  return Math.max(1, Math.ceil(value.length / 160));
-}
-
 function downloadTextFile(filename: string, content: string) {
   const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
   const url = window.URL.createObjectURL(blob);
@@ -118,9 +119,7 @@ export default function ChurchMessaging() {
     payload: typeof initialMessageForm;
   }>(null);
   const queryString = useMemo(() => toQueryString(filters), [filters]);
-  const currentPageUsage = form.message.length % 160;
-  const remainingCharacters =
-    currentPageUsage === 0 ? 160 : 160 - currentPageUsage;
+  const messageMetrics = getGsm7SmsMetrics(form.message);
 
   const { data: messagingConfig, isLoading: messagingConfigLoading } = useQuery({
     queryKey: ['church-messaging-config'],
@@ -182,6 +181,7 @@ export default function ChurchMessaging() {
     messagingConfig?.defaultSmsShortcode || shortcodes[0] || '';
   const outboxRows = outbox || [];
   const books = addressBooks || [];
+  const messagePreview = renderSmsPreviewPlaceholders(form.message);
   const selectedBook =
     books.find((book: any) => book.id === selectedAddressBookId) || books[0];
   const contacts = addressBookContacts || [];
@@ -574,7 +574,8 @@ export default function ChurchMessaging() {
               Create bulk SMS
             </h3>
 
-            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] xl:items-start">
+              <div className="grid gap-4 lg:grid-cols-2">
               <div className="lg:col-span-2">
                 <label className="label">Audience</label>
                 <div className="grid gap-2 md:grid-cols-3">
@@ -724,9 +725,10 @@ export default function ChurchMessaging() {
                 <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
                   <label className="label mb-0">Message</label>
                   <span className="text-xs text-stone-400">
-                    {form.message.length} chars | {smsUnits(form.message)} unit
-                    {smsUnits(form.message) === 1 ? '' : 's'} |{' '}
-                    {remainingCharacters} left on current page
+                    {messageMetrics.length} chars | {messageMetrics.segments}{' '}
+                    unit{messageMetrics.segments === 1 ? '' : 's'} |{' '}
+                    {messageMetrics.remainingInCurrentSegment} left on current
+                    segment
                   </span>
                 </div>
                 <textarea
@@ -782,6 +784,14 @@ export default function ChurchMessaging() {
                     ? `Sending in ${pendingSend.seconds}s`
                     : 'Send bulk message'}
               </button>
+              </div>
+
+              <div className="xl:sticky xl:top-6">
+                <SmsPhonePreview
+                  message={messagePreview}
+                  sender={form.smsShortcode || defaultShortcode || 'Choice SMS'}
+                />
+              </div>
             </div>
           </form>
         </section>

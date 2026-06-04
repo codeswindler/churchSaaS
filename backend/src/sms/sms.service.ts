@@ -671,7 +671,7 @@ export class SmsService {
 
   public estimateGsm7Units(text: string) {
     const length = this.sanitizeGsm7(text).length;
-    return Math.max(1, Math.ceil(length / 160));
+    return length <= 160 ? 1 : Math.ceil(length / 153);
   }
 
   public getGsm7Length(text: string) {

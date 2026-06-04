@@ -82,7 +82,7 @@ function getDefaultGalleryImageName(imageUrl?: string | null) {
 
 @Injectable()
 export class ChurchService {
-  private readonly receiptTemplateLimit = 160;
+  private readonly receiptTemplateLimit = 306;
 
   constructor(
     @InjectRepository(Church)
@@ -222,7 +222,7 @@ export class ChurchService {
       displayOrder: Number(body.displayOrder || 0),
       receiptTemplate:
         this.normalizeReceiptTemplate(body.receiptTemplate) ||
-        'Dear {name}, receipt confirmed: KES {amount} for {account}. Ref {reference}. Thank you.',
+        'Dear {name}, we confirm receipt of KES {amount} towards {account}',
     });
 
     return this.fundAccountRepo.save(fundAccount);
@@ -1060,7 +1060,7 @@ export class ChurchService {
         isActive: true,
         displayOrder: 999,
         receiptTemplate:
-          'Dear {name}, receipt confirmed: KES {amount} for {account}. Ref {reference}. Thank you.',
+          'Dear {name}, we confirm receipt of KES {amount} towards {account}',
       }),
     );
   }
