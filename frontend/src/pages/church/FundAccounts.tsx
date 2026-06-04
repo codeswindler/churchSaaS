@@ -144,7 +144,7 @@ export default function ChurchFundAccounts() {
   };
 
   return (
-    <div className="grid gap-5 min-[1700px]:grid-cols-[minmax(0,1fr)_minmax(18rem,21rem)] min-[1700px]:items-start">
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,28rem)] xl:items-start">
       <section className="table-shell">
         <div className="border-b border-white/10 px-6 py-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -212,7 +212,7 @@ export default function ChurchFundAccounts() {
         )}
       </section>
 
-      <section className="panel p-4 min-[1700px]:sticky min-[1700px]:top-6">
+      <section className="panel p-5 xl:sticky xl:top-6">
         <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
           Receipt Preview
         </p>

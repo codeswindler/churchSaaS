@@ -538,7 +538,7 @@ textarea {
 }
 
 .sms-phone-preview__device {
-  width: min(100%, 22rem);
+  width: min(100%, 25rem);
   aspect-ratio: 430 / 932;
   border-radius: 3.1rem;
   padding: 0.72rem;
