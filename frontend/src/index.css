@@ -750,6 +750,28 @@ textarea {
   @apply border-amber-200/35 bg-amber-200/10 text-white;
 }
 
+.presentation-format-button {
+  @apply inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-black/10 text-stone-300 transition;
+}
+
+.presentation-format-button:hover,
+.presentation-format-button.is-active {
+  @apply border-amber-200/35 bg-amber-200/10 text-white;
+}
+
+.presentation-size-control {
+  @apply inline-flex flex-wrap gap-1 rounded-2xl border border-white/10 bg-black/10 p-1;
+}
+
+.presentation-size-control button {
+  @apply rounded-xl px-3 py-2 text-xs font-semibold text-stone-300 transition;
+}
+
+.presentation-size-control button:hover,
+.presentation-size-control button.is-active {
+  @apply bg-amber-200/15 text-white;
+}
+
 .presentation-color-swatch {
   @apply inline-flex h-9 w-9 shrink-0 rounded-full border border-white/20 shadow-sm;
 }
@@ -893,9 +915,11 @@ textarea {
 .presentation-body-copy {
   color: var(--presentation-fg);
   font-family: var(--presentation-font-family, 'Sora', 'Manrope', sans-serif);
-  font-size: clamp(1rem, 2.2vw, 1.65rem);
-  font-weight: 600;
+  font-size: var(--presentation-body-preview-size, clamp(1rem, 2.2vw, 1.65rem));
+  font-style: normal;
+  font-weight: 500;
   line-height: 1.25;
+  text-decoration: none;
   white-space: pre-line;
 }
 
@@ -966,9 +990,11 @@ textarea {
   margin-top: clamp(1.5rem, 3vw, 3rem);
   color: var(--presentation-fg);
   font-family: var(--presentation-font-family, 'Sora', 'Manrope', sans-serif);
-  font-size: clamp(2.2rem, 4.2vw, 5.8rem);
-  font-weight: 700;
+  font-size: var(--presentation-body-display-size, clamp(2.2rem, 4.2vw, 5.8rem));
+  font-style: normal;
+  font-weight: 500;
   line-height: 1.14;
+  text-decoration: none;
   white-space: pre-line;
 }
 
@@ -1008,6 +1034,49 @@ textarea {
 
 .presentation-font-sora {
   --presentation-font-family: 'Sora', 'Manrope', sans-serif;
+}
+
+.presentation-body-bold .presentation-body-copy {
+  font-weight: 700;
+}
+
+.presentation-body-bold .presentation-display-body {
+  font-weight: 800;
+}
+
+.presentation-body-italic .presentation-body-copy,
+.presentation-body-italic .presentation-display-body {
+  font-style: italic;
+}
+
+.presentation-body-underline .presentation-body-copy,
+.presentation-body-underline .presentation-display-body {
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+}
+
+.presentation-body-size-small {
+  --presentation-body-preview-size: clamp(0.88rem, 1.75vw, 1.25rem);
+  --presentation-body-display-size: clamp(1.75rem, 3.2vw, 4rem);
+  --presentation-body-display-size-mobile: clamp(1.25rem, 6.3vw, 2.1rem);
+}
+
+.presentation-body-size-medium {
+  --presentation-body-preview-size: clamp(1rem, 2.2vw, 1.65rem);
+  --presentation-body-display-size: clamp(2.2rem, 4.2vw, 5.8rem);
+  --presentation-body-display-size-mobile: clamp(1.55rem, 8vw, 2.75rem);
+}
+
+.presentation-body-size-large {
+  --presentation-body-preview-size: clamp(1.15rem, 2.75vw, 2.05rem);
+  --presentation-body-display-size: clamp(2.7rem, 5.2vw, 7rem);
+  --presentation-body-display-size-mobile: clamp(1.85rem, 9.4vw, 3.25rem);
+}
+
+.presentation-body-size-huge {
+  --presentation-body-preview-size: clamp(1.35rem, 3.3vw, 2.5rem);
+  --presentation-body-display-size: clamp(3.25rem, 6.4vw, 8.8rem);
+  --presentation-body-display-size-mobile: clamp(2.1rem, 10.8vw, 3.8rem);
 }
 
 .presentation-font-aptos {
@@ -1349,10 +1418,16 @@ textarea {
 :root[data-color-mode='light'] .presentation-kind-option,
 :root[data-color-mode='light'] .presentation-background-option,
 :root[data-color-mode='light'] .presentation-color-option,
+:root[data-color-mode='light'] .presentation-format-button,
+:root[data-color-mode='light'] .presentation-size-control,
 :root[data-color-mode='light'] .presentation-collapsible-trigger {
   background: rgba(255, 255, 255, 0.78);
   border-color: rgba(21, 56, 42, 0.18);
   color: #213c31;
+}
+
+:root[data-color-mode='light'] .presentation-size-control button {
+  color: #476356;
 }
 
 :root[data-color-mode='light'] .presentation-slide-picker:hover,
@@ -1363,6 +1438,10 @@ textarea {
 :root[data-color-mode='light'] .presentation-background-option.is-active,
 :root[data-color-mode='light'] .presentation-color-option:hover,
 :root[data-color-mode='light'] .presentation-color-option.is-active,
+:root[data-color-mode='light'] .presentation-format-button:hover,
+:root[data-color-mode='light'] .presentation-format-button.is-active,
+:root[data-color-mode='light'] .presentation-size-control button:hover,
+:root[data-color-mode='light'] .presentation-size-control button.is-active,
 :root[data-color-mode='light'] .presentation-collapsible-trigger:hover {
   background: rgba(241, 199, 95, 0.18);
   border-color: rgba(150, 106, 16, 0.34);
@@ -1929,7 +2008,10 @@ select.input-compact option:checked {
   }
 
   .presentation-display-body {
-    font-size: clamp(1.55rem, 8vw, 2.75rem);
+    font-size: var(
+      --presentation-body-display-size-mobile,
+      var(--presentation-body-display-size, clamp(1.55rem, 8vw, 2.75rem))
+    );
   }
 
   .presentation-display-footer {

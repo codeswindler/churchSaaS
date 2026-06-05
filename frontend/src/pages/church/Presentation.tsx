@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  Bold,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -8,6 +9,7 @@ import {
   GripVertical,
   Image as ImageIcon,
   ImagePlus,
+  Italic,
   MonitorPlay,
   Music,
   Pause,
@@ -17,6 +19,8 @@ import {
   Save,
   Pencil,
   Trash2,
+  Type,
+  Underline,
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -34,6 +38,7 @@ import {
   createPresentationSongFromSlide,
   getCurrentPresentationSlide,
   getPresentationBackground,
+  getPresentationSlideKindLabel,
   getPresentationTransitionMs,
   publishPresentationState,
   readPresentationBackgrounds,
@@ -56,6 +61,7 @@ import {
   type PresentationState,
   type PresentationTheme,
   type PresentationTextColorId,
+  type PresentationTextSizeId,
   type PresentationTransitionId,
 } from '../../services/presentation';
 
@@ -85,11 +91,37 @@ const slideKindOptions: Array<{
     description: 'Offering and paybill instructions.',
   },
   {
+    value: 'custom',
+    label: 'Custom',
+    description: 'Freeform slide with your own display label.',
+  },
+  {
     value: 'blank',
     label: 'Blank',
     description: 'Clear the screen during transitions.',
   },
 ];
+
+const textSizeOptions: Array<{
+  value: PresentationTextSizeId;
+  label: string;
+}> = [
+  { value: 'small', label: 'Small' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'large', label: 'Large' },
+  { value: 'huge', label: 'Huge' },
+];
+
+function slideStyleClassNames(slide: PresentationSlide) {
+  return [
+    slide.bodyTextBold !== false ? 'presentation-body-bold' : '',
+    slide.bodyTextItalic ? 'presentation-body-italic' : '',
+    slide.bodyTextUnderline ? 'presentation-body-underline' : '',
+    `presentation-body-size-${slide.bodyTextSize || 'medium'}`,
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
 
 function resolveChurchName() {
   const session = getSession();
@@ -186,7 +218,7 @@ function PresentationSlideLayer({
   const background = getPresentationBackground(slide.backgroundId);
   return (
     <div
-      className={`presentation-slide-motion presentation-layer-${mode} presentation-background-${background.id} presentation-font-${slide.fontId || 'sora'} presentation-text-color-${slide.textColorId || 'theme'}`}
+      className={`presentation-slide-motion presentation-layer-${mode} presentation-background-${background.id} presentation-font-${slide.fontId || 'sora'} presentation-text-color-${slide.textColorId || 'theme'} ${slideStyleClassNames(slide)}`}
       key={`${slide.id}-${slide.backgroundId}-${slide.transitionId}-${mode}`}
     >
       <SlideBackground backgroundId={slide.backgroundId} />
@@ -198,7 +230,9 @@ function PresentationSlideLayer({
           </div>
         ) : slide.kind === 'blank' ? null : (
           <>
-            <p className="presentation-kind-label">{slide.kind}</p>
+            <p className="presentation-kind-label">
+              {getPresentationSlideKindLabel(slide)}
+            </p>
             <h3>{slide.title || 'Untitled slide'}</h3>
             <p className="presentation-body-copy">
               {slide.body || 'Add slide content'}
@@ -624,7 +658,7 @@ export default function ChurchPresentation() {
                     {slide.title || 'Blank screen'}
                   </span>
                   <span className="block truncate text-xs capitalize text-stone-400">
-                    {slide.kind}
+                    {getPresentationSlideKindLabel(slide)}
                   </span>
                 </button>
                 <button
@@ -753,7 +787,7 @@ export default function ChurchPresentation() {
                 >
                   <div>
                     <label className="label">Slide type</label>
-                    <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
                       {slideKindOptions.map((option) => (
                         <button
                           key={option.value}
@@ -765,10 +799,22 @@ export default function ChurchPresentation() {
                             updateDraftSlide({
                               ...createPresentationSlide(option.value),
                               id: draftSlide.id,
+                              backgroundId: draftSlide.backgroundId,
+                              bodyTextBold: draftSlide.bodyTextBold,
+                              bodyTextItalic: draftSlide.bodyTextItalic,
+                              bodyTextSize: draftSlide.bodyTextSize,
+                              bodyTextUnderline: draftSlide.bodyTextUnderline,
+                              fontId: draftSlide.fontId,
+                              textColorId: draftSlide.textColorId,
+                              transitionId: draftSlide.transitionId,
                               title: draftSlide.title,
                               body: draftSlide.body,
                               note: draftSlide.note,
                               kind: option.value,
+                              kindLabel:
+                                option.value === 'custom'
+                                  ? draftSlide.kindLabel || 'Custom'
+                                  : option.label,
                             })
                           }
                         >
@@ -777,6 +823,20 @@ export default function ChurchPresentation() {
                       ))}
                     </div>
                   </div>
+
+                  {draftSlide.kind === 'custom' ? (
+                    <div>
+                      <label className="label">Display label</label>
+                      <input
+                        className="input"
+                        placeholder="Example: Prayer, Testimony, Youth Sunday"
+                        value={draftSlide.kindLabel || ''}
+                        onChange={(event) =>
+                          updateDraftSlide({ kindLabel: event.target.value })
+                        }
+                      />
+                    </div>
+                  ) : null}
 
                   {draftSlide.kind === 'scripture' ? (
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -877,9 +937,82 @@ export default function ChurchPresentation() {
                   </div>
 
                   <div>
-                    <label className="label">Main screen text</label>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                      <label className="label">Main screen text</label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          aria-label="Bold main text"
+                          className={`presentation-format-button ${
+                            draftSlide.bodyTextBold !== false ? 'is-active' : ''
+                          }`}
+                          type="button"
+                          onClick={() =>
+                            updateDraftSlide({
+                              bodyTextBold: draftSlide.bodyTextBold === false,
+                            })
+                          }
+                        >
+                          <Bold size={16} />
+                        </button>
+                        <button
+                          aria-label="Italic main text"
+                          className={`presentation-format-button ${
+                            draftSlide.bodyTextItalic ? 'is-active' : ''
+                          }`}
+                          type="button"
+                          onClick={() =>
+                            updateDraftSlide({
+                              bodyTextItalic: !draftSlide.bodyTextItalic,
+                            })
+                          }
+                        >
+                          <Italic size={16} />
+                        </button>
+                        <button
+                          aria-label="Underline main text"
+                          className={`presentation-format-button ${
+                            draftSlide.bodyTextUnderline ? 'is-active' : ''
+                          }`}
+                          type="button"
+                          onClick={() =>
+                            updateDraftSlide({
+                              bodyTextUnderline: !draftSlide.bodyTextUnderline,
+                            })
+                          }
+                        >
+                          <Underline size={16} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
+                        <Type size={14} />
+                        Size
+                      </span>
+                      <div className="presentation-size-control">
+                        {textSizeOptions.map((option) => (
+                          <button
+                            key={option.value}
+                            className={
+                              (draftSlide.bodyTextSize || 'medium') ===
+                              option.value
+                                ? 'is-active'
+                                : ''
+                            }
+                            type="button"
+                            onClick={() =>
+                              updateDraftSlide({
+                                bodyTextSize: option.value,
+                              })
+                            }
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <textarea
-                      className="input min-h-36 resize-y leading-7"
+                      className="input mt-3 min-h-36 resize-y leading-7"
                       value={draftSlide.body}
                       onChange={(event) =>
                         updateDraftSlide({ body: event.target.value })

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   getCurrentPresentationSlide,
   getPresentationBackground,
+  getPresentationSlideKindLabel,
   getPresentationTransitionMs,
   publishPresentationState,
   readPresentationState,
@@ -12,6 +13,17 @@ import {
 
 function slideMotionSignature(slide: PresentationSlide) {
   return `${slide.id}:${slide.backgroundId}:${slide.transitionId}`;
+}
+
+function slideStyleClassNames(slide: PresentationSlide) {
+  return [
+    slide.bodyTextBold !== false ? 'presentation-body-bold' : '',
+    slide.bodyTextItalic ? 'presentation-body-italic' : '',
+    slide.bodyTextUnderline ? 'presentation-body-underline' : '',
+    `presentation-body-size-${slide.bodyTextSize || 'medium'}`,
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 function useTransitionSlides(slide: PresentationSlide) {
@@ -60,7 +72,7 @@ function DisplaySlideLayer({
 
   return (
     <div
-      className={`presentation-display-motion presentation-layer-${mode} presentation-background-${background.id} presentation-font-${slide.fontId || 'sora'} presentation-text-color-${slide.textColorId || 'theme'}`}
+      className={`presentation-display-motion presentation-layer-${mode} presentation-background-${background.id} presentation-font-${slide.fontId || 'sora'} presentation-text-color-${slide.textColorId || 'theme'} ${slideStyleClassNames(slide)}`}
       key={`${slide.id}-${slide.backgroundId}-${slide.transitionId}-${mode}`}
     >
       {background.kind === 'image' && background.imageUrl ? (
@@ -78,7 +90,9 @@ function DisplaySlideLayer({
           </section>
         ) : slide.kind === 'blank' ? null : (
           <section className="presentation-display-content">
-            <p className="presentation-display-kind">{slide.kind}</p>
+            <p className="presentation-display-kind">
+              {getPresentationSlideKindLabel(slide)}
+            </p>
             <h1>{slide.title || 'Untitled slide'}</h1>
             <p className="presentation-display-body">
               {slide.body || 'Add slide content'}

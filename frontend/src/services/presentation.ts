@@ -3,6 +3,7 @@ export type PresentationSlideKind =
   | 'scripture'
   | 'announcement'
   | 'giving'
+  | 'custom'
   | 'blank';
 
 export type PresentationTheme = 'midnight' | 'sanctuary' | 'paper';
@@ -38,6 +39,7 @@ export type PresentationTextColorId =
   | 'mint'
   | 'rose'
   | 'black';
+export type PresentationTextSizeId = 'small' | 'medium' | 'large' | 'huge';
 export type PresentationBackgroundId = string;
 
 export interface PresentationBackground {
@@ -76,6 +78,7 @@ export interface PresentationTextColor {
 export interface PresentationSlide {
   id: string;
   kind: PresentationSlideKind;
+  kindLabel?: string | null;
   title: string;
   body: string;
   note: string;
@@ -85,6 +88,10 @@ export interface PresentationSlide {
   fontId: PresentationFontId;
   transitionId: PresentationTransitionId;
   textColorId: PresentationTextColorId;
+  bodyTextBold?: boolean;
+  bodyTextItalic?: boolean;
+  bodyTextUnderline?: boolean;
+  bodyTextSize?: PresentationTextSizeId;
 }
 
 export interface PresentationState {
@@ -297,6 +304,33 @@ export function getPresentationTextColor(id?: string | null) {
   );
 }
 
+export function getPresentationTextSize(id?: string | null) {
+  return (['small', 'medium', 'large', 'huge'].includes(`${id}`) ? id : 'medium') as PresentationTextSizeId;
+}
+
+export function getPresentationSlideKindLabel(slide: PresentationSlide) {
+  const customLabel = `${slide.kindLabel || ''}`.trim();
+  if (customLabel) {
+    return customLabel;
+  }
+
+  switch (slide.kind) {
+    case 'song':
+      return 'Song';
+    case 'scripture':
+      return 'Scripture';
+    case 'announcement':
+      return 'Announcement';
+    case 'giving':
+      return 'Giving';
+    case 'custom':
+      return 'Custom';
+    case 'blank':
+    default:
+      return 'Blank';
+  }
+}
+
 export function createPresentationSlide(
   kind: PresentationSlideKind = 'announcement',
 ): PresentationSlide {
@@ -304,35 +338,55 @@ export function createPresentationSlide(
     PresentationSlideKind,
     Omit<
       PresentationSlide,
-      'id' | 'backgroundId' | 'fontId' | 'transitionId' | 'textColorId'
+      | 'id'
+      | 'backgroundId'
+      | 'fontId'
+      | 'transitionId'
+      | 'textColorId'
+      | 'bodyTextBold'
+      | 'bodyTextItalic'
+      | 'bodyTextUnderline'
+      | 'bodyTextSize'
     >
   > = {
     song: {
       kind: 'song',
+      kindLabel: 'Song',
       title: 'Worship song',
       body: 'Add lyrics here',
       note: 'Congregation worship',
     },
     scripture: {
       kind: 'scripture',
+      kindLabel: 'Scripture',
       title: 'Bible reading',
       body: 'Add verse text here',
       note: 'Scripture',
     },
     announcement: {
       kind: 'announcement',
+      kindLabel: 'Announcement',
       title: 'Announcement',
       body: 'Add announcement details here',
       note: 'Church notice',
     },
     giving: {
       kind: 'giving',
+      kindLabel: 'Giving',
       title: 'Giving & Offerings',
       body: 'Use the church paybill or giving instructions shared by the finance team.',
       note: 'Thank you for your generosity',
     },
+    custom: {
+      kind: 'custom',
+      kindLabel: 'Custom',
+      title: 'Custom slide',
+      body: 'Add custom slide text here',
+      note: '',
+    },
     blank: {
       kind: 'blank',
+      kindLabel: 'Blank',
       title: '',
       body: '',
       note: '',
@@ -346,6 +400,10 @@ export function createPresentationSlide(
     fontId: 'sora',
     transitionId: 'fade',
     textColorId: 'theme',
+    bodyTextBold: true,
+    bodyTextItalic: false,
+    bodyTextUnderline: false,
+    bodyTextSize: 'medium',
   };
 }
 
@@ -363,6 +421,10 @@ export function createDefaultPresentationState(
       fontId: 'sora',
       transitionId: 'fade',
       textColorId: 'white',
+      bodyTextBold: true,
+      bodyTextItalic: false,
+      bodyTextUnderline: false,
+      bodyTextSize: 'medium',
     },
     {
       id: createId(),
@@ -376,6 +438,10 @@ export function createDefaultPresentationState(
       fontId: 'cambria',
       transitionId: 'push',
       textColorId: 'cream',
+      bodyTextBold: true,
+      bodyTextItalic: false,
+      bodyTextUnderline: false,
+      bodyTextSize: 'medium',
     },
     {
       id: createId(),
@@ -387,6 +453,10 @@ export function createDefaultPresentationState(
       fontId: 'aptos',
       transitionId: 'zoom',
       textColorId: 'gold',
+      bodyTextBold: true,
+      bodyTextItalic: false,
+      bodyTextUnderline: false,
+      bodyTextSize: 'medium',
     },
   ];
 
@@ -417,7 +487,12 @@ function normalizePresentationState(
     Array.isArray(value?.slides) && value.slides.length > 0
       ? value.slides.map((slide: any) => ({
           id: slide.id || createId(),
-          kind: slide.kind || 'announcement',
+          kind: ['song', 'scripture', 'announcement', 'giving', 'custom', 'blank'].includes(
+            slide.kind,
+          )
+            ? slide.kind
+            : 'announcement',
+          kindLabel: slide.kindLabel || null,
           title: slide.title || '',
           body: slide.body || '',
           note: slide.note || '',
@@ -427,6 +502,10 @@ function normalizePresentationState(
           fontId: getPresentationFont(slide.fontId).id,
           transitionId: getPresentationTransition(slide.transitionId).id,
           textColorId: getPresentationTextColor(slide.textColorId).id,
+          bodyTextBold: slide.bodyTextBold !== false,
+          bodyTextItalic: slide.bodyTextItalic === true,
+          bodyTextUnderline: slide.bodyTextUnderline === true,
+          bodyTextSize: getPresentationTextSize(slide.bodyTextSize),
         }))
       : fallback.slides;
   const currentSlideId =
