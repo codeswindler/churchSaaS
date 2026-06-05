@@ -110,10 +110,10 @@ export default function ChurchUsers() {
       } else if (data?.credentialsSmsSent) {
         toast.success('User created and login SMS sent');
       } else {
-        toast.success('User created');
-        toast(
-          data?.credentialsSmsError ||
-            'Login SMS was not sent. You can resend it from the staff list.',
+        toast.error(
+          data?.credentialsSmsError
+            ? `User created, but login SMS failed. ${data.credentialsSmsError}`
+            : 'User created, but login SMS failed. Check SMS outbox.',
         );
       }
       setEditingId(null);
@@ -297,12 +297,13 @@ export default function ChurchUsers() {
                         </button>
                         <button
                           className="btn-secondary px-3 py-2"
+                          aria-label={`Send login details to ${user.name}`}
                           disabled={
                             !user.phone || resendCredentialsMutation.isPending
                           }
                           title={
                             user.phone
-                              ? 'Send login credentials by SMS'
+                              ? 'Send login details by SMS'
                               : 'Add a phone number before sending credentials'
                           }
                           type="button"
@@ -311,7 +312,7 @@ export default function ChurchUsers() {
                           }
                         >
                           <Send size={14} />
-                          Send login SMS
+                          Login SMS
                         </button>
                       </div>
                     </td>
@@ -362,10 +363,14 @@ export default function ChurchUsers() {
                   ['password', editingId ? 'New password (optional)' : 'Password'],
                 ].map(([key, label]) => (
                   <div key={key}>
-                    <label className="label">{label}</label>
+                    <label className="label">
+                      {label}
+                      {!editingId && key === 'phone' ? ' *' : ''}
+                    </label>
                     <input
                       ref={key === 'name' ? nameInputRef : undefined}
                       className="input"
+                      required={!editingId && key === 'phone'}
                       type={key === 'password' ? 'password' : 'text'}
                       value={form[key]}
                       onChange={(event) =>

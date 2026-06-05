@@ -273,9 +273,11 @@ export class ChurchService {
   }
 
   async createChurchUser(churchId: string, body: any) {
-    if (!body.name || !body.email || !body.password || !body.role) {
+    const phone = `${body.phone || ''}`.trim();
+
+    if (!body.name || !body.email || !phone || !body.password || !body.role) {
       throw new BadRequestException(
-        'Name, email, password, and role are required',
+        'Name, email, phone, password, and role are required',
       );
     }
 
@@ -283,7 +285,7 @@ export class ChurchService {
       where: [
         { email: body.email.toLowerCase() },
         { username: body.username || '' },
-        { phone: body.phone || '' },
+        { phone },
       ],
     });
     if (existing) {
@@ -295,7 +297,7 @@ export class ChurchService {
       name: body.name,
       email: body.email.toLowerCase(),
       username: body.username || null,
-      phone: body.phone || null,
+      phone,
       passwordHash: await bcrypt.hash(body.password, 10),
       role: normalizeChurchRole(body.role) as ChurchUserRole,
       permissionOverrides: this.normalizePermissionOverrides(

@@ -177,10 +177,10 @@ export default function ChurchDetailsModal({
       } else if (data?.credentialsSmsSent) {
         toast.success('Church user created and login SMS sent');
       } else {
-        toast.success('Church user created');
-        toast(
-          data?.credentialsSmsError ||
-            'Login SMS was not sent. Use Send login SMS from the users list.',
+        toast.error(
+          data?.credentialsSmsError
+            ? `User created, but login SMS failed. ${data.credentialsSmsError}`
+            : 'User created, but login SMS failed. Check SMS outbox.',
         );
       }
       resetStaffEditor();
@@ -702,17 +702,23 @@ export default function ChurchDetailsModal({
                                 </button>
                                 <button
                                   className="btn-secondary px-3 py-2"
+                                  aria-label={`Send login details to ${user.name}`}
                                   type="button"
                                   disabled={
                                     !user.phone ||
                                     resendCredentialsMutation.isPending
+                                  }
+                                  title={
+                                    user.phone
+                                      ? 'Send login details by SMS'
+                                      : 'Add a phone number before sending credentials'
                                   }
                                   onClick={() =>
                                     resendCredentialsMutation.mutate(user.id)
                                   }
                                 >
                                   <Send size={14} />
-                                  Send login SMS
+                                  Login SMS
                                 </button>
                               </div>
                             </td>
@@ -751,10 +757,14 @@ export default function ChurchDetailsModal({
                         ],
                       ].map(([key, label]) => (
                         <div key={key}>
-                          <label className="label">{label}</label>
+                          <label className="label">
+                            {label}
+                            {!editingUserId && key === 'phone' ? ' *' : ''}
+                          </label>
                           <input
                             ref={key === 'name' ? staffNameInputRef : undefined}
                             className="input"
+                            required={!editingUserId && key === 'phone'}
                             type={key === 'password' ? 'password' : 'text'}
                             value={staffForm[key as keyof StaffFormState] as any}
                             onChange={(event) =>

@@ -46,6 +46,7 @@ import {
   createPresentationSongFromSlide,
   getCurrentPresentationSlide,
   getPresentationBackground,
+  getPresentationSlideDisplayTitle,
   getPresentationSlideKindLabel,
   getPresentationTransitionMs,
   getLyricLineIndexForTime,
@@ -253,7 +254,7 @@ function PresentationSlideLayer({
             <p className="presentation-kind-label">
               {getPresentationSlideKindLabel(slide)}
             </p>
-            <h3>{slide.title || 'Untitled slide'}</h3>
+            <h3>{getPresentationSlideDisplayTitle(slide)}</h3>
             {slide.kind === 'song' && lyricLines.length > 0 ? (
               <div className="presentation-preview-lyrics">
                 {previewLines.map((line, index) => {
@@ -579,11 +580,24 @@ export default function ChurchPresentation() {
       return;
     }
 
+    const customLabel = `${draftSlide.kindLabel || ''}`.trim();
+    if (
+      draftSlide.kind === 'custom' &&
+      (!customLabel || customLabel.toLowerCase() === 'custom')
+    ) {
+      toast.error('Name this custom slide type before saving');
+      return;
+    }
+    const slideToSave =
+      draftSlide.kind === 'custom'
+        ? { ...draftSlide, kindLabel: customLabel }
+        : draftSlide;
+
     if (editorMode === 'add') {
       commitState({
         ...state,
-        currentSlideId: draftSlide.id,
-        slides: [...state.slides, draftSlide],
+        currentSlideId: slideToSave.id,
+        slides: [...state.slides, slideToSave],
       });
       toast.success('Slide added');
       closeEditor();
@@ -593,7 +607,7 @@ export default function ChurchPresentation() {
     commitState({
       ...state,
       slides: state.slides.map((slide) =>
-        slide.id === draftSlide.id ? draftSlide : slide,
+        slide.id === slideToSave.id ? slideToSave : slide,
       ),
     });
     toast.success('Slide saved');
@@ -895,14 +909,14 @@ export default function ChurchPresentation() {
                   onClick={() => goToSlide(index)}
                 >
                   <span className="block truncate font-semibold">
-                    {slide.title || 'Blank screen'}
+                    {getPresentationSlideDisplayTitle(slide)}
                   </span>
                   <span className="block truncate text-xs capitalize text-stone-400">
                     {getPresentationSlideKindLabel(slide)}
                   </span>
                 </button>
                 <button
-                  aria-label={`Edit ${slide.title || 'slide'}`}
+                  aria-label={`Edit ${getPresentationSlideDisplayTitle(slide)}`}
                   className="shell-icon-button shell-icon-button-sm"
                   type="button"
                   onClick={() => beginEditSlide(slide)}
@@ -1188,7 +1202,9 @@ export default function ChurchPresentation() {
                               kind: option.value,
                               kindLabel:
                                 option.value === 'custom'
-                                  ? draftSlide.kindLabel || 'Custom'
+                                  ? draftSlide.kind === 'custom'
+                                    ? draftSlide.kindLabel
+                                    : ''
                                   : option.label,
                             })
                           }
@@ -1205,6 +1221,7 @@ export default function ChurchPresentation() {
                       <input
                         className="input"
                         placeholder="Example: Prayer, Testimony, Youth Sunday"
+                        required
                         value={draftSlide.kindLabel || ''}
                         onChange={(event) =>
                           updateDraftSlide({ kindLabel: event.target.value })

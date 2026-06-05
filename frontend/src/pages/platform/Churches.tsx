@@ -185,11 +185,17 @@ export default function PlatformChurches() {
       return response.data;
     },
     onSuccess: (data) => {
-      toast.success(
-        formMode === 'edit'
-          ? 'Church settings updated'
-          : 'Church customer created',
-      );
+      if (formMode === 'edit') {
+        toast.success('Church settings updated');
+      } else if (data?.adminCredentialsSmsSent) {
+        toast.success('Church customer created and login SMS sent');
+      } else {
+        toast.error(
+          data?.adminCredentialsSmsError
+            ? `Church created, but login SMS failed. ${data.adminCredentialsSmsError}`
+            : 'Church created, but login SMS failed. Check SMS outbox.',
+        );
+      }
       setForm(createInitialForm());
       setFormMode('create');
       setIsChurchModalOpen(false);
@@ -1344,9 +1350,13 @@ export default function PlatformChurches() {
                         ['planName', 'Plan name'],
                       ].map(([key, label]) => (
                         <div key={key}>
-                          <label className="label">{label}</label>
+                          <label className="label">
+                            {label}
+                            {key === 'adminPhone' ? ' *' : ''}
+                          </label>
                           <input
                               className="input"
+                              required={key === 'adminPhone'}
                               type={
                                 key === 'adminPassword' ? 'password' : 'text'
                               }

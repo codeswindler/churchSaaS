@@ -122,14 +122,17 @@ export class PlatformService {
   }
 
   async createChurch(body: any, performedByPlatformUserId: string) {
+    const adminPhone = this.normalizeOptionalText(body.adminPhone);
+
     if (
       !body.name ||
       !body.adminName ||
       !body.adminEmail ||
+      !adminPhone ||
       !body.adminPassword
     ) {
       throw new BadRequestException(
-        'Church name and initial church admin credentials are required',
+        'Church name, first admin phone, and initial church admin credentials are required',
       );
     }
 
@@ -146,7 +149,7 @@ export class PlatformService {
         name: body.name,
         slug,
         contactEmail: body.contactEmail || body.adminEmail.toLowerCase(),
-        contactPhone: body.contactPhone || null,
+        contactPhone: body.contactPhone || adminPhone,
         address: body.address || null,
         logoUrl: body.logoUrl || null,
         notes: body.notes || null,
@@ -177,7 +180,7 @@ export class PlatformService {
         name: body.adminName,
         email: body.adminEmail.toLowerCase(),
         username: body.adminUsername || null,
-        phone: body.adminPhone || null,
+        phone: adminPhone,
         passwordHash: await bcrypt.hash(body.adminPassword, 10),
         role: ChurchUserRole.PRIEST,
         isActive: true,
@@ -374,9 +377,9 @@ export class PlatformService {
     const username = this.normalizeOptionalText(body.username);
     const phone = this.normalizeOptionalText(body.phone);
 
-    if (!name || !email || !password || !body.role) {
+    if (!name || !email || !phone || !password || !body.role) {
       throw new BadRequestException(
-        'Name, email, password, and role are required',
+        'Name, email, phone, password, and role are required',
       );
     }
 

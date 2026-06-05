@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   getCurrentPresentationSlide,
   getPresentationBackground,
+  getPresentationSlideDisplayTitle,
   getPresentationSlideKindLabel,
   getPresentationTransitionMs,
   publishPresentationState,
@@ -104,7 +105,7 @@ function DisplaySlideLayer({
             <p className="presentation-display-kind">
               {getPresentationSlideKindLabel(slide)}
             </p>
-            <h1>{slide.title || 'Untitled slide'}</h1>
+            <h1>{getPresentationSlideDisplayTitle(slide)}</h1>
             {slide.kind === 'song' && lyricLines.length > 0 ? (
               <div className="presentation-display-lyrics">
                 {visibleLines.map((line, index) => {
