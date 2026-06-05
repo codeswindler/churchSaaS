@@ -41,6 +41,8 @@ export type PresentationTextColorId =
   | 'black';
 export type PresentationTextSizeId = 'small' | 'medium' | 'large' | 'huge';
 export type PresentationBackgroundId = string;
+export type PresentationSlideMode = 'editor' | 'media';
+export type PresentationMediaType = 'image' | 'video';
 
 export interface PresentationBackground {
   id: PresentationBackgroundId;
@@ -106,6 +108,10 @@ export interface PresentationSlide {
   bodyTextItalic?: boolean;
   bodyTextUnderline?: boolean;
   bodyTextSize?: PresentationTextSizeId;
+  mediaMode?: PresentationSlideMode;
+  mediaType?: PresentationMediaType | null;
+  mediaUrl?: string | null;
+  mediaName?: string | null;
   lyricActiveLineIndex?: number;
   lyricCueTimings?: PresentationLyricCue[];
   lyricScrollPaused?: boolean;
@@ -331,6 +337,14 @@ export function getPresentationTextSize(id?: string | null) {
   return (['small', 'medium', 'large', 'huge'].includes(`${id}`) ? id : 'medium') as PresentationTextSizeId;
 }
 
+export function getPresentationSlideMode(id?: string | null) {
+  return id === 'media' ? 'media' : 'editor';
+}
+
+export function getPresentationMediaType(id?: string | null) {
+  return id === 'video' ? 'video' : id === 'image' ? 'image' : null;
+}
+
 export function splitPresentationLyrics(value?: string | null) {
   return `${value || ''}`
     .split(/\r?\n/)
@@ -489,6 +503,10 @@ export function createPresentationSlide(
     bodyTextItalic: false,
     bodyTextUnderline: false,
     bodyTextSize: 'medium',
+    mediaMode: 'editor',
+    mediaType: null,
+    mediaUrl: null,
+    mediaName: null,
   };
 }
 
@@ -591,6 +609,10 @@ function normalizePresentationState(
           bodyTextItalic: slide.bodyTextItalic === true,
           bodyTextUnderline: slide.bodyTextUnderline === true,
           bodyTextSize: getPresentationTextSize(slide.bodyTextSize),
+          mediaMode: getPresentationSlideMode(slide.mediaMode),
+          mediaType: getPresentationMediaType(slide.mediaType),
+          mediaUrl: slide.mediaUrl || null,
+          mediaName: slide.mediaName || null,
           lyricActiveLineIndex: Math.max(
             0,
             Math.floor(Number(slide.lyricActiveLineIndex) || 0),

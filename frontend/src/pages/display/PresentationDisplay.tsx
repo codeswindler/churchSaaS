@@ -28,6 +28,33 @@ function slideStyleClassNames(slide: PresentationSlide) {
     .join(' ');
 }
 
+function DisplaySlideMedia({ slide }: { slide: PresentationSlide }) {
+  if (slide.mediaMode !== 'media' || !slide.mediaUrl) {
+    return null;
+  }
+
+  if (slide.mediaType === 'video') {
+    return (
+      <video
+        autoPlay
+        className="presentation-display-media"
+        loop
+        muted
+        playsInline
+        src={slide.mediaUrl}
+      />
+    );
+  }
+
+  return (
+    <img
+      alt={slide.mediaName || slide.title || ''}
+      className="presentation-display-media"
+      src={slide.mediaUrl}
+    />
+  );
+}
+
 function useTransitionSlides(slide: PresentationSlide) {
   const [previousSlide, setPreviousSlide] = useState<PresentationSlide | null>(null);
   const [activeSlide, setActiveSlide] = useState(slide);
@@ -94,13 +121,20 @@ function DisplaySlideLayer({
           src={background.imageUrl}
         />
       ) : null}
-      <div className="presentation-display-frame">
+      <div
+        className={`presentation-display-frame ${
+          slide.mediaMode === 'media' ? 'presentation-display-frame-media' : ''
+        }`}
+      >
         {!isLive ? (
           <section className="presentation-display-paused">
             <Pause size={64} />
             <h1>Output paused</h1>
           </section>
-        ) : slide.kind === 'blank' ? null : (
+        ) : slide.kind === 'blank' ? null : slide.mediaMode === 'media' &&
+          slide.mediaUrl ? (
+          <DisplaySlideMedia slide={slide} />
+        ) : (
           <section className="presentation-display-content">
             <p className="presentation-display-kind">
               {getPresentationSlideKindLabel(slide)}

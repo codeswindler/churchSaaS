@@ -88,6 +88,21 @@ export class ChurchController {
     return this.churchService.uploadCongregationImage(req.user.churchId, image);
   }
 
+  @Post('presentation/media')
+  @UseInterceptors(
+    FileInterceptor('media', {
+      limits: { fileSize: 80 * 1024 * 1024 },
+    }),
+  )
+  @Permissions(ChurchPermission.PRESENTATION_MANAGE)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.SECRETARY, ChurchUserRole.MEDIA)
+  uploadPresentationMedia(
+    @Request() req: any,
+    @UploadedFile() media: any,
+  ) {
+    return this.churchService.uploadPresentationMedia(req.user.churchId, media);
+  }
+
   @Get('fund-accounts')
   @Permissions(ChurchPermission.FUND_ACCOUNTS_VIEW)
   @Roles(

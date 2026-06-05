@@ -873,6 +873,57 @@ export class ChurchService {
     };
   }
 
+  async uploadPresentationMedia(churchId: string, file: any) {
+    if (!file) {
+      throw new BadRequestException('Media file is required');
+    }
+
+    const extensionByMime: Record<string, string> = {
+      'image/jpeg': '.jpg',
+      'image/png': '.png',
+      'image/webp': '.webp',
+      'video/mp4': '.mp4',
+      'video/webm': '.webm',
+    };
+    const extension =
+      extensionByMime[file.mimetype] || extname(file.originalname || '');
+    const normalizedExtension = extension.toLowerCase();
+    const mediaType = ['.mp4', '.webm'].includes(normalizedExtension)
+      ? 'video'
+      : 'image';
+
+    if (
+      !['.jpg', '.jpeg', '.png', '.webp', '.mp4', '.webm'].includes(
+        normalizedExtension,
+      )
+    ) {
+      throw new BadRequestException('Upload a JPG, PNG, WEBP, MP4, or WEBM file');
+    }
+
+    if (Number(file.size || 0) > 80 * 1024 * 1024) {
+      throw new BadRequestException('Presentation media must be 80MB or smaller');
+    }
+
+    const uploadRoot =
+      process.env.UPLOAD_ROOT || join(process.cwd(), 'uploads');
+    const relativeDir = join('presentations', churchId);
+    const absoluteDir = join(uploadRoot, relativeDir);
+
+    if (!existsSync(absoluteDir)) {
+      mkdirSync(absoluteDir, { recursive: true });
+    }
+
+    const filename = `${Date.now()}-${randomUUID()}${normalizedExtension}`;
+    const absolutePath = join(absoluteDir, filename);
+    writeFileSync(absolutePath, file.buffer);
+
+    return {
+      mediaName: file.originalname || filename,
+      mediaType,
+      mediaUrl: `/api/uploads/${relativeDir.replace(/\\/g, '/')}/${filename}`,
+    };
+  }
+
   private buildDefaultCongregationPage(church: Church) {
     return this.congregationPageRepo.create({
       churchId: church.id,
