@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { X } from 'lucide-react';
+import { Send, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -104,8 +104,18 @@ export default function ChurchUsers() {
       const response = await api.post('/church/users', form);
       return response.data;
     },
-    onSuccess: () => {
-      toast.success(editingId ? 'User updated' : 'User created');
+    onSuccess: (data: any) => {
+      if (editingId) {
+        toast.success('User updated');
+      } else if (data?.credentialsSmsSent) {
+        toast.success('User created and login SMS sent');
+      } else {
+        toast.success('User created');
+        toast(
+          data?.credentialsSmsError ||
+            'Login SMS was not sent. You can resend it from the staff list.',
+        );
+      }
       setEditingId(null);
       setIsEditorOpen(false);
       setForm(initialForm);
@@ -113,6 +123,25 @@ export default function ChurchUsers() {
     },
     onError: (error: any) => {
       toast.error(error?.response?.data?.message || 'Unable to save user');
+    },
+  });
+
+  const resendCredentialsMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const response = await api.post(
+        `/church/users/${userId}/resend-credentials`,
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      toast.success('Login credentials sent by SMS');
+      queryClient.invalidateQueries({ queryKey: ['church-users'] });
+      queryClient.invalidateQueries({ queryKey: ['church-messaging-outbox'] });
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message || 'Unable to send credentials SMS',
+      );
     },
   });
 
@@ -244,26 +273,47 @@ export default function ChurchUsers() {
                       {user.isActive ? 'Active' : 'Inactive'}
                     </td>
                     <td data-label="Actions">
-                      <button
-                        className="btn-secondary px-3 py-2"
-                        type="button"
-                        onClick={() => {
-                          setEditingId(user.id);
-                          setForm({
-                            name: user.name,
-                            email: user.email,
-                            username: user.username || '',
-                            phone: user.phone || '',
-                            password: '',
-                            role: user.role,
-                            permissionOverrides: user.permissionOverrides || [],
-                            isActive: user.isActive,
-                          });
-                          setIsEditorOpen(true);
-                        }}
-                      >
-                        Edit
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          className="btn-secondary px-3 py-2"
+                          type="button"
+                          onClick={() => {
+                            setEditingId(user.id);
+                            setForm({
+                              name: user.name,
+                              email: user.email,
+                              username: user.username || '',
+                              phone: user.phone || '',
+                              password: '',
+                              role: user.role,
+                              permissionOverrides:
+                                user.permissionOverrides || [],
+                              isActive: user.isActive,
+                            });
+                            setIsEditorOpen(true);
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn-secondary px-3 py-2"
+                          disabled={
+                            !user.phone || resendCredentialsMutation.isPending
+                          }
+                          title={
+                            user.phone
+                              ? 'Send login credentials by SMS'
+                              : 'Add a phone number before sending credentials'
+                          }
+                          type="button"
+                          onClick={() =>
+                            resendCredentialsMutation.mutate(user.id)
+                          }
+                        >
+                          <Send size={14} />
+                          Send login SMS
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

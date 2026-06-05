@@ -4,6 +4,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { AppShell } from './layouts/AppShell';
 import ChurchSignup from './pages/auth/ChurchSignup';
 import Login from './pages/auth/Login';
+import ChurchAccessHome from './pages/church/AccessHome';
 import ChurchContributions from './pages/church/Contributions';
 import ChurchCongregation from './pages/church/Congregation';
 import ChurchDashboard from './pages/church/Dashboard';
@@ -31,6 +32,13 @@ function PublicEntry() {
   }
 
   return <Login />;
+}
+
+function ChurchIndexRedirect() {
+  const session = getSession();
+  return (
+    <Navigate to={getPortalPath(session?.user, '/church/access')} replace />
+  );
 }
 
 export default function App() {
@@ -68,13 +76,63 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route path="dashboard" element={<ChurchDashboard />} />
-        <Route path="fund-accounts" element={<ChurchFundAccounts />} />
-        <Route path="contributions" element={<ChurchContributions />} />
-        <Route path="congregation" element={<ChurchCongregation />} />
-        <Route path="messaging" element={<ChurchMessaging />} />
-        <Route path="users" element={<ChurchUsers />} />
-        <Route path="reports" element={<ChurchReports />} />
+        <Route path="access" element={<ChurchAccessHome />} />
+        <Route
+          path="dashboard"
+          element={
+            <ChurchPermissionRoute permission="dashboard.view">
+              <ChurchDashboard />
+            </ChurchPermissionRoute>
+          }
+        />
+        <Route
+          path="fund-accounts"
+          element={
+            <ChurchPermissionRoute permission="fundAccounts.view">
+              <ChurchFundAccounts />
+            </ChurchPermissionRoute>
+          }
+        />
+        <Route
+          path="contributions"
+          element={
+            <ChurchPermissionRoute permission="contributions.view">
+              <ChurchContributions />
+            </ChurchPermissionRoute>
+          }
+        />
+        <Route
+          path="congregation"
+          element={
+            <ChurchPermissionRoute permission="congregation.manage">
+              <ChurchCongregation />
+            </ChurchPermissionRoute>
+          }
+        />
+        <Route
+          path="messaging"
+          element={
+            <ChurchPermissionRoute permission="messaging.view">
+              <ChurchMessaging />
+            </ChurchPermissionRoute>
+          }
+        />
+        <Route
+          path="users"
+          element={
+            <ChurchPermissionRoute permission="users.view">
+              <ChurchUsers />
+            </ChurchPermissionRoute>
+          }
+        />
+        <Route
+          path="reports"
+          element={
+            <ChurchPermissionRoute permission="reports.view">
+              <ChurchReports />
+            </ChurchPermissionRoute>
+          }
+        />
         <Route
           path="presentation"
           element={
@@ -83,7 +141,7 @@ export default function App() {
             </ChurchPermissionRoute>
           }
         />
-        <Route index element={<Navigate to="/church/dashboard" replace />} />
+        <Route index element={<ChurchIndexRedirect />} />
       </Route>
     </Routes>
   );

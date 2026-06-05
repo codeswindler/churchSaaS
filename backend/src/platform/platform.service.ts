@@ -183,6 +183,11 @@ export class PlatformService {
         isActive: true,
       }),
     );
+    const adminCredentialsSms = await this.sendChurchUserCredentialsSms(
+      church,
+      adminUser,
+      `${body.adminPassword}`,
+    );
 
     let subscription: any = null;
     if (billingModel === ChurchBillingModel.SUBSCRIPTION) {
@@ -205,8 +210,13 @@ export class PlatformService {
         id: adminUser.id,
         name: adminUser.name,
         email: adminUser.email,
+        phone: adminUser.phone,
         role: adminUser.role,
+        credentialsSmsSent: adminCredentialsSms.sent,
+        credentialsSmsError: adminCredentialsSms.error,
       },
+      adminCredentialsSmsSent: adminCredentialsSms.sent,
+      adminCredentialsSmsError: adminCredentialsSms.error,
       subscription,
     };
   }
@@ -356,7 +366,7 @@ export class PlatformService {
   }
 
   async createChurchUser(churchId: string, body: any) {
-    await this.ensureChurchExists(churchId);
+    const church = await this.ensureChurchExists(churchId);
 
     const name = this.normalizeOptionalText(body.name);
     const email = this.normalizeOptionalEmail(body.email);
@@ -400,7 +410,17 @@ export class PlatformService {
     });
 
     const saved = await this.churchUserRepo.save(user);
-    return this.sanitizeChurchUser(saved);
+    const credentialsSms = await this.sendChurchUserCredentialsSms(
+      church,
+      saved,
+      password,
+    );
+
+    return {
+      ...this.sanitizeChurchUser(saved),
+      credentialsSmsSent: credentialsSms.sent,
+      credentialsSmsError: credentialsSms.error,
+    };
   }
 
   async updateChurchUser(churchId: string, userId: string, body: any) {
@@ -504,27 +524,16 @@ export class PlatformService {
     }
 
     const temporaryPassword = this.generateTemporaryPassword();
-    const login = user.username || user.email;
-    const message = [
-      `Church SaaS login for ${church.name}.`,
-      `Login: ${login}`,
-      `Password: ${temporaryPassword}`,
-      'Please sign in and change your password.',
-    ].join(' ');
-
-    const sent = await this.smsService.sendSms(
-      user.phone,
-      message,
-      await this.smsService.resolveSystemSmsConfig(church.id),
-      {
-        messageType: SmsMessageType.SYSTEM,
-        recipientName: `Church user: ${user.name}`,
-      },
+    const credentialsSms = await this.sendChurchUserCredentialsSms(
+      church,
+      user,
+      temporaryPassword,
     );
 
-    if (!sent) {
+    if (!credentialsSms.sent) {
       throw new BadRequestException(
-        'Unable to send credentials SMS. Check the platform SMS outbox for the provider error.',
+        credentialsSms.error ||
+          'Unable to send credentials SMS. Check the platform SMS outbox for the provider error.',
       );
     }
 
@@ -1474,6 +1483,43 @@ export class PlatformService {
   private sanitizeChurchUser(user: ChurchUser) {
     const { passwordHash, ...result } = user;
     return result;
+  }
+
+  private async sendChurchUserCredentialsSms(
+    church: Church,
+    user: ChurchUser,
+    password: string,
+  ) {
+    if (!user.phone) {
+      return {
+        sent: false,
+        error: 'No phone number is saved for this church user.',
+      };
+    }
+
+    const login = user.username || user.email;
+    const message = [
+      `Church SaaS login for ${church.name}.`,
+      `Login: ${login}`,
+      `Password: ${password}`,
+      'Please sign in and change your password.',
+    ].join(' ');
+    const sent = await this.smsService.sendSms(
+      user.phone,
+      message,
+      await this.smsService.resolveSystemSmsConfig(church.id),
+      {
+        messageType: SmsMessageType.SYSTEM,
+        recipientName: `Church user: ${user.name}`,
+      },
+    );
+
+    return {
+      sent,
+      error: sent
+        ? null
+        : 'Unable to send credentials SMS. Check the platform SMS outbox for the provider error.',
+    };
   }
 
   private generateTemporaryPassword() {

@@ -21,6 +21,115 @@ export interface StoredSession {
   subscription?: any;
 }
 
+const rolePermissionPresets: Record<string, string[]> = {
+  priest: [
+    'dashboard.view',
+    'contributions.view',
+    'contributions.record',
+    'reports.view',
+    'reports.export',
+    'fundAccounts.view',
+    'fundAccounts.manage',
+    'contributors.view',
+    'contributors.tag',
+    'messaging.view',
+    'messaging.send',
+    'outbox.view',
+    'congregation.manage',
+    'presentation.manage',
+    'users.view',
+    'users.manage',
+  ],
+  treasurer: [
+    'dashboard.view',
+    'contributions.view',
+    'contributions.record',
+    'reports.view',
+    'reports.export',
+    'contributors.view',
+    'contributors.tag',
+    'outbox.view',
+  ],
+  secretary: [
+    'dashboard.view',
+    'fundAccounts.view',
+    'fundAccounts.manage',
+    'contributors.view',
+    'contributors.tag',
+    'messaging.view',
+    'messaging.send',
+    'outbox.view',
+    'congregation.manage',
+  ],
+  media: ['presentation.manage'],
+};
+
+const permissionFeatureMap: Record<string, string | null> = {
+  'dashboard.view': 'finance',
+  'contributions.view': 'finance',
+  'contributions.record': 'finance',
+  'reports.view': 'finance',
+  'reports.export': 'finance',
+  'fundAccounts.view': 'fund_accounts',
+  'fundAccounts.manage': 'fund_accounts',
+  'contributors.view': 'messaging',
+  'contributors.tag': 'messaging',
+  'messaging.view': 'messaging',
+  'messaging.send': 'messaging',
+  'outbox.view': 'messaging',
+  'congregation.manage': 'messaging',
+  'presentation.manage': null,
+  'users.view': 'staff_management',
+  'users.manage': 'staff_management',
+};
+
+function normalizeChurchRole(role?: string | null) {
+  if (role === 'church_admin') return 'priest';
+  if (role === 'cashier') return 'treasurer';
+  if (
+    role === 'priest' ||
+    role === 'treasurer' ||
+    role === 'secretary' ||
+    role === 'media'
+  ) {
+    return role;
+  }
+  return 'treasurer';
+}
+
+export function getChurchUserPermissions(
+  user?: StoredSession['user'] | null,
+) {
+  if (!user || user.userType !== 'church') {
+    return [];
+  }
+
+  const providedPermissions = Array.isArray(user.permissions)
+    ? user.permissions
+    : [];
+  const permissions =
+    providedPermissions.length > 0
+      ? providedPermissions
+      : rolePermissionPresets[normalizeChurchRole(user.role)] || [];
+  const enabledFeatures = new Set(user.enabledFeatures || []);
+
+  return permissions.filter((permission) => {
+    const requiredFeature = permissionFeatureMap[permission];
+    return (
+      !requiredFeature ||
+      enabledFeatures.size === 0 ||
+      enabledFeatures.has(requiredFeature)
+    );
+  });
+}
+
+export function hasChurchPermission(
+  user: StoredSession['user'] | null | undefined,
+  permission: string,
+) {
+  return getChurchUserPermissions(user).includes(permission);
+}
+
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: {
@@ -72,8 +181,8 @@ export function getPortalPath(
     return '/platform/dashboard';
   }
 
-  const permissions = new Set(user.permissions || []);
-  if (permissions.size === 0 || permissions.has('dashboard.view')) {
+  const permissions = new Set(getChurchUserPermissions(user));
+  if (permissions.has('dashboard.view')) {
     return '/church/dashboard';
   }
   if (permissions.has('presentation.manage')) {
@@ -95,7 +204,7 @@ export function getPortalPath(
     return '/church/reports';
   }
 
-  return '/church/presentation';
+  return '/church/access';
 }
 
 export function saveSession(payload: any) {

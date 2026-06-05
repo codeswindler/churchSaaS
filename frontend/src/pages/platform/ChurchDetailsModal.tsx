@@ -171,8 +171,18 @@ export default function ChurchDetailsModal({
       );
       return response.data;
     },
-    onSuccess: () => {
-      toast.success(editingUserId ? 'Church user updated' : 'Church user created');
+    onSuccess: (data: any) => {
+      if (editingUserId) {
+        toast.success('Church user updated');
+      } else if (data?.credentialsSmsSent) {
+        toast.success('Church user created and login SMS sent');
+      } else {
+        toast.success('Church user created');
+        toast(
+          data?.credentialsSmsError ||
+            'Login SMS was not sent. Use Send login SMS from the users list.',
+        );
+      }
       resetStaffEditor();
       queryClient.invalidateQueries({
         queryKey: ['platform-church-users', churchId],

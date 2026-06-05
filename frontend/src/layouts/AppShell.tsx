@@ -26,6 +26,7 @@ import { BrandLogo } from '../components/BrandLogo';
 import { CountdownBadge } from '../components/CountdownBadge';
 import api, {
   clearSession,
+  getChurchUserPermissions,
   getSession,
   updateSessionProfile,
 } from '../services/api';
@@ -135,6 +136,11 @@ const pageMeta = {
   ],
   church: [
     {
+      prefix: '/church/access',
+      title: 'Workspace access',
+      variant: 'compact',
+    },
+    {
       prefix: '/church/dashboard',
       title: 'Church finance operations',
       eyebrow: 'Business System',
@@ -219,16 +225,16 @@ export function AppShell({ userType }: AppShellProps) {
 
   const currentUser = profile || session?.user;
   const permissionSet = new Set<string>(
-    currentUser?.permissions || session?.user?.permissions || [],
+    userType === 'church'
+      ? getChurchUserPermissions(currentUser || session?.user)
+      : currentUser?.permissions || session?.user?.permissions || [],
   );
   const links =
     userType === 'platform'
       ? platformLinks
       : churchLinks.filter(
           (link) =>
-            permissionSet.size === 0 ||
-            !link.permission ||
-            permissionSet.has(link.permission),
+            !link.permission || permissionSet.has(link.permission),
         );
   const organizationName =
     userType === 'platform'

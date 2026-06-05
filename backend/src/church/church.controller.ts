@@ -146,6 +146,19 @@ export class ChurchController {
     return this.churchService.updateChurchUser(req.user.churchId, userId, body);
   }
 
+  @Post('users/:userId/resend-credentials')
+  @Permissions(ChurchPermission.USERS_MANAGE)
+  @Roles(ChurchUserRole.PRIEST)
+  resendUserCredentials(
+    @Request() req: any,
+    @Param('userId') userId: string,
+  ) {
+    return this.churchService.resendChurchUserCredentials(
+      req.user.churchId,
+      userId,
+    );
+  }
+
   @Get('contributions')
   @Permissions(ChurchPermission.CONTRIBUTIONS_VIEW)
   @Roles(

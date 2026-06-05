@@ -34,6 +34,7 @@ import { Contributor } from '../entities/contributor.entity';
 import { FundAccount } from '../entities/fund-account.entity';
 import { SmsAddressBookContact } from '../entities/sms-address-book-contact.entity';
 import { SmsAddressBook } from '../entities/sms-address-book.entity';
+import { SmsMessageType } from '../entities/sms-outbox.entity';
 import { SmsService } from '../sms/sms.service';
 import { ChurchSubscriptionsService } from '../subscriptions/church-subscriptions.service';
 
@@ -304,8 +305,17 @@ export class ChurchService {
     });
 
     const saved = await this.churchUserRepo.save(user);
-    const { passwordHash, ...result } = saved;
-    return result;
+    const credentialsSms = await this.sendChurchUserCredentialsSms(
+      churchId,
+      saved,
+      `${body.password}`,
+    );
+
+    return {
+      ...this.sanitizeChurchUser(saved),
+      credentialsSmsSent: credentialsSms.sent,
+      credentialsSmsError: credentialsSms.error,
+    };
   }
 
   async updateChurchUser(churchId: string, userId: string, body: any) {
@@ -367,8 +377,40 @@ export class ChurchService {
     }
 
     const saved = await this.churchUserRepo.save(user);
-    const { passwordHash, ...result } = saved;
-    return result;
+    return this.sanitizeChurchUser(saved);
+  }
+
+  async resendChurchUserCredentials(churchId: string, userId: string) {
+    const user = await this.churchUserRepo.findOne({
+      where: { id: userId, churchId },
+    });
+    if (!user) {
+      throw new NotFoundException('Church user not found');
+    }
+    if (!user.phone) {
+      throw new BadRequestException('This church user has no phone number');
+    }
+
+    const temporaryPassword = this.generateTemporaryPassword();
+    const credentialsSms = await this.sendChurchUserCredentialsSms(
+      churchId,
+      user,
+      temporaryPassword,
+    );
+    if (!credentialsSms.sent) {
+      throw new BadRequestException(
+        credentialsSms.error ||
+          'Unable to send credentials SMS. Check the SMS outbox for the provider error.',
+      );
+    }
+
+    user.passwordHash = await bcrypt.hash(temporaryPassword, 10);
+    await this.churchUserRepo.save(user);
+
+    return {
+      sent: true,
+      user: this.sanitizeChurchUser(user),
+    };
   }
 
   async listContributions(churchId: string, query: any) {
@@ -1077,6 +1119,62 @@ export class ChurchService {
       );
     }
     return template;
+  }
+
+  private sanitizeChurchUser(user: ChurchUser) {
+    const { passwordHash, ...result } = user;
+    return result;
+  }
+
+  private generateTemporaryPassword() {
+    const first = Math.random().toString(36).slice(2, 6).toUpperCase();
+    const second = Math.random().toString(36).slice(2, 6).toUpperCase();
+    return `CS-${first}-${second}`;
+  }
+
+  private async sendChurchUserCredentialsSms(
+    churchId: string,
+    user: ChurchUser,
+    password: string,
+  ) {
+    if (!user.phone) {
+      return {
+        sent: false,
+        error: 'No phone number is saved for this church user.',
+      };
+    }
+
+    const church = await this.churchRepo.findOne({ where: { id: churchId } });
+    if (!church) {
+      return {
+        sent: false,
+        error: 'Church not found.',
+      };
+    }
+
+    const login = user.username || user.email;
+    const message = [
+      `Church SaaS login for ${church.name}.`,
+      `Login: ${login}`,
+      `Password: ${password}`,
+      'Please sign in and change your password.',
+    ].join(' ');
+    const sent = await this.smsService.sendSms(
+      user.phone,
+      message,
+      await this.smsService.resolveSystemSmsConfig(church.id),
+      {
+        messageType: SmsMessageType.SYSTEM,
+        recipientName: `Church user: ${user.name}`,
+      },
+    );
+
+    return {
+      sent,
+      error: sent
+        ? null
+        : 'Unable to send credentials SMS. Check the SMS outbox for the provider error.',
+    };
   }
 
   private slugify(value: string) {
