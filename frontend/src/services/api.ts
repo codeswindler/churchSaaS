@@ -68,9 +68,34 @@ export function getPortalPath(
     return fallback;
   }
 
-  return user.userType === 'platform'
-    ? '/platform/dashboard'
-    : '/church/dashboard';
+  if (user.userType === 'platform') {
+    return '/platform/dashboard';
+  }
+
+  const permissions = new Set(user.permissions || []);
+  if (permissions.size === 0 || permissions.has('dashboard.view')) {
+    return '/church/dashboard';
+  }
+  if (permissions.has('presentation.manage')) {
+    return '/church/presentation';
+  }
+  if (permissions.has('fundAccounts.view')) {
+    return '/church/fund-accounts';
+  }
+  if (permissions.has('contributions.view')) {
+    return '/church/contributions';
+  }
+  if (permissions.has('messaging.view')) {
+    return '/church/messaging';
+  }
+  if (permissions.has('users.view')) {
+    return '/church/users';
+  }
+  if (permissions.has('reports.view')) {
+    return '/church/reports';
+  }
+
+  return '/church/presentation';
 }
 
 export function saveSession(payload: any) {

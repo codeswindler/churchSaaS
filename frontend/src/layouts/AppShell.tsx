@@ -93,6 +93,7 @@ const churchLinks = [
     to: '/church/presentation',
     label: 'Presentation',
     icon: MonitorPlay,
+    permission: 'presentation.manage',
   },
 ];
 

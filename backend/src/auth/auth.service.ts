@@ -262,10 +262,14 @@ export class AuthService {
     const permissions = resolveChurchPermissions(
       user.role,
       user.permissionOverrides,
-    ).filter((permission) =>
-      permission === ChurchPermission.DASHBOARD_VIEW ||
-      enabledFeatures.includes(PERMISSION_FEATURE_MAP[permission]),
-    );
+    ).filter((permission) => {
+      const requiredFeature = PERMISSION_FEATURE_MAP[permission];
+      return (
+        permission === ChurchPermission.DASHBOARD_VIEW ||
+        !requiredFeature ||
+        enabledFeatures.includes(requiredFeature)
+      );
+    });
 
     return {
       enabledFeatures,

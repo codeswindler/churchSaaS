@@ -43,6 +43,11 @@ const roleOptions = [
     label: 'Secretary',
     description: 'Bulk messaging, contributors, and fund account setup.',
   },
+  {
+    value: 'media',
+    label: 'Media',
+    description: 'Presentation control for screens and worship slides.',
+  },
 ];
 
 const permissionOptions = [
@@ -59,6 +64,7 @@ const permissionOptions = [
   ['messaging.send', 'Send bulk messages'],
   ['outbox.view', 'View outbox'],
   ['congregation.manage', 'Manage sermons & announcements'],
+  ['presentation.manage', 'Manage presentation'],
   ['users.view', 'View staff users'],
   ['users.manage', 'Manage staff users'],
 ] as const;
@@ -86,6 +92,7 @@ const rolePermissionPresets: Record<string, string[]> = {
     'outbox.view',
     'congregation.manage',
   ],
+  media: ['presentation.manage'],
 };
 
 function createInitialStaffForm() {

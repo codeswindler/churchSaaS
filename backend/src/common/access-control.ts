@@ -19,6 +19,7 @@ export enum ChurchPermission {
   MESSAGING_SEND = 'messaging.send',
   OUTBOX_VIEW = 'outbox.view',
   CONGREGATION_PAGE_MANAGE = 'congregation.manage',
+  PRESENTATION_MANAGE = 'presentation.manage',
   USERS_VIEW = 'users.view',
   USERS_MANAGE = 'users.manage',
 }
@@ -53,9 +54,13 @@ export const ROLE_PERMISSION_PRESETS: Record<string, ChurchPermission[]> = {
     ChurchPermission.OUTBOX_VIEW,
     ChurchPermission.CONGREGATION_PAGE_MANAGE,
   ],
+  media: [ChurchPermission.PRESENTATION_MANAGE],
 };
 
-export const PERMISSION_FEATURE_MAP: Record<ChurchPermission, ChurchFeature> = {
+export const PERMISSION_FEATURE_MAP: Record<
+  ChurchPermission,
+  ChurchFeature | null
+> = {
   [ChurchPermission.DASHBOARD_VIEW]: ChurchFeature.FINANCE,
   [ChurchPermission.CONTRIBUTIONS_VIEW]: ChurchFeature.FINANCE,
   [ChurchPermission.CONTRIBUTIONS_RECORD]: ChurchFeature.FINANCE,
@@ -69,6 +74,7 @@ export const PERMISSION_FEATURE_MAP: Record<ChurchPermission, ChurchFeature> = {
   [ChurchPermission.MESSAGING_SEND]: ChurchFeature.MESSAGING,
   [ChurchPermission.OUTBOX_VIEW]: ChurchFeature.MESSAGING,
   [ChurchPermission.CONGREGATION_PAGE_MANAGE]: ChurchFeature.MESSAGING,
+  [ChurchPermission.PRESENTATION_MANAGE]: null,
   [ChurchPermission.USERS_VIEW]: ChurchFeature.STAFF_MANAGEMENT,
   [ChurchPermission.USERS_MANAGE]: ChurchFeature.STAFF_MANAGEMENT,
 };
@@ -76,7 +82,12 @@ export const PERMISSION_FEATURE_MAP: Record<ChurchPermission, ChurchFeature> = {
 export function normalizeChurchRole(role?: string | null) {
   if (role === 'church_admin') return 'priest';
   if (role === 'cashier') return 'treasurer';
-  if (role === 'priest' || role === 'treasurer' || role === 'secretary') {
+  if (
+    role === 'priest' ||
+    role === 'treasurer' ||
+    role === 'secretary' ||
+    role === 'media'
+  ) {
     return role;
   }
   return 'treasurer';
@@ -119,6 +130,9 @@ export function hasEffectiveChurchPermission(
   const requiredFeature = PERMISSION_FEATURE_MAP[permission];
   if (permission === ChurchPermission.DASHBOARD_VIEW) {
     return permissions.includes(permission) && features.length > 0;
+  }
+  if (!requiredFeature) {
+    return permissions.includes(permission);
   }
 
   return permissions.includes(permission) && features.includes(requiredFeature);

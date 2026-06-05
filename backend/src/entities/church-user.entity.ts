@@ -13,6 +13,7 @@ export enum ChurchUserRole {
   PRIEST = 'priest',
   TREASURER = 'treasurer',
   SECRETARY = 'secretary',
+  MEDIA = 'media',
 }
 
 @Entity('church_users')

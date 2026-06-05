@@ -31,6 +31,11 @@ const roleOptions = [
     label: 'Secretary',
     description: 'Bulk messaging, contributors, and fund account setup.',
   },
+  {
+    value: 'media',
+    label: 'Media',
+    description: 'Presentation control for screens and worship slides.',
+  },
 ];
 
 const permissionOptions = [
@@ -47,6 +52,7 @@ const permissionOptions = [
   ['messaging.send', 'Send bulk messages'],
   ['outbox.view', 'View outbox'],
   ['congregation.manage', 'Manage sermons & announcements'],
+  ['presentation.manage', 'Manage presentation'],
   ['users.view', 'View staff users'],
   ['users.manage', 'Manage staff users'],
 ] as const;
@@ -74,6 +80,7 @@ const rolePermissionPresets: Record<string, string[]> = {
     'outbox.view',
     'congregation.manage',
   ],
+  media: ['presentation.manage'],
 };
 
 export default function ChurchUsers() {
@@ -194,9 +201,9 @@ export default function ChurchUsers() {
                 Internal user list
               </h3>
               <p className="mt-2 max-w-2xl text-sm text-stone-300">
-                Keep the three church staff categories organized: Priest,
-                Treasurer, and Secretary. Add permission overrides only where a
-                user needs access beyond their role preset.
+                Keep church staff categories organized: Priest, Treasurer,
+                Secretary, and Media. Add permission overrides only where a user
+                needs access beyond their role preset.
               </p>
             </div>
 

@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { ChurchPermissionRoute } from './components/ChurchPermissionRoute';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AppShell } from './layouts/AppShell';
 import ChurchSignup from './pages/auth/ChurchSignup';
@@ -74,7 +75,14 @@ export default function App() {
         <Route path="messaging" element={<ChurchMessaging />} />
         <Route path="users" element={<ChurchUsers />} />
         <Route path="reports" element={<ChurchReports />} />
-        <Route path="presentation" element={<ChurchPresentation />} />
+        <Route
+          path="presentation"
+          element={
+            <ChurchPermissionRoute permission="presentation.manage">
+              <ChurchPresentation />
+            </ChurchPermissionRoute>
+          }
+        />
         <Route index element={<Navigate to="/church/dashboard" replace />} />
       </Route>
     </Routes>
