@@ -1047,6 +1047,19 @@ textarea {
   line-height: 0.98;
 }
 
+.presentation-display-content-song {
+  display: flex;
+  min-height: min(74vh, 820px);
+  flex-direction: column;
+  justify-content: center;
+}
+
+.presentation-display-content-song h1 {
+  margin-top: clamp(0.45rem, 1vw, 0.9rem);
+  font-size: clamp(1.8rem, 3.2vw, 4rem);
+  line-height: 1.06;
+}
+
 .presentation-display-body {
   margin-top: clamp(1.5rem, 3vw, 3rem);
   color: var(--presentation-fg);
@@ -1061,9 +1074,9 @@ textarea {
 
 .presentation-display-lyrics {
   position: relative;
-  margin-top: clamp(1.5rem, 3vw, 3rem);
+  margin-top: clamp(1rem, 2vw, 2rem);
   display: grid;
-  max-height: min(58vh, 760px);
+  max-height: min(66vh, 780px);
   gap: clamp(0.45rem, 1vw, 1rem);
   overflow: hidden;
   color: var(--presentation-muted);

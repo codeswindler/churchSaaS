@@ -123,6 +123,35 @@ const textSizeOptions: Array<{
   { value: 'huge', label: 'Huge' },
 ];
 
+const PRESENTATION_UPLOAD_LIMIT_BYTES = 5 * 1024 * 1024;
+const backgroundImageTypes = ['image/jpeg', 'image/png', 'image/webp'];
+const slideMediaTypes = [
+  ...backgroundImageTypes,
+  'video/mp4',
+  'video/webm',
+];
+
+function formatUploadSize(bytes: number) {
+  return `${Math.ceil(bytes / (1024 * 1024))}MB`;
+}
+
+function validateUploadFile(
+  file: File | undefined,
+  allowedTypes: string[],
+  label: string,
+) {
+  if (!file) return false;
+  if (!allowedTypes.includes(file.type)) {
+    toast.error(`${label} must be JPG, PNG, WEBP${allowedTypes.includes('video/mp4') ? ', MP4, or WEBM' : ''}`);
+    return false;
+  }
+  if (file.size > PRESENTATION_UPLOAD_LIMIT_BYTES) {
+    toast.error(`${label} must be 5MB or smaller. This file is ${formatUploadSize(file.size)}.`);
+    return false;
+  }
+  return true;
+}
+
 function slideStyleClassNames(slide: PresentationSlide) {
   return [
     slide.bodyTextBold !== false ? 'presentation-body-bold' : '',
@@ -576,7 +605,7 @@ export default function ChurchPresentation() {
   };
 
   const uploadPresentationBackground = async (file?: File) => {
-    if (!file) return;
+    if (!validateUploadFile(file, backgroundImageTypes, 'Background image')) return;
 
     const payload = new FormData();
     payload.append('image', file);
@@ -605,7 +634,7 @@ export default function ChurchPresentation() {
   };
 
   const uploadPresentationSlideMedia = async (file?: File) => {
-    if (!file) return;
+    if (!validateUploadFile(file, slideMediaTypes, 'Designed slide media')) return;
 
     const payload = new FormData();
     payload.append('media', file);
@@ -1152,6 +1181,10 @@ export default function ChurchPresentation() {
                   Speed {(currentSlide.lyricScrollSpeed || 1).toFixed(1)}x
                 </span>
               </div>
+              <p className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">
+                These controls move lyrics inside this song slide. Previous and Next
+                still change slides.
+              </p>
 
               {currentLyricLines.length > 0 ? (
                 <div className="presentation-lyric-line-list mt-4">

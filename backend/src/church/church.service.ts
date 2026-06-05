@@ -900,8 +900,8 @@ export class ChurchService {
       throw new BadRequestException('Upload a JPG, PNG, WEBP, MP4, or WEBM file');
     }
 
-    if (Number(file.size || 0) > 80 * 1024 * 1024) {
-      throw new BadRequestException('Presentation media must be 80MB or smaller');
+    if (Number(file.size || 0) > 5 * 1024 * 1024) {
+      throw new BadRequestException('Presentation media must be 5MB or smaller');
     }
 
     const uploadRoot =

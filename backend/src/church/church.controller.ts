@@ -91,7 +91,7 @@ export class ChurchController {
   @Post('presentation/media')
   @UseInterceptors(
     FileInterceptor('media', {
-      limits: { fileSize: 80 * 1024 * 1024 },
+      limits: { fileSize: 5 * 1024 * 1024 },
     }),
   )
   @Permissions(ChurchPermission.PRESENTATION_MANAGE)

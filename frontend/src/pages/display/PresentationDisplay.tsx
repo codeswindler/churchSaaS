@@ -135,7 +135,11 @@ function DisplaySlideLayer({
           slide.mediaUrl ? (
           <DisplaySlideMedia slide={slide} />
         ) : (
-          <section className="presentation-display-content">
+          <section
+            className={`presentation-display-content ${
+              slide.kind === 'song' ? 'presentation-display-content-song' : ''
+            }`}
+          >
             <p className="presentation-display-kind">
               {getPresentationSlideKindLabel(slide)}
             </p>
