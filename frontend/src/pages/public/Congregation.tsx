@@ -428,6 +428,7 @@ export default function PublicCongregation() {
           <BibleReader
             buttonClassName={bibleButtonClass}
             defaultReference={activeVerse?.reference}
+            defaultVersion={activeVerse?.version}
             inputClassName={bibleInputClass}
             isNightMode={isNightMode}
             labelClassName={bibleLabelClass}

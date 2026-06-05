@@ -1,4 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
+import {
+  fetchYouVersionBibleVersions,
+  fetchYouVersionChapterVerseCount,
+  fetchYouVersionPassage,
+  getYouVersionBibleId,
+  isYouVersionBibleCode,
+  type RemoteBibleVersionOption,
+} from '../services/bible';
 
 export type SelectedBibleVerse = {
   reference: string;
@@ -7,27 +15,21 @@ export type SelectedBibleVerse = {
   versionLabel: string;
 };
 
-export type BibleVersionCode =
-  | 'web'
-  | 'kjv'
-  | 'asv'
-  | 'bbe'
-  | 'darby'
-  | 'dra'
-  | 'webbe';
+export type BibleVersionCode = string;
 
 export const bibleVersions: Array<{
   code: BibleVersionCode;
   label: string;
   lookupCode?: string;
+  source?: 'legacy';
 }> = [
-  { code: 'web', label: 'WEB', lookupCode: 'web' },
-  { code: 'kjv', label: 'KJV', lookupCode: 'kjv' },
-  { code: 'asv', label: 'ASV', lookupCode: 'asv' },
-  { code: 'bbe', label: 'BBE', lookupCode: 'bbe' },
-  { code: 'darby', label: 'Darby', lookupCode: 'darby' },
-  { code: 'dra', label: 'Douay-Rheims', lookupCode: 'dra' },
-  { code: 'webbe', label: 'WEB British', lookupCode: 'webbe' },
+  { code: 'web', label: 'WEB', lookupCode: 'web', source: 'legacy' },
+  { code: 'kjv', label: 'KJV', lookupCode: 'kjv', source: 'legacy' },
+  { code: 'asv', label: 'ASV', lookupCode: 'asv', source: 'legacy' },
+  { code: 'bbe', label: 'BBE', lookupCode: 'bbe', source: 'legacy' },
+  { code: 'darby', label: 'Darby', lookupCode: 'darby', source: 'legacy' },
+  { code: 'dra', label: 'Douay-Rheims', lookupCode: 'dra', source: 'legacy' },
+  { code: 'webbe', label: 'WEB British', lookupCode: 'webbe', source: 'legacy' },
 ];
 
 export const bibleBooks = [
@@ -101,6 +103,75 @@ export const bibleBooks = [
 
 const chapterVerseCountCache = new Map<string, number>();
 
+const bibleBookUsfmIds: Record<string, string> = {
+  Genesis: 'GEN',
+  Exodus: 'EXO',
+  Leviticus: 'LEV',
+  Numbers: 'NUM',
+  Deuteronomy: 'DEU',
+  Joshua: 'JOS',
+  Judges: 'JDG',
+  Ruth: 'RUT',
+  '1 Samuel': '1SA',
+  '2 Samuel': '2SA',
+  '1 Kings': '1KI',
+  '2 Kings': '2KI',
+  '1 Chronicles': '1CH',
+  '2 Chronicles': '2CH',
+  Ezra: 'EZR',
+  Nehemiah: 'NEH',
+  Esther: 'EST',
+  Job: 'JOB',
+  Psalm: 'PSA',
+  Proverbs: 'PRO',
+  Ecclesiastes: 'ECC',
+  'Song of Solomon': 'SNG',
+  Isaiah: 'ISA',
+  Jeremiah: 'JER',
+  Lamentations: 'LAM',
+  Ezekiel: 'EZK',
+  Daniel: 'DAN',
+  Hosea: 'HOS',
+  Joel: 'JOL',
+  Amos: 'AMO',
+  Obadiah: 'OBA',
+  Jonah: 'JON',
+  Micah: 'MIC',
+  Nahum: 'NAM',
+  Habakkuk: 'HAB',
+  Zephaniah: 'ZEP',
+  Haggai: 'HAG',
+  Zechariah: 'ZEC',
+  Malachi: 'MAL',
+  Matthew: 'MAT',
+  Mark: 'MRK',
+  Luke: 'LUK',
+  John: 'JHN',
+  Acts: 'ACT',
+  Romans: 'ROM',
+  '1 Corinthians': '1CO',
+  '2 Corinthians': '2CO',
+  Galatians: 'GAL',
+  Ephesians: 'EPH',
+  Philippians: 'PHP',
+  Colossians: 'COL',
+  '1 Thessalonians': '1TH',
+  '2 Thessalonians': '2TH',
+  '1 Timothy': '1TI',
+  '2 Timothy': '2TI',
+  Titus: 'TIT',
+  Philemon: 'PHM',
+  Hebrews: 'HEB',
+  James: 'JAS',
+  '1 Peter': '1PE',
+  '2 Peter': '2PE',
+  '1 John': '1JN',
+  '2 John': '2JN',
+  '3 John': '3JN',
+  Jude: 'JUD',
+  Revelation: 'REV',
+};
+
 export function getBibleVersionLabel(version?: string | null) {
   return (
     bibleVersions.find((item) => item.code === version)?.label ||
@@ -108,9 +179,16 @@ export function getBibleVersionLabel(version?: string | null) {
   );
 }
 
-function getBibleVersion(version?: string | null) {
+export type BibleVersionOption =
+  | (typeof bibleVersions)[number]
+  | RemoteBibleVersionOption;
+
+export function getBibleVersion(
+  version?: string | null,
+  versions: BibleVersionOption[] = bibleVersions,
+) {
   return (
-    bibleVersions.find((item) => item.code === version) || bibleVersions[0]
+    versions.find((item) => item.code === version) || versions[0] || bibleVersions[0]
   );
 }
 
@@ -170,10 +248,52 @@ export function getBibleChapterCount(book: string) {
   return bibleBooks.find(([name]) => name === book)?.[1] || 1;
 }
 
-async function fetchChapterVerseCount(book: string, chapter: number) {
-  const cacheKey = `${book}:${chapter}:web`;
+export function getBibleBookUsfmId(book: string) {
+  return bibleBookUsfmIds[book] || 'JHN';
+}
+
+function buildYouVersionPassageId(
+  book: string,
+  chapter: number,
+  startVerse: number,
+  endVerse: number,
+) {
+  const bookId = getBibleBookUsfmId(book);
+  const startId = `${bookId}.${chapter}.${startVerse}`;
+  return startVerse === endVerse ? startId : `${startId}-${endVerse}`;
+}
+
+function cleanBibleText(content?: string | null) {
+  return `${content || ''}`
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function fetchChapterVerseCount(
+  book: string,
+  chapter: number,
+  version: BibleVersionCode,
+) {
+  const cacheKey = `${book}:${chapter}:${version}`;
   const cachedCount = chapterVerseCountCache.get(cacheKey);
   if (cachedCount) return cachedCount;
+
+  if (isYouVersionBibleCode(version)) {
+    const verseCount = await fetchYouVersionChapterVerseCount(
+      getYouVersionBibleId(version),
+      getBibleBookUsfmId(book),
+      chapter,
+    );
+
+    if (!verseCount) {
+      throw new Error('Chapter has no verses');
+    }
+
+    chapterVerseCountCache.set(cacheKey, verseCount);
+    return verseCount;
+  }
 
   const response = await fetch(
     `https://thebibleapi.netlify.app/.netlify/functions/getChapter?book=${encodeURIComponent(
@@ -204,6 +324,15 @@ async function fetchVerseRange(
   version: BibleVersionCode,
 ) {
   const bibleVersion = getBibleVersion(version);
+  if (isYouVersionBibleCode(version)) {
+    const passage = await fetchYouVersionPassage(
+      getYouVersionBibleId(version),
+      buildYouVersionPassageId(book, chapter, startVerse, endVerse),
+    );
+
+    return cleanBibleText(passage.content);
+  }
+
   if (!bibleVersion.lookupCode) {
     throw new Error('Translation text lookup is not configured');
   }
@@ -256,6 +385,8 @@ export function BibleSelector({
   );
   const [startVerse, setStartVerse] = useState(parsedReference.startVerse);
   const [endVerse, setEndVerse] = useState(parsedReference.endVerse);
+  const [availableVersions, setAvailableVersions] =
+    useState<BibleVersionOption[]>(bibleVersions);
   const [version, setVersion] = useState<BibleVersionCode>(
     getBibleVersion(defaultVersion).code,
   );
@@ -269,7 +400,34 @@ export function BibleSelector({
     startVerse === endVerse
       ? `${book} ${startChapter}:${startVerse}`
       : `${book} ${startChapter}:${startVerse}-${endVerse}`;
-  const selectedVersion = getBibleVersion(version);
+  const selectedVersion = getBibleVersion(version, availableVersions);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadVersions = async () => {
+      try {
+        const youVersionVersions = await fetchYouVersionBibleVersions();
+        if (!isActive || !youVersionVersions.length) return;
+
+        const nextVersions: BibleVersionOption[] = [
+          ...youVersionVersions,
+          ...bibleVersions,
+        ];
+        setAvailableVersions(nextVersions);
+        setVersion((current) => getBibleVersion(current, nextVersions).code);
+      } catch {
+        if (!isActive) return;
+        setAvailableVersions(bibleVersions);
+      }
+    };
+
+    loadVersions();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   useEffect(() => {
     setBook(parsedReference.book);
@@ -279,8 +437,8 @@ export function BibleSelector({
   }, [parsedReference]);
 
   useEffect(() => {
-    setVersion(getBibleVersion(defaultVersion).code);
-  }, [defaultVersion]);
+    setVersion(getBibleVersion(defaultVersion, availableVersions).code);
+  }, [availableVersions, defaultVersion]);
 
   useEffect(() => {
     let isActive = true;
@@ -293,6 +451,7 @@ export function BibleSelector({
         const nextStartVerseCount = await fetchChapterVerseCount(
           book,
           startChapter,
+          version,
         );
 
         if (!isActive) return;
@@ -319,7 +478,7 @@ export function BibleSelector({
     return () => {
       isActive = false;
     };
-  }, [book, startChapter, startVerse]);
+  }, [book, startChapter, startVerse, version]);
 
   const chapters = Array.from({ length: chapterCount }, (_, index) => index + 1);
   const startVerses = Array.from(
@@ -364,7 +523,7 @@ export function BibleSelector({
 
   return (
     <div className={className}>
-      <div className="grid gap-3 md:grid-cols-[120px_minmax(150px,1.2fr)_96px_96px_96px_auto]">
+      <div className="grid gap-3 md:grid-cols-[minmax(160px,0.9fr)_minmax(150px,1.2fr)_88px_88px_88px_auto]">
         <div>
           <label className={labelClassName}>Version</label>
           <select
@@ -374,7 +533,7 @@ export function BibleSelector({
               setVersion(event.target.value as BibleVersionCode)
             }
           >
-            {bibleVersions.map((bibleVersion) => (
+            {availableVersions.map((bibleVersion) => (
               <option key={bibleVersion.code} value={bibleVersion.code}>
                 {bibleVersion.label}
               </option>

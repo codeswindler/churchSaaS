@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
+import { BibleModule } from './bible/bible.module';
 import { ChurchModule } from './church/church.module';
 import { ContributionsModule } from './contributions/contributions.module';
 import { PaymentsModule } from './payments/payments.module';
@@ -62,6 +63,7 @@ import { SchemaBootstrapService } from './common/schema-bootstrap.service';
     PaymentsModule,
     ChurchSubscriptionsModule,
     ContributionsModule,
+    BibleModule,
     PlatformModule,
     ChurchModule,
     PublicModule,
