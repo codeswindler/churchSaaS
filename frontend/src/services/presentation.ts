@@ -56,7 +56,21 @@ export interface PresentationSong {
   title: string;
   lyrics: string;
   note: string;
+  cueTimings?: PresentationLyricCue[];
+  referenceAudioFrames?: PresentationAudioFrame[];
+  scrollSpeed?: number;
+  referenceAudioName?: string | null;
   updatedAt: string;
+}
+
+export interface PresentationLyricCue {
+  lineIndex: number;
+  timeMs: number;
+}
+
+export interface PresentationAudioFrame {
+  timeMs: number;
+  values: number[];
 }
 
 export interface PresentationFont {
@@ -92,6 +106,15 @@ export interface PresentationSlide {
   bodyTextItalic?: boolean;
   bodyTextUnderline?: boolean;
   bodyTextSize?: PresentationTextSizeId;
+  lyricActiveLineIndex?: number;
+  lyricCueTimings?: PresentationLyricCue[];
+  lyricScrollPaused?: boolean;
+  lyricScrollSpeed?: number;
+  lyricSyncStatus?: 'idle' | 'listening' | 'locked' | 'no-lock';
+  lyricSyncUpdatedAt?: string | null;
+  referenceAudioFrames?: PresentationAudioFrame[];
+  referenceAudioName?: string | null;
+  songLibraryId?: string | null;
 }
 
 export interface PresentationState {
@@ -308,6 +331,57 @@ export function getPresentationTextSize(id?: string | null) {
   return (['small', 'medium', 'large', 'huge'].includes(`${id}`) ? id : 'medium') as PresentationTextSizeId;
 }
 
+export function splitPresentationLyrics(value?: string | null) {
+  return `${value || ''}`
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+export function normalizeLyricCueTimings(value: any): PresentationLyricCue[] {
+  return Array.isArray(value)
+    ? value
+        .map((cue: any) => ({
+          lineIndex: Math.max(0, Math.floor(Number(cue.lineIndex) || 0)),
+          timeMs: Math.max(0, Math.floor(Number(cue.timeMs) || 0)),
+        }))
+        .filter((cue) => Number.isFinite(cue.timeMs))
+        .sort((left, right) => left.timeMs - right.timeMs)
+    : [];
+}
+
+export function normalizePresentationAudioFrames(value: any): PresentationAudioFrame[] {
+  return Array.isArray(value)
+    ? value
+        .map((frame: any) => ({
+          timeMs: Math.max(0, Math.floor(Number(frame.timeMs) || 0)),
+          values: Array.isArray(frame.values)
+            ? frame.values
+                .map((item: any) => Number(item) || 0)
+                .slice(0, 12)
+            : [],
+        }))
+        .filter((frame) => frame.values.length > 0)
+        .sort((left, right) => left.timeMs - right.timeMs)
+    : [];
+}
+
+export function getLyricLineIndexForTime(
+  cues: PresentationLyricCue[] | undefined,
+  timeMs: number,
+) {
+  const normalized = normalizeLyricCueTimings(cues);
+  if (normalized.length === 0) return 0;
+
+  let activeIndex = normalized[0].lineIndex;
+  normalized.forEach((cue) => {
+    if (cue.timeMs <= timeMs) {
+      activeIndex = cue.lineIndex;
+    }
+  });
+  return activeIndex;
+}
+
 export function getPresentationSlideKindLabel(slide: PresentationSlide) {
   const customLabel = `${slide.kindLabel || ''}`.trim();
   if (customLabel) {
@@ -329,6 +403,17 @@ export function getPresentationSlideKindLabel(slide: PresentationSlide) {
     default:
       return 'Blank';
   }
+}
+
+export function getPresentationSlideDisplayTitle(slide: PresentationSlide) {
+  const title = `${slide.title || ''}`.trim();
+  if (slide.kind === 'custom') {
+    return title || `${slide.kindLabel || ''}`.trim() || 'Custom slide';
+  }
+  if (slide.kind === 'blank') {
+    return 'Blank screen';
+  }
+  return title || getPresentationSlideKindLabel(slide);
 }
 
 export function createPresentationSlide(
@@ -379,8 +464,8 @@ export function createPresentationSlide(
     },
     custom: {
       kind: 'custom',
-      kindLabel: 'Custom',
-      title: 'Custom slide',
+      kindLabel: '',
+      title: '',
       body: 'Add custom slide text here',
       note: '',
     },
@@ -506,6 +591,27 @@ function normalizePresentationState(
           bodyTextItalic: slide.bodyTextItalic === true,
           bodyTextUnderline: slide.bodyTextUnderline === true,
           bodyTextSize: getPresentationTextSize(slide.bodyTextSize),
+          lyricActiveLineIndex: Math.max(
+            0,
+            Math.floor(Number(slide.lyricActiveLineIndex) || 0),
+          ),
+          lyricCueTimings: normalizeLyricCueTimings(slide.lyricCueTimings),
+          lyricScrollPaused: slide.lyricScrollPaused !== false,
+          lyricScrollSpeed: Math.max(
+            0.2,
+            Math.min(4, Number(slide.lyricScrollSpeed) || 1),
+          ),
+          lyricSyncStatus: ['idle', 'listening', 'locked', 'no-lock'].includes(
+            slide.lyricSyncStatus,
+          )
+            ? slide.lyricSyncStatus
+            : 'idle',
+          lyricSyncUpdatedAt: slide.lyricSyncUpdatedAt || null,
+          referenceAudioFrames: normalizePresentationAudioFrames(
+            slide.referenceAudioFrames,
+          ),
+          referenceAudioName: slide.referenceAudioName || null,
+          songLibraryId: slide.songLibraryId || null,
         }))
       : fallback.slides;
   const currentSlideId =
@@ -538,6 +644,12 @@ export function readPresentationSongs(): PresentationSong[] {
             title: song.title || '',
             lyrics: song.lyrics || '',
             note: song.note || '',
+            cueTimings: normalizeLyricCueTimings(song.cueTimings),
+            referenceAudioFrames: normalizePresentationAudioFrames(
+              song.referenceAudioFrames,
+            ),
+            scrollSpeed: Math.max(0.2, Math.min(4, Number(song.scrollSpeed) || 1)),
+            referenceAudioName: song.referenceAudioName || null,
             updatedAt: song.updatedAt || new Date().toISOString(),
           }))
           .filter((song) => song.title || song.lyrics)
@@ -558,6 +670,12 @@ export function createPresentationSongFromSlide(slide: PresentationSlide) {
     title: slide.title || 'Saved song',
     lyrics: slide.body || '',
     note: slide.note || '',
+    cueTimings: normalizeLyricCueTimings(slide.lyricCueTimings),
+    referenceAudioFrames: normalizePresentationAudioFrames(
+      slide.referenceAudioFrames,
+    ),
+    scrollSpeed: Math.max(0.2, Math.min(4, Number(slide.lyricScrollSpeed) || 1)),
+    referenceAudioName: slide.referenceAudioName || null,
     updatedAt: new Date().toISOString(),
   };
 }

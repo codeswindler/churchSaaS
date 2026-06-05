@@ -923,6 +923,29 @@ textarea {
   white-space: pre-line;
 }
 
+.presentation-preview-lyrics {
+  position: relative;
+  margin-top: clamp(0.9rem, 2vw, 1.7rem);
+  display: grid;
+  max-height: 52%;
+  gap: 0.45rem;
+  overflow: hidden;
+  color: var(--presentation-muted);
+  font-family: var(--presentation-font-family, 'Sora', 'Manrope', sans-serif);
+  font-size: var(--presentation-body-preview-size, clamp(1rem, 2.2vw, 1.65rem));
+  font-weight: 650;
+  line-height: 1.18;
+}
+
+.presentation-preview-lyrics p {
+  margin: 0;
+}
+
+.presentation-preview-lyrics .is-active {
+  color: var(--presentation-fg);
+  transform: scale(1.04);
+}
+
 .presentation-note {
   color: var(--presentation-muted);
   font-size: 0.9rem;
@@ -996,6 +1019,81 @@ textarea {
   line-height: 1.14;
   text-decoration: none;
   white-space: pre-line;
+}
+
+.presentation-display-lyrics {
+  position: relative;
+  margin-top: clamp(1.5rem, 3vw, 3rem);
+  display: grid;
+  max-height: min(58vh, 760px);
+  gap: clamp(0.45rem, 1vw, 1rem);
+  overflow: hidden;
+  color: var(--presentation-muted);
+  font-family: var(--presentation-font-family, 'Sora', 'Manrope', sans-serif);
+  font-size: var(--presentation-body-display-size, clamp(2.2rem, 4.2vw, 5.8rem));
+  font-weight: 650;
+  line-height: 1.12;
+  mask-image: linear-gradient(
+    180deg,
+    transparent 0%,
+    #000 15%,
+    #000 85%,
+    transparent 100%
+  );
+}
+
+.presentation-display-lyrics p {
+  margin: 0;
+  opacity: 0.62;
+  transition:
+    opacity 220ms ease,
+    transform 220ms ease;
+}
+
+.presentation-display-lyrics .is-active {
+  color: var(--presentation-fg);
+  opacity: 1;
+  transform: scale(1.04);
+}
+
+.presentation-lyric-line-list {
+  display: grid;
+  max-height: 18rem;
+  gap: 0.45rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.presentation-lyric-line-list button {
+  display: flex;
+  min-height: 2.5rem;
+  align-items: center;
+  gap: 0.7rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.16);
+  padding: 0.55rem 0.75rem;
+  text-align: left;
+  color: rgb(214 211 209);
+}
+
+.presentation-lyric-line-list button:hover,
+.presentation-lyric-line-list button.is-active {
+  border-color: rgba(250, 204, 21, 0.42);
+  background: rgba(250, 204, 21, 0.12);
+  color: #fff;
+}
+
+.presentation-lyric-line-list span {
+  display: inline-flex;
+  height: 1.5rem;
+  min-width: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.72rem;
+  font-weight: 800;
 }
 
 .presentation-display-note {

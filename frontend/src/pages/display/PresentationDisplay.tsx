@@ -7,6 +7,7 @@ import {
   getPresentationTransitionMs,
   publishPresentationState,
   readPresentationState,
+  splitPresentationLyrics,
   subscribePresentationState,
   type PresentationSlide,
 } from '../../services/presentation';
@@ -69,6 +70,16 @@ function DisplaySlideLayer({
   churchName: string;
 }) {
   const background = getPresentationBackground(slide.backgroundId);
+  const lyricLines = splitPresentationLyrics(slide.body);
+  const activeLineIndex = Math.max(
+    0,
+    Math.min(lyricLines.length - 1, slide.lyricActiveLineIndex || 0),
+  );
+  const visibleLines = lyricLines.slice(
+    Math.max(0, activeLineIndex - 3),
+    Math.min(lyricLines.length, activeLineIndex + 4),
+  );
+  const firstVisibleIndex = Math.max(0, activeLineIndex - 3);
 
   return (
     <div
@@ -94,9 +105,25 @@ function DisplaySlideLayer({
               {getPresentationSlideKindLabel(slide)}
             </p>
             <h1>{slide.title || 'Untitled slide'}</h1>
-            <p className="presentation-display-body">
-              {slide.body || 'Add slide content'}
-            </p>
+            {slide.kind === 'song' && lyricLines.length > 0 ? (
+              <div className="presentation-display-lyrics">
+                {visibleLines.map((line, index) => {
+                  const lineIndex = firstVisibleIndex + index;
+                  return (
+                    <p
+                      key={`${line}-${lineIndex}`}
+                      className={lineIndex === activeLineIndex ? 'is-active' : ''}
+                    >
+                      {line}
+                    </p>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="presentation-display-body">
+                {slide.body || 'Add slide content'}
+              </p>
+            )}
             {slide.note ? (
               <p className="presentation-display-note">{slide.note}</p>
             ) : null}

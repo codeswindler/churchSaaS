@@ -10,6 +10,7 @@ import {
   Image as ImageIcon,
   ImagePlus,
   Italic,
+  Mic,
   MonitorPlay,
   Music,
   Pause,
@@ -17,13 +18,14 @@ import {
   Plus,
   RotateCcw,
   Save,
+  SkipBack,
   Pencil,
   Trash2,
   Type,
   Underline,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   BibleSelector,
@@ -31,6 +33,12 @@ import {
   type SelectedBibleVerse,
 } from '../../components/BibleSelector';
 import api, { getSession } from '../../services/api';
+import {
+  buildReferenceAudioFrames,
+  createLiveAudioSampler,
+  findBestAudioOffset,
+  type AudioSyncFrame,
+} from '../../services/localAudioSync';
 import {
   createPresentationMediaBackground,
   createDefaultPresentationState,
@@ -40,12 +48,14 @@ import {
   getPresentationBackground,
   getPresentationSlideKindLabel,
   getPresentationTransitionMs,
+  getLyricLineIndexForTime,
   publishPresentationState,
   readPresentationBackgrounds,
   readPresentationState,
   readPresentationSongs,
   savePresentationBackgrounds,
   savePresentationSongs,
+  splitPresentationLyrics,
   subscribePresentationState,
   upsertPresentationBackground,
   presentationBackgrounds,
@@ -216,6 +226,16 @@ function PresentationSlideLayer({
   slide: PresentationSlide;
 }) {
   const background = getPresentationBackground(slide.backgroundId);
+  const lyricLines = splitPresentationLyrics(slide.body);
+  const activeLineIndex = Math.max(
+    0,
+    Math.min(lyricLines.length - 1, slide.lyricActiveLineIndex || 0),
+  );
+  const previewLines = lyricLines.slice(
+    Math.max(0, activeLineIndex - 2),
+    Math.min(lyricLines.length, activeLineIndex + 3),
+  );
+  const firstPreviewLine = Math.max(0, activeLineIndex - 2);
   return (
     <div
       className={`presentation-slide-motion presentation-layer-${mode} presentation-background-${background.id} presentation-font-${slide.fontId || 'sora'} presentation-text-color-${slide.textColorId || 'theme'} ${slideStyleClassNames(slide)}`}
@@ -234,9 +254,25 @@ function PresentationSlideLayer({
               {getPresentationSlideKindLabel(slide)}
             </p>
             <h3>{slide.title || 'Untitled slide'}</h3>
-            <p className="presentation-body-copy">
-              {slide.body || 'Add slide content'}
-            </p>
+            {slide.kind === 'song' && lyricLines.length > 0 ? (
+              <div className="presentation-preview-lyrics">
+                {previewLines.map((line, index) => {
+                  const lineIndex = firstPreviewLine + index;
+                  return (
+                    <p
+                      key={`${line}-${lineIndex}`}
+                      className={lineIndex === activeLineIndex ? 'is-active' : ''}
+                    >
+                      {line}
+                    </p>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="presentation-body-copy">
+                {slide.body || 'Add slide content'}
+              </p>
+            )}
             {slide.note ? <p className="presentation-note">{slide.note}</p> : null}
           </>
         )}
@@ -330,8 +366,17 @@ export default function ChurchPresentation() {
   const [savedSongs, setSavedSongs] = useState<PresentationSong[]>(() =>
     readPresentationSongs(),
   );
+  const [isBuildingReference, setIsBuildingReference] = useState(false);
+  const [isListeningSync, setIsListeningSync] = useState(false);
+  const referenceFramesRef = useRef<AudioSyncFrame[]>([]);
+  const liveFramesRef = useRef<AudioSyncFrame[]>([]);
+  const stopLiveSamplerRef = useRef<(() => void) | null>(null);
   const currentIndex = slideIndex(state);
   const currentSlide = getCurrentPresentationSlide(state);
+  const currentLyricLines = useMemo(
+    () => splitPresentationLyrics(currentSlide.body),
+    [currentSlide.body],
+  );
   const displayUrl =
     typeof window === 'undefined'
       ? '/display/church-presentation'
@@ -359,6 +404,76 @@ export default function ChurchPresentation() {
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      stopLiveSamplerRef.current?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isListeningSync) return;
+    stopLiveSamplerRef.current?.();
+    stopLiveSamplerRef.current = null;
+    liveFramesRef.current = [];
+    setIsListeningSync(false);
+  }, [currentSlide.id, isListeningSync]);
+
+  useEffect(() => {
+    if (currentSlide.kind !== 'song') return;
+    referenceFramesRef.current = currentSlide.referenceAudioFrames || [];
+  }, [currentSlide.id, currentSlide.kind, currentSlide.referenceAudioFrames]);
+
+  useEffect(() => {
+    if (
+      currentSlide.kind !== 'song' ||
+      currentSlide.lyricScrollPaused !== false ||
+      currentLyricLines.length <= 1
+    ) {
+      return;
+    }
+
+    const speed = Math.max(0.2, Math.min(4, currentSlide.lyricScrollSpeed || 1));
+    const intervalId = window.setInterval(() => {
+      setState((currentState) => {
+        const slide = getCurrentPresentationSlide(currentState);
+        if (
+          slide.id !== currentSlide.id ||
+          slide.kind !== 'song' ||
+          slide.lyricScrollPaused !== false
+        ) {
+          return currentState;
+        }
+
+        const lines = splitPresentationLyrics(slide.body);
+        const currentLine = Math.max(0, slide.lyricActiveLineIndex || 0);
+        const nextLine = Math.min(lines.length - 1, currentLine + 1);
+        if (nextLine === currentLine) return currentState;
+
+        return publishPresentationState({
+          ...currentState,
+          slides: currentState.slides.map((item) =>
+            item.id === slide.id
+              ? {
+                  ...item,
+                  lyricActiveLineIndex: nextLine,
+                  lyricSyncStatus: 'idle',
+                  lyricSyncUpdatedAt: new Date().toISOString(),
+                }
+              : item,
+          ),
+        });
+      });
+    }, Math.max(900, 3500 / speed));
+
+    return () => window.clearInterval(intervalId);
+  }, [
+    currentLyricLines.length,
+    currentSlide.id,
+    currentSlide.kind,
+    currentSlide.lyricScrollPaused,
+    currentSlide.lyricScrollSpeed,
+  ]);
+
   const availableBackgrounds = useMemo(() => {
     const byId = new Map<string, PresentationBackground>();
     [...presentationBackgrounds, ...churchBackgrounds, ...customBackgrounds].forEach(
@@ -371,6 +486,21 @@ export default function ChurchPresentation() {
 
   const commitState = (nextState: PresentationState) => {
     setState(publishPresentationState(nextState));
+  };
+
+  const updateSlide = (slideId: string, patch: Partial<PresentationSlide>) => {
+    setState((currentState) => {
+      return publishPresentationState({
+        ...currentState,
+        slides: currentState.slides.map((slide) =>
+          slide.id === slideId ? { ...slide, ...patch } : slide,
+        ),
+      });
+    });
+  };
+
+  const updateCurrentSlide = (patch: Partial<PresentationSlide>) => {
+    updateSlide(currentSlide.id, patch);
   };
 
   const beginAddSlide = () => {
@@ -558,6 +688,14 @@ export default function ChurchPresentation() {
       title: song.title,
       body: song.lyrics,
       note: song.note,
+      lyricCueTimings: song.cueTimings || [],
+      lyricScrollSpeed: song.scrollSpeed || 1,
+      lyricActiveLineIndex: 0,
+      lyricScrollPaused: true,
+      lyricSyncStatus: 'idle',
+      referenceAudioFrames: song.referenceAudioFrames || [],
+      referenceAudioName: song.referenceAudioName || null,
+      songLibraryId: song.id,
     });
     toast.success('Song loaded');
   };
@@ -568,6 +706,108 @@ export default function ChurchPresentation() {
     );
     setSavedSongs(nextSongs);
     toast.success('Song removed');
+  };
+
+  const setLyricLine = (lineIndex: number, status: PresentationSlide['lyricSyncStatus'] = 'idle') => {
+    if (currentSlide.kind !== 'song') return;
+    updateCurrentSlide({
+      lyricActiveLineIndex: Math.max(
+        0,
+        Math.min(currentLyricLines.length - 1, lineIndex),
+      ),
+      lyricSyncStatus: status,
+      lyricSyncUpdatedAt: new Date().toISOString(),
+    });
+  };
+
+  const updateLyricSpeed = (nextSpeed: number) => {
+    if (currentSlide.kind !== 'song') return;
+    updateCurrentSlide({
+      lyricScrollSpeed: Math.max(0.2, Math.min(4, nextSpeed)),
+    });
+  };
+
+  const handleReferenceAudioUpload = async (file?: File) => {
+    if (!file) return;
+    setIsBuildingReference(true);
+    try {
+      referenceFramesRef.current = await buildReferenceAudioFrames(file);
+      updateCurrentSlide({
+        referenceAudioFrames: referenceFramesRef.current,
+        referenceAudioName: file.name,
+        lyricSyncStatus: 'idle',
+        lyricSyncUpdatedAt: new Date().toISOString(),
+      });
+      toast.success('Reference audio ready');
+    } catch (_error) {
+      toast.error('Unable to read that audio file');
+    } finally {
+      setIsBuildingReference(false);
+    }
+  };
+
+  const toggleLocalAudioSync = async () => {
+    if (isListeningSync) {
+      stopLiveSamplerRef.current?.();
+      stopLiveSamplerRef.current = null;
+      liveFramesRef.current = [];
+      setIsListeningSync(false);
+      updateCurrentSlide({
+        lyricSyncStatus: 'idle',
+        lyricSyncUpdatedAt: new Date().toISOString(),
+      });
+      return;
+    }
+
+    if (currentSlide.kind !== 'song') {
+      toast.error('Choose a song slide first');
+      return;
+    }
+    if (referenceFramesRef.current.length === 0) {
+      toast.error('Upload a reference audio file first');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setIsListeningSync(true);
+      updateCurrentSlide({
+        lyricScrollPaused: true,
+        lyricSyncStatus: 'listening',
+        lyricSyncUpdatedAt: new Date().toISOString(),
+      });
+
+      stopLiveSamplerRef.current = createLiveAudioSampler(stream, (frame) => {
+        liveFramesRef.current = [...liveFramesRef.current, frame].slice(-28);
+        const match = findBestAudioOffset(
+          liveFramesRef.current,
+          referenceFramesRef.current,
+        );
+        if (!match) return;
+
+        const referenceDuration =
+          referenceFramesRef.current[referenceFramesRef.current.length - 1]?.timeMs ||
+          1;
+        const lineIndex =
+          match.confidence >= 0.58
+            ? currentSlide.lyricCueTimings?.length
+              ? getLyricLineIndexForTime(currentSlide.lyricCueTimings, match.offsetMs)
+              : Math.floor(
+                  (match.offsetMs / referenceDuration) *
+                    Math.max(1, currentLyricLines.length - 1),
+                )
+            : currentSlide.lyricActiveLineIndex || 0;
+
+        updateCurrentSlide({
+          lyricActiveLineIndex: lineIndex,
+          lyricSyncStatus: match.confidence >= 0.58 ? 'locked' : 'no-lock',
+          lyricSyncUpdatedAt: new Date().toISOString(),
+        });
+      });
+    } catch (_error) {
+      toast.error('Microphone access was blocked');
+      setIsListeningSync(false);
+    }
   };
 
   return (
@@ -722,6 +962,141 @@ export default function ChurchPresentation() {
               theme={state.theme}
             />
           </div>
+
+          {currentSlide.kind === 'song' ? (
+            <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="flex items-center gap-2 text-sm font-semibold text-white">
+                    <Music size={16} className="text-amber-200" />
+                    Lyric sync
+                  </p>
+                  <p className="mt-1 text-sm text-stone-300">
+                    {currentSlide.lyricSyncStatus === 'locked'
+                      ? 'Local audio lock active'
+                      : currentSlide.lyricSyncStatus === 'no-lock'
+                        ? 'No lock, use manual controls'
+                        : currentSlide.referenceAudioName
+                          ? `Reference: ${currentSlide.referenceAudioName}`
+                          : 'Upload a reference track to enable local audio sync'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <label className="btn-secondary cursor-pointer justify-center">
+                    <Music size={16} />
+                    {isBuildingReference ? 'Reading...' : 'Reference audio'}
+                    <input
+                      accept="audio/*"
+                      className="hidden"
+                      disabled={isBuildingReference}
+                      type="file"
+                      onChange={(event) => {
+                        handleReferenceAudioUpload(event.target.files?.[0]);
+                        event.target.value = '';
+                      }}
+                    />
+                  </label>
+                  <button
+                    className="btn-secondary justify-center"
+                    type="button"
+                    onClick={toggleLocalAudioSync}
+                  >
+                    {isListeningSync ? <Pause size={16} /> : <Mic size={16} />}
+                    {isListeningSync ? 'Stop listening' : 'Listen sync'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  className="btn-secondary justify-center"
+                  type="button"
+                  onClick={() => setLyricLine(0)}
+                >
+                  <SkipBack size={16} />
+                  Start
+                </button>
+                <button
+                  className="btn-secondary justify-center"
+                  type="button"
+                  onClick={() =>
+                    updateCurrentSlide({
+                      lyricScrollPaused: currentSlide.lyricScrollPaused === false,
+                      lyricSyncStatus: 'idle',
+                    })
+                  }
+                >
+                  {currentSlide.lyricScrollPaused === false ? (
+                    <Pause size={16} />
+                  ) : (
+                    <Play size={16} />
+                  )}
+                  {currentSlide.lyricScrollPaused === false ? 'Pause' : 'Auto-scroll'}
+                </button>
+                <button
+                  className="btn-secondary justify-center"
+                  type="button"
+                  onClick={() =>
+                    setLyricLine((currentSlide.lyricActiveLineIndex || 0) - 1)
+                  }
+                >
+                  <ChevronLeft size={16} />
+                  Up
+                </button>
+                <button
+                  className="btn-secondary justify-center"
+                  type="button"
+                  onClick={() =>
+                    setLyricLine((currentSlide.lyricActiveLineIndex || 0) + 1)
+                  }
+                >
+                  Down
+                  <ChevronRight size={16} />
+                </button>
+                <button
+                  className="btn-secondary justify-center"
+                  type="button"
+                  onClick={() =>
+                    updateLyricSpeed((currentSlide.lyricScrollSpeed || 1) - 0.2)
+                  }
+                >
+                  Slower
+                </button>
+                <button
+                  className="btn-secondary justify-center"
+                  type="button"
+                  onClick={() =>
+                    updateLyricSpeed((currentSlide.lyricScrollSpeed || 1) + 0.2)
+                  }
+                >
+                  Faster
+                </button>
+                <span className="inline-flex items-center rounded-full border border-white/10 px-3 py-2 text-xs font-semibold text-stone-300">
+                  Speed {(currentSlide.lyricScrollSpeed || 1).toFixed(1)}x
+                </span>
+              </div>
+
+              {currentLyricLines.length > 0 ? (
+                <div className="presentation-lyric-line-list mt-4">
+                  {currentLyricLines.map((line, index) => (
+                    <button
+                      key={`${line}-${index}`}
+                      className={
+                        index === (currentSlide.lyricActiveLineIndex || 0)
+                          ? 'is-active'
+                          : ''
+                      }
+                      type="button"
+                      onClick={() => setLyricLine(index)}
+                    >
+                      <span>{index + 1}</span>
+                      {line}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="mt-5 flex flex-col gap-3 sm:flex-row">
             <button className="btn-primary flex-1 justify-center" onClick={openDisplay}>
