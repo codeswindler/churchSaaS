@@ -162,6 +162,27 @@ function SlideBackground({ backgroundId }: { backgroundId?: string | null }) {
   );
 }
 
+function SlideMedia({ slide, className }: { slide: PresentationSlide; className: string }) {
+  if (slide.mediaMode !== 'media' || !slide.mediaUrl) {
+    return null;
+  }
+
+  if (slide.mediaType === 'video') {
+    return (
+      <video
+        autoPlay
+        className={className}
+        loop
+        muted
+        playsInline
+        src={slide.mediaUrl}
+      />
+    );
+  }
+
+  return <img alt={slide.mediaName || slide.title || ''} className={className} src={slide.mediaUrl} />;
+}
+
 function cloneSlide(slide: PresentationSlide): PresentationSlide {
   return { ...slide };
 }
@@ -243,13 +264,20 @@ function PresentationSlideLayer({
       key={`${slide.id}-${slide.backgroundId}-${slide.transitionId}-${mode}`}
     >
       <SlideBackground backgroundId={slide.backgroundId} />
-      <div className="presentation-stage-inner">
+      <div
+        className={`presentation-stage-inner ${
+          slide.mediaMode === 'media' ? 'presentation-stage-inner-media' : ''
+        }`}
+      >
         {!isLive ? (
           <div className="presentation-paused-preview">
             <Pause size={28} />
             <span>Output paused</span>
           </div>
-        ) : slide.kind === 'blank' ? null : (
+        ) : slide.kind === 'blank' ? null : slide.mediaMode === 'media' &&
+          slide.mediaUrl ? (
+          <SlideMedia className="presentation-preview-media" slide={slide} />
+        ) : (
           <>
             <p className="presentation-kind-label">
               {getPresentationSlideKindLabel(slide)}
@@ -358,6 +386,7 @@ export default function ChurchPresentation() {
   const [isTextColorOpen, setIsTextColorOpen] = useState(false);
   const [isBackgroundOpen, setIsBackgroundOpen] = useState(false);
   const [isUploadingBackground, setIsUploadingBackground] = useState(false);
+  const [isUploadingSlideMedia, setIsUploadingSlideMedia] = useState(false);
   const [churchBackgrounds, setChurchBackgrounds] = useState<
     PresentationBackground[]
   >([]);
@@ -572,6 +601,40 @@ export default function ChurchPresentation() {
       toast.error(error?.response?.data?.message || 'Unable to upload image');
     } finally {
       setIsUploadingBackground(false);
+    }
+  };
+
+  const uploadPresentationSlideMedia = async (file?: File) => {
+    if (!file) return;
+
+    const payload = new FormData();
+    payload.append('media', file);
+    setIsUploadingSlideMedia(true);
+
+    try {
+      const response = await api.post('/church/presentation/media', payload, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const fallbackTitle = file.name.replace(/\.[^.]+$/, '') || 'Designed slide';
+      updateDraftSlide({
+        mediaMode: 'media',
+        mediaName: response.data.mediaName || file.name,
+        mediaType:
+          response.data.mediaType === 'video'
+            ? 'video'
+            : response.data.mediaType === 'image'
+              ? 'image'
+              : file.type.startsWith('video/')
+                ? 'video'
+                : 'image',
+        mediaUrl: resolveMediaUrl(response.data.mediaUrl),
+        title: draftSlide?.title || fallbackTitle,
+      });
+      toast.success('Slide media uploaded');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Unable to upload media');
+    } finally {
+      setIsUploadingSlideMedia(false);
     }
   };
 
@@ -1194,6 +1257,10 @@ export default function ChurchPresentation() {
                               bodyTextSize: draftSlide.bodyTextSize,
                               bodyTextUnderline: draftSlide.bodyTextUnderline,
                               fontId: draftSlide.fontId,
+                              mediaMode: draftSlide.mediaMode,
+                              mediaName: draftSlide.mediaName,
+                              mediaType: draftSlide.mediaType,
+                              mediaUrl: draftSlide.mediaUrl,
                               textColorId: draftSlide.textColorId,
                               transitionId: draftSlide.transitionId,
                               title: draftSlide.title,
@@ -1230,7 +1297,77 @@ export default function ChurchPresentation() {
                     </div>
                   ) : null}
 
-                  {draftSlide.kind === 'scripture' ? (
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-sm font-semibold text-white">Slide design</p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <button
+                        className={`presentation-kind-option ${
+                          (draftSlide.mediaMode || 'editor') === 'editor'
+                            ? 'is-active'
+                            : ''
+                        }`}
+                        type="button"
+                        onClick={() => updateDraftSlide({ mediaMode: 'editor' })}
+                      >
+                        <span>Editor</span>
+                        <small>Use title, text, colors, and background tools.</small>
+                      </button>
+                      <button
+                        className={`presentation-kind-option ${
+                          draftSlide.mediaMode === 'media' ? 'is-active' : ''
+                        }`}
+                        type="button"
+                        onClick={() => updateDraftSlide({ mediaMode: 'media' })}
+                      >
+                        <span>Designed media</span>
+                        <small>Show one uploaded PNG, JPG, WEBP, MP4, or WEBM.</small>
+                      </button>
+                    </div>
+                  </div>
+
+                  {draftSlide.mediaMode === 'media' ? (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="flex items-center gap-2 text-sm font-semibold text-white">
+                            <ImageIcon size={16} className="text-amber-200" />
+                            Designed slide media
+                          </p>
+                          <p className="mt-1 text-sm leading-6 text-stone-300">
+                            Upload a finished slide design or video. It will fill the
+                            projector slide without text overlays.
+                          </p>
+                        </div>
+                        <label className="btn-secondary cursor-pointer justify-center">
+                          <ImagePlus size={16} />
+                          {isUploadingSlideMedia ? 'Uploading...' : 'Upload media'}
+                          <input
+                            accept="image/png,image/jpeg,image/webp,video/mp4,video/webm"
+                            className="hidden"
+                            disabled={isUploadingSlideMedia}
+                            type="file"
+                            onChange={(event) => {
+                              uploadPresentationSlideMedia(event.target.files?.[0]);
+                              event.target.value = '';
+                            }}
+                          />
+                        </label>
+                      </div>
+                      {draftSlide.mediaUrl ? (
+                        <div className="presentation-media-editor-preview mt-4">
+                          <SlideMedia className="presentation-media-editor-asset" slide={draftSlide} />
+                          <span>{draftSlide.mediaName || 'Uploaded media'}</span>
+                        </div>
+                      ) : (
+                        <p className="mt-4 rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-sm text-stone-300">
+                          No designed media uploaded for this slide yet.
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
+
+                  {draftSlide.kind === 'scripture' &&
+                  draftSlide.mediaMode !== 'media' ? (
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                       <p className="flex items-center gap-2 text-sm font-semibold text-white">
                         <BookOpen size={16} className="text-amber-200" />
@@ -1245,7 +1382,7 @@ export default function ChurchPresentation() {
                     </div>
                   ) : null}
 
-                  {draftSlide.kind === 'song' ? (
+                  {draftSlide.kind === 'song' && draftSlide.mediaMode !== 'media' ? (
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div>
@@ -1328,6 +1465,8 @@ export default function ChurchPresentation() {
                     </div>
                   </div>
 
+                  {draftSlide.mediaMode !== 'media' ? (
+                    <>
                   <div>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                       <label className="label">Main screen text</label>
@@ -1601,6 +1740,8 @@ export default function ChurchPresentation() {
                       </div>
                     ) : null}
                   </div>
+                    </>
+                  ) : null}
 
                   <PreviewSlide isLive slide={draftSlide} theme={state.theme} />
 
