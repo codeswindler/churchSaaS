@@ -25,6 +25,24 @@ export class PlatformSmsConfig {
   @Column({ type: 'varchar', length: 255, nullable: true })
   smsBaseUrl: string | null;
 
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  mpesaEnvironment: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  mpesaConsumerKey: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  mpesaConsumerSecret: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  mpesaPasskey: string | null;
+
+  @Column({ type: 'varchar', length: 40, nullable: true })
+  mpesaShortcode: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  mpesaCallbackUrl: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

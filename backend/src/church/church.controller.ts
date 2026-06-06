@@ -248,6 +248,51 @@ export class ChurchController {
     );
   }
 
+  @Post('messaging/bulk/quote')
+  @Permissions(ChurchPermission.MESSAGING_SEND)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.SECRETARY)
+  quoteBulkMessage(@Request() req: any, @Body() body: any) {
+    return this.churchService.quoteBulkMessage(req.user.churchId, body);
+  }
+
+  @Post('messaging/bulk/purchase')
+  @Permissions(ChurchPermission.MESSAGING_SEND)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.SECRETARY)
+  createBulkMessagePurchase(@Request() req: any, @Body() body: any) {
+    return this.churchService.createBulkMessagePurchase(
+      req.user.churchId,
+      req.user.id,
+      body,
+    );
+  }
+
+  @Get('messaging/bulk/purchases/:purchaseId')
+  @Permissions(ChurchPermission.MESSAGING_SEND)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.SECRETARY)
+  getBulkMessagePurchase(
+    @Request() req: any,
+    @Param('purchaseId') purchaseId: string,
+  ) {
+    return this.churchService.getBulkMessagePurchase(
+      req.user.churchId,
+      purchaseId,
+    );
+  }
+
+  @Post('messaging/bulk/purchases/:purchaseId/send')
+  @Permissions(ChurchPermission.MESSAGING_SEND)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.SECRETARY)
+  sendBulkMessagePurchase(
+    @Request() req: any,
+    @Param('purchaseId') purchaseId: string,
+  ) {
+    return this.churchService.sendBulkMessagePurchase(
+      req.user.churchId,
+      req.user.id,
+      purchaseId,
+    );
+  }
+
   @Get('messaging/config')
   @Permissions(ChurchPermission.MESSAGING_VIEW)
   @Roles(ChurchUserRole.PRIEST, ChurchUserRole.SECRETARY)
@@ -264,6 +309,34 @@ export class ChurchController {
   )
   listSmsOutbox(@Request() req: any, @Query() query: any) {
     return this.churchService.listSmsOutbox(req.user.churchId, query);
+  }
+
+  @Post('messaging/outbox/delivery-refresh')
+  @Permissions(ChurchPermission.OUTBOX_VIEW)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+  )
+  refreshSmsDeliveryReports(@Request() req: any, @Body() body: any) {
+    return this.churchService.refreshSmsDeliveryReports(req.user.churchId, body);
+  }
+
+  @Post('messaging/outbox/:messageId/dlr')
+  @Permissions(ChurchPermission.OUTBOX_VIEW)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+  )
+  fetchSmsDeliveryReport(
+    @Request() req: any,
+    @Param('messageId') messageId: string,
+  ) {
+    return this.churchService.fetchSmsDeliveryReport(
+      req.user.churchId,
+      messageId,
+    );
   }
 
   @Get('messaging/outbox/export')

@@ -8,6 +8,8 @@ import { PlatformSmsConfig } from '../entities/platform-sms-config.entity';
 import { SmsAddressBookContact } from '../entities/sms-address-book-contact.entity';
 import { SmsBatch } from '../entities/sms-batch.entity';
 import { SmsOutbox } from '../entities/sms-outbox.entity';
+import { SmsUnitPurchase } from '../entities/sms-unit-purchase.entity';
+import { PaymentsModule } from '../payments/payments.module';
 import { SmsDlrController } from './sms-dlr.controller';
 import { SmsController } from './sms.controller';
 import { SmsService } from './sms.service';
@@ -15,6 +17,7 @@ import { SmsService } from './sms.service';
 @Module({
   imports: [
     ConfigModule,
+    PaymentsModule,
     TypeOrmModule.forFeature([
       Church,
       Contribution,
@@ -23,6 +26,7 @@ import { SmsService } from './sms.service';
       SmsAddressBookContact,
       SmsBatch,
       SmsOutbox,
+      SmsUnitPurchase,
     ]),
   ],
   providers: [SmsService],

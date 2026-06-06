@@ -211,6 +211,46 @@ export default function PresentationDisplay() {
     });
   }, []);
 
+  const moveLyricLine = useCallback((direction: -1 | 1) => {
+    setState((currentState) => {
+      const currentSlide = getCurrentPresentationSlide(currentState);
+      if (currentSlide.kind !== 'song') {
+        return currentState;
+      }
+
+      const lyricLines = splitPresentationLyrics(currentSlide.body);
+      if (lyricLines.length <= 1) {
+        return currentState;
+      }
+
+      const currentLine = Math.max(
+        0,
+        Math.min(lyricLines.length - 1, currentSlide.lyricActiveLineIndex || 0),
+      );
+      const nextLine = Math.max(
+        0,
+        Math.min(lyricLines.length - 1, currentLine + direction),
+      );
+      if (nextLine === currentLine) {
+        return currentState;
+      }
+
+      return publishPresentationState({
+        ...currentState,
+        slides: currentState.slides.map((item) =>
+          item.id === currentSlide.id
+            ? {
+                ...item,
+                lyricActiveLineIndex: nextLine,
+                lyricSyncStatus: 'idle',
+                lyricSyncUpdatedAt: new Date().toISOString(),
+              }
+            : item,
+        ),
+      });
+    });
+  }, []);
+
   useEffect(() => subscribePresentationState(setState), []);
 
   useEffect(() => {
@@ -224,12 +264,24 @@ export default function PresentationDisplay() {
       if (['ArrowLeft', 'PageUp', '<', ','].includes(event.key)) {
         event.preventDefault();
         moveSlide(-1);
+        return;
+      }
+
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        moveLyricLine(1);
+        return;
+      }
+
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        moveLyricLine(-1);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [moveSlide]);
+  }, [moveLyricLine, moveSlide]);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -243,6 +295,19 @@ export default function PresentationDisplay() {
     <main
       className={`presentation-display presentation-theme-${state.theme} presentation-background-${background.id} presentation-transition-${transitionId}`}
       onClick={(event) => {
+        if (activeSlide.kind === 'song') {
+          const topBand = window.innerHeight * 0.25;
+          const bottomBand = window.innerHeight * 0.75;
+          if (event.clientY <= topBand) {
+            moveLyricLine(-1);
+            return;
+          }
+          if (event.clientY >= bottomBand) {
+            moveLyricLine(1);
+            return;
+          }
+        }
+
         moveSlide(event.clientX < window.innerWidth / 2 ? -1 : 1);
       }}
     >

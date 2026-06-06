@@ -59,6 +59,7 @@ function createInitialForm() {
     smsShortcode: '',
     smsShortcodes: '',
     smsBaseUrl: 'https://quicksms.advantasms.com',
+    smsUnitRateKes: 0,
     mpesaEnvironment: 'sandbox',
     mpesaConsumerKey: '',
     mpesaConsumerSecret: '',
@@ -484,6 +485,7 @@ export default function PlatformChurches() {
           .join('\n'),
         smsBaseUrl:
           response.data.smsBaseUrl || 'https://quicksms.advantasms.com',
+        smsUnitRateKes: Number(response.data.smsUnitRateKes || 0),
         mpesaEnvironment: response.data.mpesaEnvironment || 'sandbox',
         mpesaConsumerKey: response.data.mpesaConsumerKey || '',
         mpesaConsumerSecret: response.data.mpesaConsumerSecret || '',
@@ -923,6 +925,10 @@ export default function PlatformChurches() {
                           {church.integrations?.smsConfigured
                             ? 'ready'
                             : 'missing'}
+                        </span>
+                        <span className="badge border-white/10 bg-white/5 text-stone-100">
+                          KES {Number(church.smsUnitRateKes || 0).toFixed(2)}
+                          /unit
                         </span>
                         <span className="badge border-white/10 bg-white/5 text-stone-100">
                           <CreditCard size={12} />
@@ -1427,6 +1433,22 @@ export default function PlatformChurches() {
                           />
                         </div>
                       ))}
+                      <div>
+                        <label className="label">SMS unit rate (KES)</label>
+                        <input
+                          className="input"
+                          min={0}
+                          step="0.01"
+                          type="number"
+                          value={form.smsUnitRateKes}
+                          onChange={(event) =>
+                            updateForm(
+                              'smsUnitRateKes',
+                              Number(event.target.value || 0),
+                            )
+                          }
+                        />
+                      </div>
                       {renderSensitiveField('smsApiKey', 'API key')}
                       <div className="md:col-span-2">
                         <label className="label">
@@ -1926,6 +1948,7 @@ function buildUpdatePayload(form: ChurchFormState) {
     smsShortcode: form.smsShortcode,
     smsShortcodes: form.smsShortcodes,
     smsBaseUrl: form.smsBaseUrl,
+    smsUnitRateKes: form.smsUnitRateKes,
     mpesaEnvironment: form.mpesaEnvironment,
     mpesaConsumerKey: form.mpesaConsumerKey,
     mpesaConsumerSecret: form.mpesaConsumerSecret,

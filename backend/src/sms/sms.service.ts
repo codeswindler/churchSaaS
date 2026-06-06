@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import axios from 'axios';
 import { Repository } from 'typeorm';
 import {
+  ChurchMpesaConfig,
   ChurchSmsConfig,
   getChurchSmsShortcodes,
 } from '../common/church.utils';
@@ -26,6 +27,11 @@ import {
   SmsOutbox,
   SmsSendStatus,
 } from '../entities/sms-outbox.entity';
+import {
+  SmsUnitPurchase,
+  SmsUnitPurchaseStatus,
+} from '../entities/sms-unit-purchase.entity';
+import { MpesaService } from '../payments/mpesa.service';
 
 type ResolvedSmsConfig = {
   partnerId: string;
@@ -70,8 +76,11 @@ export class SmsService {
     private readonly smsBatchRepo: Repository<SmsBatch>,
     @InjectRepository(SmsOutbox)
     private readonly smsOutboxRepo: Repository<SmsOutbox>,
+    @InjectRepository(SmsUnitPurchase)
+    private readonly smsUnitPurchaseRepo: Repository<SmsUnitPurchase>,
     @InjectRepository(PlatformSmsConfig)
     private readonly platformSmsConfigRepo: Repository<PlatformSmsConfig>,
+    private readonly mpesaService: MpesaService,
   ) {
     this.partnerId = this.configService.get<string>('ADVANTA_PARTNER_ID') || '';
     this.apiKey = this.configService.get<string>('ADVANTA_API_KEY') || '';
@@ -404,6 +413,7 @@ export class SmsService {
       fundAccountIds?: string[];
       smsShortcode?: string;
     },
+    options: { batchId?: string | null } = {},
   ) {
     const church = await this.churchRepo.findOne({ where: { id: churchId } });
     if (!church) {
@@ -433,16 +443,31 @@ export class SmsService {
       0,
     );
 
-    const batch = await this.smsBatchRepo.save(
-      this.smsBatchRepo.create({
-        churchId,
-        createdByUserId,
-        audience: this.resolveBatchAudienceLabel(body) as SmsBatchAudience,
-        messageBody,
-        recipientCount: preparedRecipients.length,
-        totalUnits,
-        status: 'sending',
-      }),
+    const batch = options.batchId
+      ? await this.smsBatchRepo.findOne({
+          where: { id: options.batchId, churchId },
+        })
+      : null;
+    const savedBatch = await this.smsBatchRepo.save(
+      batch
+        ? {
+            ...batch,
+            createdByUserId,
+            audience: this.resolveBatchAudienceLabel(body),
+            messageBody,
+            recipientCount: preparedRecipients.length,
+            totalUnits,
+            status: 'sending',
+          }
+        : this.smsBatchRepo.create({
+            churchId,
+            createdByUserId,
+            audience: this.resolveBatchAudienceLabel(body),
+            messageBody,
+            recipientCount: preparedRecipients.length,
+            totalUnits,
+            status: 'sending',
+          }),
     );
 
     const config = this.getConfigFromChurch(church, body.smsShortcode);
@@ -461,7 +486,7 @@ export class SmsService {
         chunk.map((recipient) =>
           this.smsOutboxRepo.create({
             churchId,
-            batchId: batch.id,
+            batchId: savedBatch.id,
             contributorId: recipient.contributorId,
             createdByUserId,
             recipientName: recipient.name || null,
@@ -513,7 +538,7 @@ export class SmsService {
               : 'error',
             providerDescription: error?.message || 'Bulk SMS request failed',
             providerRawResponse: axios.isAxiosError(error)
-              ? (error.response?.data as any)
+              ? error.response?.data
               : null,
           })),
         );
@@ -526,7 +551,7 @@ export class SmsService {
         chunk.map((recipient) =>
           this.smsOutboxRepo.create({
             churchId,
-            batchId: batch.id,
+            batchId: savedBatch.id,
             contributorId: recipient.contributorId,
             createdByUserId,
             recipientName: recipient.name || null,
@@ -547,17 +572,369 @@ export class SmsService {
     }
 
     const failed = await this.smsOutboxRepo.count({
-      where: { batchId: batch.id, sendStatus: SmsSendStatus.FAILED },
+      where: { batchId: savedBatch.id, sendStatus: SmsSendStatus.FAILED },
     });
-    batch.status = failed > 0 ? 'completed_with_failures' : 'completed';
-    await this.smsBatchRepo.save(batch);
+    savedBatch.status = failed > 0 ? 'completed_with_failures' : 'completed';
+    await this.smsBatchRepo.save(savedBatch);
 
     return {
-      batchId: batch.id,
-      recipientCount: batch.recipientCount,
-      totalUnits: batch.totalUnits,
+      batchId: savedBatch.id,
+      recipientCount: savedBatch.recipientCount,
+      totalUnits: savedBatch.totalUnits,
       failed,
     };
+  }
+
+  async quoteBulkMessages(
+    churchId: string,
+    body: {
+      audience?: SmsBatchAudience;
+      audiences?: SmsBatchAudience[];
+      genderFilter?: ContributorGender | null;
+      message: string;
+      pastedContacts?: string;
+      addressBookIds?: string[];
+      fundAccountIds?: string[];
+      smsShortcode?: string;
+    },
+  ) {
+    const church = await this.churchRepo.findOne({ where: { id: churchId } });
+    if (!church) {
+      throw new Error('Church not found');
+    }
+
+    const messageBody = this.sanitizeGsm7(body.message || '');
+    if (!messageBody.trim()) {
+      throw new Error('Message is required');
+    }
+
+    const recipients = await this.resolveBulkRecipients(churchId, body);
+    const uniqueRecipients = this.dedupeRecipients(recipients);
+    if (uniqueRecipients.length === 0) {
+      throw new BadRequestException('No valid SMS recipients were found');
+    }
+
+    const preparedRecipients = uniqueRecipients.map((recipient) => {
+      const renderedMessage = this.renderBulkMessage(messageBody, recipient);
+      return {
+        ...recipient,
+        messageBody: renderedMessage,
+        estimatedUnits: this.estimateGsm7Units(renderedMessage),
+        messageLength: this.getGsm7Length(renderedMessage),
+      };
+    });
+    const totalUnits = preparedRecipients.reduce(
+      (sum, recipient) => sum + recipient.estimatedUnits,
+      0,
+    );
+    const unitBreakdown = Array.from(
+      preparedRecipients.reduce((map, recipient) => {
+        const current = map.get(recipient.estimatedUnits) || {
+          unitsPerRecipient: recipient.estimatedUnits,
+          recipients: 0,
+          totalUnits: 0,
+        };
+        current.recipients += 1;
+        current.totalUnits += recipient.estimatedUnits;
+        map.set(recipient.estimatedUnits, current);
+        return map;
+      }, new Map<number, { unitsPerRecipient: number; recipients: number; totalUnits: number }>()),
+    )
+      .map(([, value]) => value)
+      .sort((a, b) => a.unitsPerRecipient - b.unitsPerRecipient);
+
+    const messageLengths = preparedRecipients.map(
+      (recipient) => recipient.messageLength,
+    );
+    const smsUnitRateKes = Number(church.smsUnitRateKes || 0);
+
+    return {
+      audience: this.resolveBatchAudienceLabel(body),
+      rawRecipientCount: recipients.length,
+      recipientCount: preparedRecipients.length,
+      duplicateCount: Math.max(
+        0,
+        recipients.length - preparedRecipients.length,
+      ),
+      plainRecipientCount: preparedRecipients.filter(
+        (recipient) => !recipient.isHashedRecipient,
+      ).length,
+      hashedRecipientCount: preparedRecipients.filter(
+        (recipient) => recipient.isHashedRecipient,
+      ).length,
+      templateLength: this.getGsm7Length(messageBody),
+      templateUnits: this.estimateGsm7Units(messageBody),
+      minRenderedLength:
+        messageLengths.length > 0 ? Math.min(...messageLengths) : 0,
+      maxRenderedLength:
+        messageLengths.length > 0 ? Math.max(...messageLengths) : 0,
+      totalUnits,
+      unitBreakdown,
+      smsUnitRateKes,
+      amountKes: Number((totalUnits * smsUnitRateKes).toFixed(2)),
+      sampleRecipients: preparedRecipients.slice(0, 5).map((recipient) => ({
+        name: recipient.name,
+        isHashedRecipient: recipient.isHashedRecipient,
+        messageLength: recipient.messageLength,
+        estimatedUnits: recipient.estimatedUnits,
+        messageBody: recipient.messageBody,
+      })),
+    };
+  }
+
+  async createBulkSmsPurchase(
+    churchId: string,
+    createdByUserId: string,
+    body: {
+      audience?: SmsBatchAudience;
+      audiences?: SmsBatchAudience[];
+      genderFilter?: ContributorGender | null;
+      message: string;
+      pastedContacts?: string;
+      addressBookIds?: string[];
+      fundAccountIds?: string[];
+      smsShortcode?: string;
+      payerPhone?: string;
+    },
+  ) {
+    const payerPhone = this.normalizeKenyanPhone(body.payerPhone || '');
+    if (!payerPhone) {
+      throw new BadRequestException(
+        'Enter a valid M-Pesa phone number for SMS unit payment',
+      );
+    }
+
+    const quote = await this.quoteBulkMessages(churchId, body);
+    if (Number(quote.smsUnitRateKes || 0) <= 0) {
+      throw new BadRequestException(
+        'SMS unit rate is not configured for this church',
+      );
+    }
+    if (Number(quote.amountKes || 0) <= 0) {
+      throw new BadRequestException('SMS unit amount must be greater than zero');
+    }
+
+    const messagePayload = {
+      audiences: body.audiences || [],
+      genderFilter: body.genderFilter || null,
+      message: body.message,
+      pastedContacts: body.pastedContacts || '',
+      addressBookIds: Array.isArray(body.addressBookIds)
+        ? body.addressBookIds
+        : [],
+      fundAccountIds: Array.isArray(body.fundAccountIds)
+        ? body.fundAccountIds
+        : [],
+      smsShortcode: body.smsShortcode || '',
+    };
+
+    const batch = await this.smsBatchRepo.save(
+      this.smsBatchRepo.create({
+        churchId,
+        createdByUserId,
+        audience: quote.audience,
+        messageBody: this.sanitizeGsm7(body.message || ''),
+        recipientCount: quote.recipientCount,
+        totalUnits: quote.totalUnits,
+        status: 'awaiting_payment',
+      }),
+    );
+
+    let purchase = await this.smsUnitPurchaseRepo.save(
+      this.smsUnitPurchaseRepo.create({
+        churchId,
+        createdByUserId,
+        batchId: batch.id,
+        messagePayload,
+        quoteSnapshot: quote,
+        recipientCount: quote.recipientCount,
+        totalUnits: quote.totalUnits,
+        smsUnitRateKes: quote.smsUnitRateKes,
+        amountKes: quote.amountKes,
+        payerPhone,
+        status: SmsUnitPurchaseStatus.STK_SENT,
+        statusDescription: 'Preparing M-Pesa STK push',
+      }),
+    );
+
+    try {
+      const mpesaConfig = await this.getPlatformMpesaConfigForSmsPurchases();
+      const stkResponse = await this.mpesaService.stkPush(
+        payerPhone,
+        Number(quote.amountKes),
+        `SMS-${purchase.id.slice(0, 8)}`,
+        `SMS units for ${quote.recipientCount} recipients`,
+        mpesaConfig,
+      );
+
+      purchase.checkoutRequestId = stkResponse.CheckoutRequestID || null;
+      purchase.merchantRequestId = stkResponse.MerchantRequestID || null;
+      purchase.statusDescription =
+        stkResponse.CustomerMessage ||
+        'STK push sent. Complete the prompt on your phone.';
+      purchase.providerRawResponse = {
+        ...(purchase.providerRawResponse || {}),
+        stkPush: stkResponse,
+      };
+      purchase = await this.smsUnitPurchaseRepo.save(purchase);
+
+      return this.sanitizeSmsUnitPurchase(purchase);
+    } catch (error) {
+      purchase.status = SmsUnitPurchaseStatus.FAILED;
+      purchase.statusDescription =
+        error?.response?.data?.errorMessage ||
+        error?.response?.data?.ResponseDescription ||
+        error?.message ||
+        'Unable to initiate SMS unit STK push';
+      purchase.providerRawResponse = {
+        ...(purchase.providerRawResponse || {}),
+        stkPushError: axios.isAxiosError(error)
+          ? error.response?.data || error.message
+          : `${error}`,
+      };
+      await this.smsUnitPurchaseRepo.save(purchase);
+      await this.smsBatchRepo.save({ ...batch, status: 'payment_failed' });
+      throw new BadRequestException(purchase.statusDescription);
+    }
+  }
+
+  async getSmsUnitPurchase(churchId: string, purchaseId: string) {
+    const purchase = await this.smsUnitPurchaseRepo.findOne({
+      where: { id: purchaseId, churchId },
+    });
+    if (!purchase) {
+      throw new BadRequestException('SMS unit purchase not found');
+    }
+    return this.sanitizeSmsUnitPurchase(purchase);
+  }
+
+  async sendConfirmedSmsUnitPurchase(
+    churchId: string,
+    performedByUserId: string,
+    purchaseId: string,
+  ) {
+    const purchase = await this.smsUnitPurchaseRepo.findOne({
+      where: { id: purchaseId, churchId },
+    });
+    if (!purchase) {
+      throw new BadRequestException('SMS unit purchase not found');
+    }
+    if (purchase.status === SmsUnitPurchaseStatus.SENT) {
+      return this.sanitizeSmsUnitPurchase(purchase);
+    }
+    if (purchase.status !== SmsUnitPurchaseStatus.CONFIRMED) {
+      throw new BadRequestException(
+        'SMS unit payment must be confirmed before sending',
+      );
+    }
+
+    purchase.status = SmsUnitPurchaseStatus.SENDING;
+    purchase.statusDescription = 'Payment confirmed. Sending bulk SMS.';
+    await this.smsUnitPurchaseRepo.save(purchase);
+
+    try {
+      const result = await this.sendBulkMessages(
+        churchId,
+        purchase.createdByUserId || performedByUserId,
+        purchase.messagePayload as any,
+        { batchId: purchase.batchId },
+      );
+      purchase.status = SmsUnitPurchaseStatus.SENT;
+      purchase.statusDescription = `Bulk SMS sent to ${result.recipientCount} recipients`;
+      purchase.sentAt = new Date();
+      purchase.providerRawResponse = {
+        ...(purchase.providerRawResponse || {}),
+        sendResult: result,
+      };
+      await this.smsUnitPurchaseRepo.save(purchase);
+      return this.sanitizeSmsUnitPurchase(purchase);
+    } catch (error) {
+      purchase.status = SmsUnitPurchaseStatus.SEND_FAILED;
+      purchase.statusDescription =
+        error?.message || 'Payment confirmed, but SMS sending failed';
+      purchase.providerRawResponse = {
+        ...(purchase.providerRawResponse || {}),
+        sendError: `${error?.message || error}`,
+      };
+      await this.smsUnitPurchaseRepo.save(purchase);
+      if (purchase.batchId) {
+        await this.smsBatchRepo.save({
+          id: purchase.batchId,
+          status: 'send_failed',
+        });
+      }
+      throw new BadRequestException(purchase.statusDescription);
+    }
+  }
+
+  async handleSmsUnitPurchaseMpesaWebhook(body: any) {
+    const callback = body?.Body?.stkCallback;
+    if (!callback?.CheckoutRequestID) {
+      this.logger.warn('Ignored SMS unit payment webhook without CheckoutRequestID');
+      return { ResultCode: 0, ResultDesc: 'Ignored' };
+    }
+
+    const purchase = await this.smsUnitPurchaseRepo.findOne({
+      where: { checkoutRequestId: callback.CheckoutRequestID },
+    });
+    if (!purchase) {
+      this.logger.warn(
+        `No SMS unit purchase matched checkoutRequestId=${callback.CheckoutRequestID}`,
+      );
+      return { ResultCode: 0, ResultDesc: 'SMS unit purchase not found' };
+    }
+    if (
+      [
+        SmsUnitPurchaseStatus.CONFIRMED,
+        SmsUnitPurchaseStatus.SENDING,
+        SmsUnitPurchaseStatus.SENT,
+      ].includes(purchase.status)
+    ) {
+      return { ResultCode: 0, ResultDesc: 'Already processed' };
+    }
+
+    purchase.providerRawResponse = {
+      ...(purchase.providerRawResponse || {}),
+      stkCallback: body,
+    };
+
+    if (Number(callback.ResultCode) === 0) {
+      const metadataItems = callback.CallbackMetadata?.Item || [];
+      for (const item of metadataItems) {
+        if (item.Name === 'MpesaReceiptNumber') {
+          purchase.mpesaReceipt = `${item.Value || ''}`;
+        }
+        if (item.Name === 'PhoneNumber') {
+          purchase.payerPhone = `${item.Value || purchase.payerPhone}`;
+        }
+        if (item.Name === 'Amount') {
+          purchase.amountKes = Number(item.Value || purchase.amountKes);
+        }
+      }
+      purchase.status = SmsUnitPurchaseStatus.CONFIRMED;
+      purchase.statusDescription = 'SMS unit payment confirmed';
+      purchase.paidAt = new Date();
+      await this.smsUnitPurchaseRepo.save(purchase);
+      if (purchase.batchId) {
+        await this.smsBatchRepo.save({
+          id: purchase.batchId,
+          status: 'payment_confirmed',
+        });
+      }
+      return { ResultCode: 0, ResultDesc: 'Accepted' };
+    }
+
+    purchase.status = SmsUnitPurchaseStatus.FAILED;
+    purchase.statusDescription =
+      callback.ResultDesc || 'SMS unit payment failed';
+    await this.smsUnitPurchaseRepo.save(purchase);
+    if (purchase.batchId) {
+      await this.smsBatchRepo.save({
+        id: purchase.batchId,
+        status: 'payment_failed',
+      });
+    }
+    return { ResultCode: 0, ResultDesc: 'Accepted' };
   }
 
   async listOutbox(churchId: string, query: any = {}) {
@@ -645,6 +1022,166 @@ export class SmsService {
     return { accepted: true };
   }
 
+  async fetchOutboxDeliveryReport(churchId: string, messageId: string) {
+    const outbox = await this.smsOutboxRepo.findOne({
+      where: { id: messageId, churchId },
+    });
+    if (!outbox) {
+      throw new BadRequestException('SMS outbox message not found');
+    }
+
+    return this.fetchDeliveryReportForOutboxRow(outbox);
+  }
+
+  async refreshPendingDeliveryReports(
+    churchId: string,
+    query: { batchId?: string; limit?: number; hashedOnly?: boolean } = {},
+  ) {
+    const limit = Math.max(1, Math.min(100, Number(query.limit || 50)));
+    const qb = this.smsOutboxRepo
+      .createQueryBuilder('message')
+      .where('message.churchId = :churchId', { churchId })
+      .andWhere('message.sendStatus = :sendStatus', {
+        sendStatus: SmsSendStatus.ACCEPTED,
+      })
+      .andWhere('message.providerMessageId IS NOT NULL')
+      .andWhere('message.deliveryStatus IN (:...statuses)', {
+        statuses: [SmsDeliveryStatus.PENDING, SmsDeliveryStatus.UNKNOWN],
+      })
+      .orderBy('message.createdAt', 'ASC')
+      .take(limit);
+
+    if (query.batchId) {
+      qb.andWhere('message.batchId = :batchId', { batchId: query.batchId });
+    }
+    if (query.hashedOnly) {
+      qb.andWhere('message.isHashedRecipient = :hashedOnly', {
+        hashedOnly: true,
+      });
+    }
+
+    const rows = await qb.getMany();
+    const results: Array<{
+      id: string;
+      providerMessageId: string | null;
+      deliveryStatus: SmsDeliveryStatus;
+      deliveryDescription: string | null;
+      deliveryTat?: string | null;
+      providerCode: string;
+    }> = [];
+    for (const row of rows) {
+      results.push(await this.fetchDeliveryReportForOutboxRow(row));
+    }
+
+    return {
+      checked: results.length,
+      delivered: results.filter(
+        (item: any) => item.deliveryStatus === SmsDeliveryStatus.DELIVERED,
+      ).length,
+      failed: results.filter(
+        (item: any) => item.deliveryStatus === SmsDeliveryStatus.FAILED,
+      ).length,
+      pending: results.filter(
+        (item: any) => item.deliveryStatus === SmsDeliveryStatus.PENDING,
+      ).length,
+      unknown: results.filter(
+        (item: any) => item.deliveryStatus === SmsDeliveryStatus.UNKNOWN,
+      ).length,
+      results,
+    };
+  }
+
+  private async fetchDeliveryReportForOutboxRow(row: SmsOutbox) {
+    if (!row.providerMessageId) {
+      throw new BadRequestException('SMS message does not have a provider ID');
+    }
+
+    const church = await this.churchRepo.findOne({
+      where: { id: row.churchId },
+    });
+    if (!church) {
+      throw new BadRequestException('Church not found for SMS message');
+    }
+
+    const resolved = this.resolveConfig(this.getConfigFromChurch(church));
+    const url = `${resolved.baseUrl}/api/services/getdlr`;
+    const data = {
+      apikey: resolved.apiKey,
+      partnerID: resolved.partnerId,
+      messageID: row.providerMessageId,
+    };
+
+    try {
+      this.logger.log(
+        `[SMS] Fetching DLR for messageId=${this.maskSecret(row.providerMessageId)} | outboxId=${row.id} | batchId=${row.batchId || 'n/a'}`,
+      );
+      const response = await axios.post(url, data, { timeout: 10000 });
+      const providerCode = `${response.data?.['response-code'] || ''}`;
+      const deliveryDescription =
+        response.data?.['delivery-description'] ||
+        response.data?.['response-description'] ||
+        null;
+      const deliveryStatus =
+        Number(providerCode) === 200
+          ? this.mapDeliveryStatus(deliveryDescription)
+          : Number(providerCode) === 1009
+            ? SmsDeliveryStatus.PENDING
+            : SmsDeliveryStatus.UNKNOWN;
+
+      const updated = await this.smsOutboxRepo.save({
+        ...row,
+        deliveryStatus,
+        deliveryDescription:
+          deliveryDescription ||
+          (Number(providerCode) === 1009 ? 'No dlr' : row.deliveryDescription),
+        deliveryTat: response.data?.['delivery-tat'] || row.deliveryTat,
+        deliveryReportedAt:
+          response.data?.['delivery-time'] || response.data?.timestamp
+            ? new Date(
+                response.data?.['delivery-time'] || response.data?.timestamp,
+              )
+            : new Date(),
+        providerRawResponse: {
+          ...(row.providerRawResponse || {}),
+          fetchedDlr: response.data,
+        },
+      });
+
+      return {
+        id: updated.id,
+        providerMessageId: updated.providerMessageId,
+        deliveryStatus: updated.deliveryStatus,
+        deliveryDescription: updated.deliveryDescription,
+        deliveryTat: updated.deliveryTat,
+        providerCode,
+      };
+    } catch (error) {
+      await this.smsOutboxRepo.save({
+        ...row,
+        deliveryStatus: SmsDeliveryStatus.UNKNOWN,
+        deliveryDescription: 'DLR fetch failed',
+        providerRawResponse: {
+          ...(row.providerRawResponse || {}),
+          fetchedDlrError: axios.isAxiosError(error)
+            ? error.response?.data || error.message
+            : `${error}`,
+        },
+      });
+      this.logger.error(
+        `[SMS] Failed to fetch DLR for messageId=${this.maskSecret(row.providerMessageId)} | outboxId=${row.id} | ${this.describeAxiosError(error)}`,
+      );
+      return {
+        id: row.id,
+        providerMessageId: row.providerMessageId,
+        deliveryStatus: SmsDeliveryStatus.UNKNOWN,
+        deliveryDescription: 'DLR fetch failed',
+        providerCode: axios.isAxiosError(error)
+          ? `${error.response?.status || 'error'}`
+          : 'error',
+      };
+    }
+  }
+
   public formatPhone(phone: string): string {
     if (!phone) return '';
     return this.normalizeKenyanPhone(phone) || phone.replace(/\D/g, '');
@@ -701,6 +1238,23 @@ export class SmsService {
       smsApiKey: config?.smsApiKey || '',
       smsShortcode: config?.smsShortcode || '',
       smsBaseUrl: config?.smsBaseUrl || this.baseUrl,
+      mpesaEnvironment: config?.mpesaEnvironment || 'sandbox',
+      mpesaConsumerKey: config?.mpesaConsumerKey || '',
+      mpesaConsumerSecret: config?.mpesaConsumerSecret || '',
+      mpesaPasskey: config?.mpesaPasskey || '',
+      mpesaShortcode: config?.mpesaShortcode || '',
+      mpesaCallbackUrl:
+        config?.mpesaCallbackUrl ||
+        this.configService.get<string>('SMS_UNITS_MPESA_CALLBACK_URL') ||
+        '',
+      mpesaConfigured: Boolean(
+        config?.mpesaConsumerKey &&
+          config?.mpesaConsumerSecret &&
+          config?.mpesaPasskey &&
+          config?.mpesaShortcode &&
+          (config?.mpesaCallbackUrl ||
+            this.configService.get<string>('SMS_UNITS_MPESA_CALLBACK_URL')),
+      ),
       configured,
       fallbackConfigured: !configured && envConfigured,
       source: configured ? 'platform' : envConfigured ? 'env' : 'missing',
@@ -790,6 +1344,68 @@ export class SmsService {
     };
   }
 
+  private async getPlatformMpesaConfigForSmsPurchases(): Promise<ChurchMpesaConfig> {
+    const config = await this.platformSmsConfigRepo.findOne({
+      where: { id: PLATFORM_SMS_CONFIG_ID },
+    });
+    const callbackUrl =
+      config?.mpesaCallbackUrl ||
+      this.configService.get<string>('SMS_UNITS_MPESA_CALLBACK_URL') ||
+      this.configService.get<string>('PLATFORM_MPESA_CALLBACK_URL') ||
+      undefined;
+
+    const mpesaConfig = {
+      mpesaEnvironment:
+        config?.mpesaEnvironment ||
+        this.configService.get<string>('PLATFORM_MPESA_ENV') ||
+        this.configService.get<string>('MPESA_ENV') ||
+        'sandbox',
+      mpesaConsumerKey:
+        config?.mpesaConsumerKey ||
+        this.configService.get<string>('PLATFORM_MPESA_CONSUMER_KEY') ||
+        undefined,
+      mpesaConsumerSecret:
+        config?.mpesaConsumerSecret ||
+        this.configService.get<string>('PLATFORM_MPESA_CONSUMER_SECRET') ||
+        undefined,
+      mpesaPasskey:
+        config?.mpesaPasskey ||
+        this.configService.get<string>('PLATFORM_MPESA_PASSKEY') ||
+        undefined,
+      mpesaShortcode:
+        config?.mpesaShortcode ||
+        this.configService.get<string>('PLATFORM_MPESA_SHORTCODE') ||
+        undefined,
+      mpesaCallbackUrl: callbackUrl,
+    };
+
+    this.mpesaService.assertConfigured(mpesaConfig);
+    return mpesaConfig;
+  }
+
+  private sanitizeSmsUnitPurchase(purchase: SmsUnitPurchase) {
+    return {
+      id: purchase.id,
+      churchId: purchase.churchId,
+      batchId: purchase.batchId,
+      recipientCount: purchase.recipientCount,
+      totalUnits: purchase.totalUnits,
+      smsUnitRateKes: Number(purchase.smsUnitRateKes || 0),
+      amountKes: Number(purchase.amountKes || 0),
+      payerPhone: purchase.payerPhone,
+      checkoutRequestId: purchase.checkoutRequestId,
+      merchantRequestId: purchase.merchantRequestId,
+      mpesaReceipt: purchase.mpesaReceipt,
+      status: purchase.status,
+      statusDescription: purchase.statusDescription,
+      quoteSnapshot: purchase.quoteSnapshot,
+      paidAt: purchase.paidAt,
+      sentAt: purchase.sentAt,
+      createdAt: purchase.createdAt,
+      updatedAt: purchase.updatedAt,
+    };
+  }
+
   private async recordOutboxMessage(input: {
     churchId: string | null;
     batchId?: string | null;
@@ -839,6 +1455,19 @@ export class SmsService {
 
   private extractProviderResult(data: any) {
     const nested = data?.responses?.[0];
+    const messageId =
+      nested?.messageid ||
+      nested?.messageID ||
+      nested?.['message-id'] ||
+      data?.messageid ||
+      data?.messageID ||
+      data?.['message-id'];
+    const clientSmsId =
+      nested?.clientsmsid ||
+      nested?.clientSmsId ||
+      data?.clientsmsid ||
+      data?.clientSmsId;
+
     return {
       code:
         `${nested?.['response-code'] ?? data?.['response-code'] ?? ''}` || null,
@@ -846,8 +1475,8 @@ export class SmsService {
         nested?.['response-description'] ??
         data?.['response-description'] ??
         null,
-      messageId: nested?.messageid ? `${nested.messageid}` : null,
-      clientSmsId: nested?.clientsmsid ? `${nested.clientsmsid}` : null,
+      messageId: messageId ? `${messageId}` : null,
+      clientSmsId: clientSmsId ? `${clientSmsId}` : null,
     };
   }
 
@@ -900,6 +1529,9 @@ export class SmsService {
     };
 
     try {
+      this.logger.log(
+        `[SMS] Sending hashed bulk message to ${this.maskHashedMobile(row.recipientMobile)} | batchId=${row.batchId || 'n/a'} | partnerId=${this.maskSecret(resolved.partnerId)} | shortcode=${this.maskSecret(resolved.shortCode)} | baseUrl=${resolved.baseUrl}`,
+      );
       const response = await axios.post(url, data, { timeout: 10000 });
       const provider = this.extractProviderResult(response.data);
       const success = Number(provider.code || 0) === 200;
@@ -916,6 +1548,16 @@ export class SmsService {
         providerRawResponse: response.data,
         sentAt: success ? new Date() : null,
       });
+
+      if (success) {
+        this.logger.log(
+          `[SMS] Hashed bulk message accepted for ${this.maskHashedMobile(row.recipientMobile)} | batchId=${row.batchId || 'n/a'} | messageId=${provider.messageId || 'n/a'} | providerCode=${provider.code || 'n/a'} | providerDescription=${provider.description || 'n/a'}`,
+        );
+      } else {
+        this.logger.error(
+          `[SMS] Hashed bulk message rejected for ${this.maskHashedMobile(row.recipientMobile)} | batchId=${row.batchId || 'n/a'} | providerCode=${provider.code || 'n/a'} | providerDescription=${provider.description || 'n/a'}`,
+        );
+      }
     } catch (error) {
       await this.smsOutboxRepo.save({
         ...row,
@@ -926,9 +1568,12 @@ export class SmsService {
           : 'error',
         providerDescription: error?.message || 'Hashed bulk SMS request failed',
         providerRawResponse: axios.isAxiosError(error)
-          ? (error.response?.data as any)
+          ? error.response?.data
           : null,
       });
+      this.logger.error(
+        `[SMS] Failed to send hashed bulk message to ${this.maskHashedMobile(row.recipientMobile)} | batchId=${row.batchId || 'n/a'} | ${this.describeAxiosError(error)}`,
+      );
     }
   }
 
@@ -1487,7 +2132,13 @@ export class SmsService {
     const responseCode = nested?.['response-code'] ?? data?.['response-code'];
     const responseDescription =
       nested?.['response-description'] ?? data?.['response-description'];
-    const messageId = nested?.messageid ?? data?.messageid;
+    const messageId =
+      nested?.messageid ??
+      nested?.messageID ??
+      nested?.['message-id'] ??
+      data?.messageid ??
+      data?.messageID ??
+      data?.['message-id'];
 
     return [
       `providerCode=${responseCode ?? 'unknown'}`,

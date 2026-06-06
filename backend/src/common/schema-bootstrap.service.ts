@@ -206,6 +206,11 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
             'ADD COLUMN `enabledFeatures` text NULL AFTER `billingModel`',
           );
         }
+        if (!churches.findColumnByName('smsUnitRateKes')) {
+          statements.push(
+            'ADD COLUMN `smsUnitRateKes` decimal(10,2) NOT NULL DEFAULT 0 AFTER `smsBaseUrl`',
+          );
+        }
 
         if (statements.length > 0) {
           await queryRunner.query(
@@ -314,6 +319,12 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
             \`smsApiKey\` text NULL,
             \`smsShortcode\` varchar(80) NULL,
             \`smsBaseUrl\` varchar(255) NULL,
+            \`mpesaEnvironment\` varchar(20) NULL,
+            \`mpesaConsumerKey\` varchar(255) NULL,
+            \`mpesaConsumerSecret\` varchar(255) NULL,
+            \`mpesaPasskey\` text NULL,
+            \`mpesaShortcode\` varchar(40) NULL,
+            \`mpesaCallbackUrl\` varchar(255) NULL,
             \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
             \`updatedAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
             PRIMARY KEY (\`id\`)
@@ -344,9 +355,39 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
           'ADD COLUMN `smsBaseUrl` varchar(255) NULL AFTER `smsShortcode`',
         );
       }
+      if (!table.findColumnByName('mpesaEnvironment')) {
+        statements.push(
+          'ADD COLUMN `mpesaEnvironment` varchar(20) NULL AFTER `smsBaseUrl`',
+        );
+      }
+      if (!table.findColumnByName('mpesaConsumerKey')) {
+        statements.push(
+          'ADD COLUMN `mpesaConsumerKey` varchar(255) NULL AFTER `mpesaEnvironment`',
+        );
+      }
+      if (!table.findColumnByName('mpesaConsumerSecret')) {
+        statements.push(
+          'ADD COLUMN `mpesaConsumerSecret` varchar(255) NULL AFTER `mpesaConsumerKey`',
+        );
+      }
+      if (!table.findColumnByName('mpesaPasskey')) {
+        statements.push(
+          'ADD COLUMN `mpesaPasskey` text NULL AFTER `mpesaConsumerSecret`',
+        );
+      }
+      if (!table.findColumnByName('mpesaShortcode')) {
+        statements.push(
+          'ADD COLUMN `mpesaShortcode` varchar(40) NULL AFTER `mpesaPasskey`',
+        );
+      }
+      if (!table.findColumnByName('mpesaCallbackUrl')) {
+        statements.push(
+          'ADD COLUMN `mpesaCallbackUrl` varchar(255) NULL AFTER `mpesaShortcode`',
+        );
+      }
       if (!table.findColumnByName('createdAt')) {
         statements.push(
-          'ADD COLUMN `createdAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) AFTER `smsBaseUrl`',
+          'ADD COLUMN `createdAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) AFTER `mpesaCallbackUrl`',
         );
       }
       if (!table.findColumnByName('updatedAt')) {
@@ -477,6 +518,39 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `);
         this.logger.log('Created SMS outbox table.');
+      }
+
+      const purchases = await queryRunner.getTable('sms_unit_purchases');
+      if (!purchases) {
+        await queryRunner.query(`
+          CREATE TABLE \`sms_unit_purchases\` (
+            \`id\` varchar(36) NOT NULL,
+            \`churchId\` varchar(36) NOT NULL,
+            \`createdByUserId\` varchar(36) NULL,
+            \`batchId\` varchar(36) NULL,
+            \`messagePayload\` text NOT NULL,
+            \`quoteSnapshot\` text NOT NULL,
+            \`recipientCount\` int NOT NULL DEFAULT 0,
+            \`totalUnits\` int NOT NULL DEFAULT 0,
+            \`smsUnitRateKes\` decimal(10,2) NOT NULL DEFAULT 0,
+            \`amountKes\` decimal(12,2) NOT NULL DEFAULT 0,
+            \`payerPhone\` varchar(30) NOT NULL,
+            \`checkoutRequestId\` varchar(80) NULL,
+            \`merchantRequestId\` varchar(80) NULL,
+            \`mpesaReceipt\` varchar(80) NULL,
+            \`status\` varchar(40) NOT NULL,
+            \`statusDescription\` varchar(255) NULL,
+            \`providerRawResponse\` text NULL,
+            \`paidAt\` datetime NULL,
+            \`sentAt\` datetime NULL,
+            \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            \`updatedAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+            PRIMARY KEY (\`id\`),
+            INDEX \`IDX_sms_unit_purchases_church_created\` (\`churchId\`, \`createdAt\`),
+            INDEX \`IDX_sms_unit_purchases_checkout\` (\`checkoutRequestId\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        this.logger.log('Created SMS unit purchases table.');
       }
     } finally {
       await queryRunner.release();

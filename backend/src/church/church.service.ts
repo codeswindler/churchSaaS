@@ -496,6 +496,59 @@ export class ChurchService {
     });
   }
 
+  async quoteBulkMessage(churchId: string, body: any) {
+    return this.smsService.quoteBulkMessages(churchId, {
+      audiences: [],
+      genderFilter: this.smsService.normalizeGender(
+        body.genderFilter || body.contributorTag || body.audienceTag || '',
+      ),
+      message: body.message,
+      pastedContacts: body.pastedContacts,
+      addressBookIds: Array.isArray(body.addressBookIds)
+        ? body.addressBookIds
+        : [],
+      fundAccountIds: Array.isArray(body.fundAccountIds)
+        ? body.fundAccountIds
+        : [],
+      smsShortcode: body.smsShortcode,
+    });
+  }
+
+  async createBulkMessagePurchase(churchId: string, userId: string, body: any) {
+    return this.smsService.createBulkSmsPurchase(churchId, userId, {
+      audiences: [],
+      genderFilter: this.smsService.normalizeGender(
+        body.genderFilter || body.contributorTag || body.audienceTag || '',
+      ),
+      message: body.message,
+      pastedContacts: body.pastedContacts,
+      addressBookIds: Array.isArray(body.addressBookIds)
+        ? body.addressBookIds
+        : [],
+      fundAccountIds: Array.isArray(body.fundAccountIds)
+        ? body.fundAccountIds
+        : [],
+      smsShortcode: body.smsShortcode,
+      payerPhone: body.payerPhone,
+    });
+  }
+
+  async getBulkMessagePurchase(churchId: string, purchaseId: string) {
+    return this.smsService.getSmsUnitPurchase(churchId, purchaseId);
+  }
+
+  async sendBulkMessagePurchase(
+    churchId: string,
+    userId: string,
+    purchaseId: string,
+  ) {
+    return this.smsService.sendConfirmedSmsUnitPurchase(
+      churchId,
+      userId,
+      purchaseId,
+    );
+  }
+
   async getMessagingConfig(churchId: string) {
     const church = await this.churchRepo.findOne({ where: { id: churchId } });
     if (!church) {
@@ -511,6 +564,18 @@ export class ChurchService {
 
   async listSmsOutbox(churchId: string, query: any = {}) {
     return this.smsService.listOutbox(churchId, query);
+  }
+
+  async fetchSmsDeliveryReport(churchId: string, messageId: string) {
+    return this.smsService.fetchOutboxDeliveryReport(churchId, messageId);
+  }
+
+  async refreshSmsDeliveryReports(churchId: string, body: any = {}) {
+    return this.smsService.refreshPendingDeliveryReports(churchId, {
+      batchId: this.normalizeOptionalText(body.batchId, 80) || undefined,
+      hashedOnly: body.hashedOnly === true,
+      limit: Number(body.limit || 50),
+    });
   }
 
   async exportSmsOutboxCsv(churchId: string, query: any = {}) {

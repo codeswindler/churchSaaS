@@ -40,6 +40,12 @@ const initialSenderForm = {
   smsApiKey: "",
   smsShortcode: "",
   smsBaseUrl: "https://quicksms.advantasms.com",
+  mpesaEnvironment: "sandbox",
+  mpesaConsumerKey: "",
+  mpesaConsumerSecret: "",
+  mpesaPasskey: "",
+  mpesaShortcode: "",
+  mpesaCallbackUrl: "",
 };
 
 const undoSeconds = 6;
@@ -55,6 +61,11 @@ function toQueryString(filters: Record<string, string>) {
 function formatDate(value?: string | null) {
   if (!value) return "-";
   return new Date(value).toLocaleString();
+}
+
+function getDefaultSmsUnitsCallbackUrl() {
+  if (typeof window === "undefined") return "";
+  return `${window.location.origin}/api/payments/mpesa/sms-units/webhook`;
 }
 
 const selectableTileClass = "rounded-2xl border px-4 py-3 text-left transition";
@@ -100,6 +111,7 @@ export default function PlatformMessaging() {
   const platformSmsReady = Boolean(
     smsConfig?.configured || smsConfig?.fallbackConfigured,
   );
+  const platformMpesaReady = Boolean(smsConfig?.mpesaConfigured);
   const activeChurches = churches.filter(
     (church: any) => church.status === "active",
   );
@@ -199,12 +211,25 @@ export default function PlatformMessaging() {
       smsApiKey: smsConfig.smsApiKey || "",
       smsShortcode: smsConfig.smsShortcode || "",
       smsBaseUrl: smsConfig.smsBaseUrl || "https://quicksms.advantasms.com",
+      mpesaEnvironment: smsConfig.mpesaEnvironment || "sandbox",
+      mpesaConsumerKey: smsConfig.mpesaConsumerKey || "",
+      mpesaConsumerSecret: smsConfig.mpesaConsumerSecret || "",
+      mpesaPasskey: smsConfig.mpesaPasskey || "",
+      mpesaShortcode: smsConfig.mpesaShortcode || "",
+      mpesaCallbackUrl:
+        smsConfig.mpesaCallbackUrl || getDefaultSmsUnitsCallbackUrl(),
     });
   }, [
     smsConfig?.smsPartnerId,
     smsConfig?.smsApiKey,
     smsConfig?.smsShortcode,
     smsConfig?.smsBaseUrl,
+    smsConfig?.mpesaEnvironment,
+    smsConfig?.mpesaConsumerKey,
+    smsConfig?.mpesaConsumerSecret,
+    smsConfig?.mpesaPasskey,
+    smsConfig?.mpesaShortcode,
+    smsConfig?.mpesaCallbackUrl,
   ]);
 
   useEffect(() => {
@@ -560,15 +585,15 @@ export default function PlatformMessaging() {
             </div>
             <div
               className={`rounded-2xl border px-4 py-3 text-sm ${
-                platformSmsReady
+                platformSmsReady && platformMpesaReady
                   ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-100"
                   : "border-amber-200/30 bg-amber-200/10 text-amber-100"
               }`}
             >
-              {smsConfig?.configured
-                ? "Platform sender ready"
-                : smsConfig?.fallbackConfigured
-                  ? "Environment fallback active"
+              {platformSmsReady && platformMpesaReady
+                ? "Sender and paybill ready"
+                : platformSmsReady
+                  ? "Paybill setup needed"
                   : "Sender setup needed"}
             </div>
           </div>
@@ -632,6 +657,97 @@ export default function PlatformMessaging() {
                   updateSenderForm("smsBaseUrl", event.target.value)
                 }
               />
+            </div>
+            <div className="lg:col-span-2 mt-2 rounded-3xl border border-white/10 bg-black/10 p-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                    SMS unit payment Paybill
+                  </p>
+                  <h4 className="mt-1 text-lg font-semibold text-white">
+                    Platform M-Pesa STK credentials
+                  </h4>
+                </div>
+                <span
+                  className={`rounded-2xl border px-3 py-2 text-xs font-semibold ${
+                    platformMpesaReady
+                      ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-100"
+                      : "border-amber-200/30 bg-amber-200/10 text-amber-100"
+                  }`}
+                >
+                  {platformMpesaReady ? "Paybill ready" : "Paybill missing"}
+                </span>
+              </div>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="label">Environment</label>
+                  <select
+                    className="input"
+                    value={senderForm.mpesaEnvironment}
+                    onChange={(event) =>
+                      updateSenderForm("mpesaEnvironment", event.target.value)
+                    }
+                  >
+                    <option value="sandbox">Sandbox</option>
+                    <option value="production">Production</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Paybill shortcode</label>
+                  <input
+                    className="input"
+                    value={senderForm.mpesaShortcode}
+                    onChange={(event) =>
+                      updateSenderForm("mpesaShortcode", event.target.value)
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="label">Consumer key</label>
+                  <input
+                    className="input"
+                    value={senderForm.mpesaConsumerKey}
+                    onChange={(event) =>
+                      updateSenderForm("mpesaConsumerKey", event.target.value)
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="label">Consumer secret</label>
+                  <input
+                    className="input"
+                    type="password"
+                    value={senderForm.mpesaConsumerSecret}
+                    onChange={(event) =>
+                      updateSenderForm(
+                        "mpesaConsumerSecret",
+                        event.target.value,
+                      )
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="label">Passkey</label>
+                  <input
+                    className="input"
+                    type="password"
+                    value={senderForm.mpesaPasskey}
+                    onChange={(event) =>
+                      updateSenderForm("mpesaPasskey", event.target.value)
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="label">SMS unit callback URL</label>
+                  <input
+                    className="input"
+                    value={senderForm.mpesaCallbackUrl}
+                    onChange={(event) =>
+                      updateSenderForm("mpesaCallbackUrl", event.target.value)
+                    }
+                  />
+                </div>
+              </div>
             </div>
             <button
               className="btn-primary w-full justify-center lg:col-span-2"

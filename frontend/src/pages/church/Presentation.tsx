@@ -1159,27 +1159,35 @@ export default function ChurchPresentation() {
                   Down
                   <ChevronRight size={16} />
                 </button>
-                <button
-                  className="btn-secondary justify-center"
-                  type="button"
-                  onClick={() =>
-                    updateLyricSpeed((currentSlide.lyricScrollSpeed || 1) - 0.2)
-                  }
-                >
-                  Slower
-                </button>
-                <button
-                  className="btn-secondary justify-center"
-                  type="button"
-                  onClick={() =>
-                    updateLyricSpeed((currentSlide.lyricScrollSpeed || 1) + 0.2)
-                  }
-                >
-                  Faster
-                </button>
-                <span className="inline-flex items-center rounded-full border border-white/10 px-3 py-2 text-xs font-semibold text-stone-300">
-                  Speed {(currentSlide.lyricScrollSpeed || 1).toFixed(1)}x
-                </span>
+                {currentSlide.lyricScrollPaused === false ? (
+                  <>
+                    <button
+                      className="btn-secondary justify-center"
+                      type="button"
+                      onClick={() =>
+                        updateLyricSpeed(
+                          (currentSlide.lyricScrollSpeed || 1) - 0.2,
+                        )
+                      }
+                    >
+                      Slower
+                    </button>
+                    <button
+                      className="btn-secondary justify-center"
+                      type="button"
+                      onClick={() =>
+                        updateLyricSpeed(
+                          (currentSlide.lyricScrollSpeed || 1) + 0.2,
+                        )
+                      }
+                    >
+                      Faster
+                    </button>
+                    <span className="inline-flex items-center rounded-full border border-white/10 px-3 py-2 text-xs font-semibold text-stone-300">
+                      Speed {(currentSlide.lyricScrollSpeed || 1).toFixed(1)}x
+                    </span>
+                  </>
+                ) : null}
               </div>
               <p className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">
                 These controls move lyrics inside this song slide. Previous and Next

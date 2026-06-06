@@ -24,6 +24,7 @@ import { SmsAddressBook } from './entities/sms-address-book.entity';
 import { SmsAddressBookContact } from './entities/sms-address-book-contact.entity';
 import { SmsBatch } from './entities/sms-batch.entity';
 import { SmsOutbox } from './entities/sms-outbox.entity';
+import { SmsUnitPurchase } from './entities/sms-unit-purchase.entity';
 import { SmsModule } from './sms/sms.module';
 import { ChurchSubscriptionsModule } from './subscriptions/church-subscriptions.module';
 import { SchemaBootstrapService } from './common/schema-bootstrap.service';
@@ -54,6 +55,7 @@ import { SchemaBootstrapService } from './common/schema-bootstrap.service';
         SmsAddressBookContact,
         SmsBatch,
         SmsOutbox,
+        SmsUnitPurchase,
       ],
       synchronize: (process.env.DB_SYNCHRONIZE || 'false') === 'true',
     }),

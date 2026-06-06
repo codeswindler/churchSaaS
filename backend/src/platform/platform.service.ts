@@ -158,6 +158,7 @@ export class PlatformService {
         smsShortcode: this.normalizeOptionalText(body.smsShortcode),
         smsShortcodes: this.normalizeSmsShortcodes(body.smsShortcodes),
         smsBaseUrl: this.normalizeOptionalText(body.smsBaseUrl),
+        smsUnitRateKes: this.normalizeSmsUnitRate(body.smsUnitRateKes),
         mpesaEnvironment:
           this.normalizeOptionalText(body.mpesaEnvironment) || 'sandbox',
         mpesaConsumerKey: this.normalizeOptionalText(body.mpesaConsumerKey),
@@ -302,6 +303,7 @@ export class PlatformService {
             : null,
         integrations: buildChurchIntegrationSummary(church),
         commissionRatePct: Number(church.commissionRatePct || 0),
+        smsUnitRateKes: Number(church.smsUnitRateKes || 0),
         enabledFeatures: normalizeFeatureList(church.enabledFeatures),
         contributionTotals: this.decorateRevenueTotals(
           totalsByChurchId.get(church.id),
@@ -344,6 +346,7 @@ export class PlatformService {
       smsShortcode: church.smsShortcode,
       smsShortcodes: church.smsShortcodes || [],
       smsBaseUrl: church.smsBaseUrl,
+      smsUnitRateKes: Number(church.smsUnitRateKes || 0),
       mpesaEnvironment: church.mpesaEnvironment || 'sandbox',
       mpesaConsumerKey: church.mpesaConsumerKey,
       mpesaConsumerSecret: church.mpesaConsumerSecret,
@@ -621,6 +624,9 @@ export class PlatformService {
     if (body.smsBaseUrl !== undefined) {
       church.smsBaseUrl = this.normalizeOptionalText(body.smsBaseUrl);
     }
+    if (body.smsUnitRateKes !== undefined) {
+      church.smsUnitRateKes = this.normalizeSmsUnitRate(body.smsUnitRateKes);
+    }
     if (body.mpesaEnvironment !== undefined) {
       church.mpesaEnvironment =
         this.normalizeOptionalText(body.mpesaEnvironment) || 'sandbox';
@@ -786,6 +792,17 @@ export class PlatformService {
     const smsBaseUrl =
       this.normalizeOptionalText(body.smsBaseUrl) ||
       'https://quicksms.advantasms.com';
+    const mpesaEnvironment =
+      this.normalizeOptionalText(body.mpesaEnvironment) || 'sandbox';
+    const mpesaConsumerKey = this.normalizeOptionalText(
+      body.mpesaConsumerKey,
+    );
+    const mpesaConsumerSecret = this.normalizeOptionalText(
+      body.mpesaConsumerSecret,
+    );
+    const mpesaPasskey = this.normalizeOptionalText(body.mpesaPasskey);
+    const mpesaShortcode = this.normalizeOptionalText(body.mpesaShortcode);
+    const mpesaCallbackUrl = this.normalizeOptionalText(body.mpesaCallbackUrl);
 
     if (!smsPartnerId || !smsApiKey || !smsShortcode) {
       throw new BadRequestException(
@@ -805,6 +822,12 @@ export class PlatformService {
     config.smsApiKey = smsApiKey;
     config.smsShortcode = smsShortcode;
     config.smsBaseUrl = smsBaseUrl.replace(/\/$/, '');
+    config.mpesaEnvironment = mpesaEnvironment;
+    config.mpesaConsumerKey = mpesaConsumerKey;
+    config.mpesaConsumerSecret = mpesaConsumerSecret;
+    config.mpesaPasskey = mpesaPasskey;
+    config.mpesaShortcode = mpesaShortcode;
+    config.mpesaCallbackUrl = mpesaCallbackUrl;
 
     await this.platformSmsConfigRepo.save(config);
 
@@ -1279,6 +1302,7 @@ export class PlatformService {
       billingModel:
         church.billingModel || this.inferBillingModel(church.commissionRatePct),
       commissionRatePct: Number(church.commissionRatePct || 0),
+      smsUnitRateKes: Number(church.smsUnitRateKes || 0),
       enabledFeatures: normalizeFeatureList(church.enabledFeatures),
       smsShortcodes: church.smsShortcodes || [],
     };
@@ -1321,6 +1345,18 @@ export class PlatformService {
       throw new BadRequestException(
         'Commission rate must be between 0 and 100',
       );
+    }
+    return Number(rate.toFixed(2));
+  }
+
+  private normalizeSmsUnitRate(value: unknown) {
+    if (value === undefined || value === null || value === '') {
+      return 0;
+    }
+
+    const rate = Number(value);
+    if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+      throw new BadRequestException('SMS unit rate must be between 0 and 100');
     }
     return Number(rate.toFixed(2));
   }

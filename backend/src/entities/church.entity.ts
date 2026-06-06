@@ -63,6 +63,9 @@ export class Church {
   @Column({ type: 'varchar', length: 255, nullable: true })
   smsBaseUrl: string | null;
 
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  smsUnitRateKes: number;
+
   @Column({ type: 'varchar', length: 20, nullable: true })
   mpesaEnvironment: string | null;
 

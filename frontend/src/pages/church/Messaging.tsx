@@ -1,15 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Clock3,
+  CheckCircle2,
+  CreditCard,
   Download,
+  Eye,
   FileSpreadsheet,
   Inbox,
+  Loader2,
   RotateCcw,
   Send,
   SlidersHorizontal,
   Upload,
   UserPlus,
   Users,
+  X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
@@ -51,8 +55,6 @@ const initialOutboxFilters = {
   sendStatus: '',
   deliveryStatus: '',
 };
-
-const undoSeconds = 6;
 
 type Workspace = 'compose' | 'addressBooks' | 'upload' | 'outbox';
 
@@ -114,12 +116,38 @@ export default function ChurchMessaging() {
   const [uploadForm, setUploadForm] = useState(initialUploadForm);
   const [selectedAddressBookId, setSelectedAddressBookId] = useState('');
   const [filters, setFilters] = useState(initialOutboxFilters);
-  const [pendingSend, setPendingSend] = useState<null | {
-    seconds: number;
-    payload: typeof initialMessageForm;
-  }>(null);
+  const [selectedOutboxMessage, setSelectedOutboxMessage] =
+    useState<any | null>(null);
+  const [paymentPhone, setPaymentPhone] = useState('');
+  const [activePurchase, setActivePurchase] = useState<any | null>(null);
+  const [sendCountdown, setSendCountdown] = useState<number | null>(null);
   const queryString = useMemo(() => toQueryString(filters), [filters]);
   const messageMetrics = getGsm7SmsMetrics(form.message);
+  const hasSelectedAudience =
+    form.fundAccountIds.length > 0 ||
+    form.addressBookIds.length > 0 ||
+    form.pastedContacts.trim().length > 0;
+  const quotePayload = useMemo(
+    () => ({
+      genderFilter: form.genderFilter,
+      message: form.message,
+      pastedContacts: form.pastedContacts,
+      addressBookIds: [...form.addressBookIds],
+      fundAccountIds: [...form.fundAccountIds],
+      smsShortcode: form.smsShortcode,
+    }),
+    [
+      form.addressBookIds,
+      form.fundAccountIds,
+      form.genderFilter,
+      form.message,
+      form.pastedContacts,
+      form.smsShortcode,
+    ],
+  );
+  const selectedOutboxMetrics = selectedOutboxMessage
+    ? getGsm7SmsMetrics(selectedOutboxMessage.messageBody || '')
+    : null;
 
   const { data: messagingConfig, isLoading: messagingConfigLoading } = useQuery({
     queryKey: ['church-messaging-config'],
@@ -167,6 +195,20 @@ export default function ChurchMessaging() {
         .then((response) => response.data),
   });
 
+  const { data: bulkQuote, isFetching: isQuoteLoading } = useQuery({
+    queryKey: ['church-bulk-sms-quote', quotePayload],
+    enabled:
+      activeWorkspace === 'compose' &&
+      hasSelectedAudience &&
+      Boolean(form.message.trim()),
+    queryFn: () =>
+      api
+        .post('/church/messaging/bulk/quote', quotePayload)
+        .then((response) => response.data),
+    retry: false,
+    staleTime: 5000,
+  });
+
   const shortcodes = messagingConfig?.smsShortcodes || [];
   const isLoadingFundAccounts =
     messagingConfigLoading || fundAccountsLoading;
@@ -210,28 +252,40 @@ export default function ChurchMessaging() {
     }
   }, [selectedBook?.id, uploadForm.addressBookId]);
 
-  const sendMutation = useMutation({
-    mutationFn: async (payload: typeof initialMessageForm) => {
-      const hasAudience =
-        payload.fundAccountIds.length > 0 ||
-        payload.addressBookIds.length > 0 ||
-        payload.pastedContacts.trim().length > 0;
-      if (!hasAudience) {
-        throw new Error(
-          'Select at least one fund account, address book, or pasted contact',
-        );
-      }
-      const response = await api.post('/church/messaging/bulk', payload);
+  const createPurchaseMutation = useMutation({
+    mutationFn: async (payload: typeof quotePayload & { payerPhone: string }) => {
+      const response = await api.post('/church/messaging/bulk/purchase', payload);
       return response.data;
     },
     onSuccess: (data) => {
-      toast.success(
-        `Bulk SMS queued for ${Number(data.recipientCount || 0).toLocaleString()} recipients`,
+      setActivePurchase(data);
+      setSendCountdown(null);
+      toast.success(data.statusDescription || 'STK push sent');
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message ||
+          error?.message ||
+          'Unable to start SMS unit payment',
       );
+    },
+  });
+
+  const sendPaidPurchaseMutation = useMutation({
+    mutationFn: async (purchaseId: string) => {
+      const response = await api.post(
+        `/church/messaging/bulk/purchases/${purchaseId}/send`,
+      );
+      return response.data;
+    },
+    onSuccess: (data) => {
+      setActivePurchase(data);
+      toast.success('Bulk SMS sent');
       setForm({
         ...initialMessageForm,
         smsShortcode: defaultShortcode,
       });
+      setPaymentPhone('');
       setActiveWorkspace('outbox');
       queryClient.invalidateQueries({ queryKey: ['church-sms-outbox'] });
       queryClient.invalidateQueries({ queryKey: ['church-sms-usage'] });
@@ -240,31 +294,10 @@ export default function ChurchMessaging() {
       toast.error(
         error?.response?.data?.message ||
           error?.message ||
-          'Unable to send bulk SMS',
+          'Payment confirmed, but SMS sending failed',
       );
     },
   });
-
-  useEffect(() => {
-    if (!pendingSend) {
-      return;
-    }
-
-    if (pendingSend.seconds <= 0) {
-      const payload = pendingSend.payload;
-      setPendingSend(null);
-      sendMutation.mutate(payload);
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      setPendingSend((current) =>
-        current ? { ...current, seconds: current.seconds - 1 } : current,
-      );
-    }, 1000);
-
-    return () => window.clearTimeout(timer);
-  }, [pendingSend, sendMutation]);
 
   const createAddressBookMutation = useMutation({
     mutationFn: async () => {
@@ -384,13 +417,59 @@ export default function ChurchMessaging() {
     },
   });
 
-  const queueSend = () => {
-    const hasAudience =
-      form.fundAccountIds.length > 0 ||
-      form.addressBookIds.length > 0 ||
-      form.pastedContacts.trim().length > 0;
+  useEffect(() => {
+    if (!activePurchase?.id || activePurchase.status !== 'stk_sent') {
+      return;
+    }
 
-    if (!hasAudience) {
+    const interval = window.setInterval(async () => {
+      try {
+        const response = await api.get(
+          `/church/messaging/bulk/purchases/${activePurchase.id}`,
+        );
+        setActivePurchase(response.data);
+      } catch (error: any) {
+        toast.error(
+          error?.response?.data?.message || 'Unable to check payment status',
+        );
+      }
+    }, 3000);
+
+    return () => window.clearInterval(interval);
+  }, [activePurchase?.id, activePurchase?.status]);
+
+  useEffect(() => {
+    if (activePurchase?.status === 'confirmed' && sendCountdown === null) {
+      setSendCountdown(5);
+    }
+    if (activePurchase?.status === 'failed') {
+      setSendCountdown(null);
+    }
+  }, [activePurchase?.status, sendCountdown]);
+
+  useEffect(() => {
+    if (sendCountdown === null || !activePurchase?.id) {
+      return;
+    }
+
+    if (sendCountdown <= 0) {
+      const purchaseId = activePurchase.id;
+      setSendCountdown(null);
+      sendPaidPurchaseMutation.mutate(purchaseId);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setSendCountdown((current) =>
+        current === null ? current : Math.max(0, current - 1),
+      );
+    }, 1000);
+
+    return () => window.clearTimeout(timer);
+  }, [activePurchase?.id, sendCountdown, sendPaidPurchaseMutation]);
+
+  const queueSend = () => {
+    if (!hasSelectedAudience) {
       toast.error(
         'Select at least one fund account, address book, or pasted contact',
       );
@@ -400,25 +479,74 @@ export default function ChurchMessaging() {
       toast.error('Write the message before sending');
       return;
     }
-    if (pendingSend) {
-      toast.error('A message is already waiting for the undo window');
+    if (!paymentPhone.trim()) {
+      toast.error('Enter the M-Pesa phone number to buy SMS units');
+      return;
+    }
+    if (!bulkQuote) {
+      toast.error('Wait for the SMS unit quote before sending');
+      return;
+    }
+    if (Number(bulkQuote.amountKes || 0) <= 0) {
+      toast.error('Ask super admin to configure the SMS unit rate');
       return;
     }
 
-    setPendingSend({
-      seconds: undoSeconds,
-      payload: {
-        ...form,
-        addressBookIds: [...form.addressBookIds],
-        fundAccountIds: [...form.fundAccountIds],
-      },
+    createPurchaseMutation.mutate({
+      ...quotePayload,
+      payerPhone: paymentPhone,
     });
-    toast.success(`Bulk SMS will send in ${undoSeconds} seconds`);
   };
 
-  const cancelPendingSend = () => {
-    setPendingSend(null);
-    toast.success('SMS send cancelled');
+  const purchaseStatus = activePurchase?.status as string | undefined;
+  const purchaseIsBusy =
+    createPurchaseMutation.isPending ||
+    sendPaidPurchaseMutation.isPending ||
+    purchaseStatus === 'stk_sent' ||
+    purchaseStatus === 'confirmed' ||
+    purchaseStatus === 'sending';
+  const purchaseAmount = Number(activePurchase?.amountKes || 0);
+  const purchaseButtonLabel = createPurchaseMutation.isPending
+    ? 'Sending STK push...'
+    : sendPaidPurchaseMutation.isPending || purchaseStatus === 'sending'
+      ? 'Sending messages...'
+      : purchaseStatus === 'stk_sent'
+        ? 'Waiting for payment...'
+        : purchaseStatus === 'confirmed' && sendCountdown !== null
+          ? `Sending in ${sendCountdown}s`
+          : purchaseStatus === 'failed' || purchaseStatus === 'send_failed'
+            ? 'Retry payment and send'
+            : 'Buy units and send';
+  const purchaseStatusTitle = createPurchaseMutation.isPending
+    ? 'Starting payment'
+    : sendPaidPurchaseMutation.isPending || purchaseStatus === 'sending'
+      ? 'Sending bulk SMS'
+      : purchaseStatus === 'stk_sent'
+        ? 'Waiting for M-Pesa payment'
+        : purchaseStatus === 'confirmed'
+          ? 'Payment received'
+          : purchaseStatus === 'sent'
+            ? 'Bulk SMS sent'
+            : purchaseStatus === 'failed'
+              ? 'Payment failed'
+              : purchaseStatus === 'send_failed'
+                ? 'SMS sending failed'
+                : 'Payment status';
+  const purchaseStatusBody =
+    activePurchase?.statusDescription ||
+    (purchaseStatus === 'stk_sent'
+      ? 'Complete the STK prompt on the payment phone.'
+      : purchaseStatus === 'confirmed'
+        ? 'Proceeding to send messages automatically.'
+        : purchaseStatus === 'sent'
+          ? 'The paid bulk message has been sent.'
+          : purchaseStatus === 'failed' || purchaseStatus === 'send_failed'
+            ? 'Retry the payment flow when ready.'
+            : 'SMS unit purchase status is being prepared.');
+
+  const closePurchaseStatus = () => {
+    setActivePurchase(null);
+    setSendCountdown(null);
   };
 
   const toggleAddressBook = (bookId: string) => {
@@ -492,6 +620,56 @@ export default function ChurchMessaging() {
       );
     }
   };
+
+  const refreshDeliveryReportsMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/church/messaging/outbox/delivery-refresh', {
+        limit: 100,
+      });
+      return response.data;
+    },
+    onSuccess: (data) => {
+      toast.success(
+        `Checked ${Number(data.checked || 0).toLocaleString()} delivery report${Number(data.checked || 0) === 1 ? '' : 's'}`,
+      );
+      queryClient.invalidateQueries({ queryKey: ['church-sms-outbox'] });
+      queryClient.invalidateQueries({ queryKey: ['church-sms-usage'] });
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message || 'Unable to refresh delivery reports',
+      );
+    },
+  });
+
+  const fetchDeliveryReportMutation = useMutation({
+    mutationFn: async (messageId: string) => {
+      const response = await api.post(
+        `/church/messaging/outbox/${messageId}/dlr`,
+      );
+      return response.data;
+    },
+    onSuccess: (data) => {
+      toast.success(data.deliveryDescription || 'Delivery report refreshed');
+      setSelectedOutboxMessage((current) =>
+        current
+          ? {
+              ...current,
+              deliveryStatus: data.deliveryStatus || current.deliveryStatus,
+              deliveryDescription:
+                data.deliveryDescription || current.deliveryDescription,
+              deliveryTat: data.deliveryTat || current.deliveryTat,
+            }
+          : current,
+      );
+      queryClient.invalidateQueries({ queryKey: ['church-sms-outbox'] });
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message || 'Unable to fetch delivery report',
+      );
+    },
+  });
 
   const insertMessagePlaceholder = (placeholder: string) => {
     const textarea = messageTextareaRef.current;
@@ -745,44 +923,130 @@ export default function ChurchMessaging() {
                 />
               </div>
 
-              {pendingSend ? (
-                <div className="lg:col-span-2 rounded-3xl border border-amber-200/30 bg-amber-200/10 p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-start gap-3">
-                      <Clock3 className="mt-1 text-amber-200" size={18} />
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-100">
-                          Undo window
-                        </p>
-                        <p className="mt-1 text-sm text-stone-300">
-                          Sending in {pendingSend.seconds}s. Cancel now if the
-                          audience or message needs a change.
-                        </p>
-                      </div>
+              <div className="lg:col-span-2 rounded-3xl border border-white/10 bg-black/10 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400">
+                      Send quote
+                    </p>
+                    <h4 className="mt-1 text-lg font-semibold text-white">
+                      {bulkQuote
+                        ? `${Number(bulkQuote.recipientCount || 0).toLocaleString()} recipients, ${Number(bulkQuote.totalUnits || 0).toLocaleString()} SMS units`
+                        : isQuoteLoading
+                          ? 'Calculating recipients and SMS units...'
+                          : 'Select recipients and write a message to calculate units'}
+                    </h4>
+                  </div>
+                  {bulkQuote ? (
+                    <div className="rounded-2xl border border-amber-200/30 bg-amber-200/10 px-4 py-3 text-sm text-amber-50">
+                      KES{' '}
+                      {Number(bulkQuote.amountKes || 0).toLocaleString(
+                        undefined,
+                        {
+                          maximumFractionDigits: 2,
+                          minimumFractionDigits: 2,
+                        },
+                      )}{' '}
+                      at KES{' '}
+                      {Number(bulkQuote.smsUnitRateKes || 0).toFixed(2)}/unit
                     </div>
-                    <button
-                      className="btn-secondary justify-center"
-                      type="button"
-                      onClick={cancelPendingSend}
-                    >
-                      <RotateCcw size={16} />
-                      Undo send
-                    </button>
+                  ) : null}
+                </div>
+
+                {bulkQuote ? (
+                  <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                      <span className="text-xs uppercase tracking-[0.18em] text-stone-400">
+                        Duplicates dropped
+                      </span>
+                      <strong className="mt-1 block text-white">
+                        {Number(bulkQuote.duplicateCount || 0).toLocaleString()}
+                      </strong>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                      <span className="text-xs uppercase tracking-[0.18em] text-stone-400">
+                        Plain / hashed
+                      </span>
+                      <strong className="mt-1 block text-white">
+                        {Number(
+                          bulkQuote.plainRecipientCount || 0,
+                        ).toLocaleString()}{' '}
+                        /{' '}
+                        {Number(
+                          bulkQuote.hashedRecipientCount || 0,
+                        ).toLocaleString()}
+                      </strong>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                      <span className="text-xs uppercase tracking-[0.18em] text-stone-400">
+                        Rendered length
+                      </span>
+                      <strong className="mt-1 block text-white">
+                        {Number(bulkQuote.minRenderedLength || 0)}-
+                        {Number(bulkQuote.maxRenderedLength || 0)} chars
+                      </strong>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                      <span className="text-xs uppercase tracking-[0.18em] text-stone-400">
+                        Unit split
+                      </span>
+                      <strong className="mt-1 block text-white">
+                        {(bulkQuote.unitBreakdown || [])
+                          .map(
+                            (item: any) =>
+                              `${Number(item.recipients || 0)} x ${Number(
+                                item.unitsPerRecipient || 0,
+                              )}`,
+                          )
+                          .join(', ') || 'n/a'}
+                      </strong>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="lg:col-span-2">
+                <label className="label">M-Pesa payment phone</label>
+                <input
+                  className="input"
+                  placeholder="0712 345 678"
+                  value={paymentPhone}
+                  onChange={(event) => setPaymentPhone(event.target.value)}
+                />
+                <p className="mt-2 text-xs text-stone-400">
+                  The STK prompt is sent to this phone. Messages send
+                  automatically after payment confirmation.
+                </p>
+              </div>
+
+              {activePurchase ? (
+                <div className="lg:col-span-2 rounded-3xl border border-amber-200/30 bg-amber-200/10 p-4">
+                  <div className="flex items-start gap-3">
+                    <CreditCard className="mt-1 text-amber-200" size={18} />
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-100">
+                        {purchaseStatusTitle}
+                      </p>
+                      <p className="mt-1 text-sm text-stone-200">
+                        {purchaseStatusBody}
+                      </p>
+                      {sendCountdown !== null ? (
+                        <p className="mt-2 text-sm font-semibold text-white">
+                          Sending messages in {sendCountdown}s
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               ) : null}
 
               <button
                 className="btn-primary w-full justify-center lg:col-span-2"
-                disabled={sendMutation.isPending || Boolean(pendingSend)}
+                disabled={purchaseIsBusy}
                 type="submit"
               >
-                <Send size={16} />
-                {sendMutation.isPending
-                  ? 'Sending...'
-                  : pendingSend
-                    ? `Sending in ${pendingSend.seconds}s`
-                    : 'Send bulk message'}
+                <CreditCard size={16} />
+                {purchaseButtonLabel}
               </button>
               </div>
 
@@ -1236,14 +1500,27 @@ export default function ChurchMessaging() {
                   Provider and delivery status
                 </h3>
               </div>
-              <button
-                className="btn-secondary justify-center"
-                type="button"
-                onClick={downloadOutbox}
-              >
-                <Download size={16} />
-                Download CSV
-              </button>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  className="btn-secondary justify-center"
+                  disabled={refreshDeliveryReportsMutation.isPending}
+                  type="button"
+                  onClick={() => refreshDeliveryReportsMutation.mutate()}
+                >
+                  <RotateCcw size={16} />
+                  {refreshDeliveryReportsMutation.isPending
+                    ? 'Checking reports...'
+                    : 'Refresh delivery reports'}
+                </button>
+                <button
+                  className="btn-secondary justify-center"
+                  type="button"
+                  onClick={downloadOutbox}
+                >
+                  <Download size={16} />
+                  Download CSV
+                </button>
+              </div>
             </div>
 
             {isLoading ? (
@@ -1260,6 +1537,7 @@ export default function ChurchMessaging() {
                       <th>Provider</th>
                       <th>Delivery</th>
                       <th>Message</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1291,11 +1569,21 @@ export default function ChurchMessaging() {
                         <td className="max-w-md truncate" data-label="Message">
                           {item.messageBody}
                         </td>
+                        <td data-label="Actions">
+                          <button
+                            className="btn-secondary px-3 py-2"
+                            type="button"
+                            onClick={() => setSelectedOutboxMessage(item)}
+                          >
+                            <Eye size={14} />
+                            Details
+                          </button>
+                        </td>
                       </tr>
                     ))}
                     {outboxRows.length === 0 ? (
                       <tr>
-                        <td colSpan={7}>No SMS outbox records found.</td>
+                        <td colSpan={8}>No SMS outbox records found.</td>
                       </tr>
                     ) : null}
                   </tbody>
@@ -1304,6 +1592,294 @@ export default function ChurchMessaging() {
             )}
           </section>
         </section>
+      ) : null}
+
+      {activePurchase ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={
+            purchaseIsBusy ? undefined : () => closePurchaseStatus()
+          }
+        >
+          <section
+            aria-labelledby="sms-payment-status-title"
+            aria-modal="true"
+            className="panel modal-card max-w-lg p-5 sm:p-6"
+            role="dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div
+                  className={`rounded-2xl border p-3 ${
+                    purchaseStatus === 'sent'
+                      ? 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100'
+                      : purchaseStatus === 'failed' ||
+                          purchaseStatus === 'send_failed'
+                        ? 'border-rose-300/30 bg-rose-300/10 text-rose-100'
+                        : 'border-amber-200/30 bg-amber-200/10 text-amber-100'
+                  }`}
+                >
+                  {purchaseStatus === 'sent' ? (
+                    <CheckCircle2 size={22} />
+                  ) : purchaseIsBusy ? (
+                    <Loader2 className="animate-spin" size={22} />
+                  ) : (
+                    <CreditCard size={22} />
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+                    SMS unit payment
+                  </p>
+                  <h3
+                    className="mt-2 text-2xl font-semibold text-white"
+                    id="sms-payment-status-title"
+                  >
+                    {purchaseStatusTitle}
+                  </h3>
+                </div>
+              </div>
+              {!purchaseIsBusy ? (
+                <button
+                  aria-label="Close SMS payment status"
+                  className="btn-secondary px-3 py-2"
+                  type="button"
+                  onClick={closePurchaseStatus}
+                >
+                  <X size={16} />
+                </button>
+              ) : null}
+            </div>
+
+            <p className="mt-5 text-sm leading-6 text-stone-300">
+              {purchaseStatusBody}
+            </p>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-white/10 bg-black/10 p-3">
+                <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
+                  Recipients
+                </p>
+                <strong className="mt-1 block text-white">
+                  {Number(activePurchase.recipientCount || 0).toLocaleString()}
+                </strong>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/10 p-3">
+                <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
+                  SMS units
+                </p>
+                <strong className="mt-1 block text-white">
+                  {Number(activePurchase.totalUnits || 0).toLocaleString()}
+                </strong>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/10 p-3">
+                <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
+                  Amount
+                </p>
+                <strong className="mt-1 block text-white">
+                  KES{' '}
+                  {purchaseAmount.toLocaleString(undefined, {
+                    maximumFractionDigits: 2,
+                    minimumFractionDigits: 2,
+                  })}
+                </strong>
+              </div>
+            </div>
+
+            {purchaseStatus === 'confirmed' && sendCountdown !== null ? (
+              <div className="mt-5 rounded-3xl border border-emerald-300/20 bg-emerald-300/10 p-4 text-sm font-semibold text-emerald-50">
+                Proceeding to send messages in {sendCountdown}s
+              </div>
+            ) : null}
+
+            {purchaseStatus === 'failed' || purchaseStatus === 'send_failed' ? (
+              <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                <button
+                  className="btn-primary flex-1 justify-center"
+                  disabled={createPurchaseMutation.isPending}
+                  type="button"
+                  onClick={queueSend}
+                >
+                  <RotateCcw size={16} />
+                  Retry payment and send
+                </button>
+                <button
+                  className="btn-secondary flex-1 justify-center"
+                  type="button"
+                  onClick={closePurchaseStatus}
+                >
+                  Close
+                </button>
+              </div>
+            ) : null}
+
+            {purchaseStatus === 'sent' ? (
+              <button
+                className="btn-primary mt-5 w-full justify-center"
+                type="button"
+                onClick={closePurchaseStatus}
+              >
+                Close
+              </button>
+            ) : null}
+          </section>
+        </div>
+      ) : null}
+
+      {selectedOutboxMessage ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => setSelectedOutboxMessage(null)}
+        >
+          <section
+            aria-labelledby="sms-outbox-detail-title"
+            aria-modal="true"
+            className="panel modal-card max-w-3xl p-5 sm:p-6"
+            role="dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+                  SMS detail
+                </p>
+                <h3
+                  className="mt-2 text-2xl font-semibold text-white"
+                  id="sms-outbox-detail-title"
+                >
+                  {selectedOutboxMessage.recipientName ||
+                    selectedOutboxMessage.contributor?.name ||
+                    'Recipient'}
+                </h3>
+                <p className="mt-1 text-sm text-stone-400">
+                  {new Date(selectedOutboxMessage.createdAt).toLocaleString()}
+                </p>
+              </div>
+              <button
+                aria-label="Close SMS details"
+                className="btn-secondary px-3 py-2"
+                type="button"
+                onClick={() => setSelectedOutboxMessage(null)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-2xl border border-white/10 bg-black/10 p-3">
+                <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
+                  Length
+                </p>
+                <strong className="mt-1 block text-white">
+                  {selectedOutboxMetrics?.length || 0} chars
+                </strong>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/10 p-3">
+                <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
+                  SMS units
+                </p>
+                <strong className="mt-1 block text-white">
+                  {selectedOutboxMessage.estimatedUnits ||
+                    selectedOutboxMetrics?.segments ||
+                    1}
+                </strong>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/10 p-3">
+                <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
+                  Provider
+                </p>
+                <strong className="mt-1 block text-white">
+                  {selectedOutboxMessage.providerDescription ||
+                    selectedOutboxMessage.sendStatus}
+                </strong>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/10 p-3">
+                <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
+                  Delivery
+                </p>
+                <strong className="mt-1 block text-white">
+                  {selectedOutboxMessage.deliveryDescription ||
+                    selectedOutboxMessage.deliveryStatus}
+                </strong>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-white/10 bg-black/10 p-3">
+                <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
+                  Recipient type
+                </p>
+                <p className="mt-1 text-sm text-stone-200">
+                  {selectedOutboxMessage.isHashedRecipient
+                    ? 'Hashed Safaricom recipient'
+                    : selectedOutboxMessage.recipientMobile}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/10 p-3">
+                <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
+                  Provider message ID
+                </p>
+                <p className="mt-1 break-all font-mono text-sm text-stone-200">
+                  {selectedOutboxMessage.providerMessageId || 'n/a'}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/10 p-3">
+                <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
+                  Batch
+                </p>
+                <p className="mt-1 break-all font-mono text-sm text-stone-200">
+                  {selectedOutboxMessage.batchId || 'n/a'}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/10 p-3">
+                <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
+                  DLR turnaround
+                </p>
+                <p className="mt-1 text-sm text-stone-200">
+                  {selectedOutboxMessage.deliveryTat || 'n/a'}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-3xl border border-white/10 bg-black/10 p-4">
+              <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                Rendered message
+              </p>
+              <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-stone-100">
+                {selectedOutboxMessage.messageBody}
+              </p>
+            </div>
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+              <button
+                className="btn-secondary flex-1 justify-center"
+                disabled={
+                  fetchDeliveryReportMutation.isPending ||
+                  !selectedOutboxMessage.providerMessageId
+                }
+                type="button"
+                onClick={() =>
+                  fetchDeliveryReportMutation.mutate(selectedOutboxMessage.id)
+                }
+              >
+                <RotateCcw size={16} />
+                {fetchDeliveryReportMutation.isPending
+                  ? 'Fetching DLR...'
+                  : 'Fetch delivery report'}
+              </button>
+              <button
+                className="btn-primary flex-1 justify-center"
+                type="button"
+                onClick={() => setSelectedOutboxMessage(null)}
+              >
+                Close
+              </button>
+            </div>
+          </section>
+        </div>
       ) : null}
     </div>
   );
