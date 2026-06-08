@@ -56,7 +56,7 @@ const initialOutboxFilters = {
   deliveryStatus: '',
 };
 
-type Workspace = 'compose' | 'addressBooks' | 'upload' | 'outbox';
+type Workspace = 'outbox' | 'compose' | 'addressBooks';
 
 const audienceFilterOptions = [
   {
@@ -109,7 +109,7 @@ export default function ChurchMessaging() {
   const queryClient = useQueryClient();
   const messageTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [activeWorkspace, setActiveWorkspace] =
-    useState<Workspace>('compose');
+    useState<Workspace>('outbox');
   const [form, setForm] = useState(initialMessageForm);
   const [groupForm, setGroupForm] = useState(initialGroupForm);
   const [contactForm, setContactForm] = useState(initialContactForm);
@@ -696,25 +696,6 @@ export default function ChurchMessaging() {
     });
   };
 
-  const renderWorkspaceTab = (
-    id: Workspace,
-    label: string,
-    Icon: typeof Send,
-  ) => (
-    <button
-      className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
-        activeWorkspace === id
-          ? 'bg-amber-200 text-stone-950'
-          : 'text-stone-300 hover:bg-white/5 hover:text-white'
-      }`}
-      type="button"
-      onClick={() => setActiveWorkspace(id)}
-    >
-      <Icon size={16} />
-      {label}
-    </button>
-  );
-
   return (
     <div className="space-y-5">
       <section className="panel p-3 sm:p-4">
@@ -728,11 +709,21 @@ export default function ChurchMessaging() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 rounded-2xl border border-white/10 bg-black/10 p-1 sm:grid-cols-4">
-            {renderWorkspaceTab('compose', 'Compose', Send)}
-            {renderWorkspaceTab('addressBooks', 'Address Books', Users)}
-            {renderWorkspaceTab('upload', 'Upload', Upload)}
-            {renderWorkspaceTab('outbox', 'Outbox', Inbox)}
+          <div className="w-full rounded-2xl border border-white/10 bg-black/10 p-3 xl:max-w-xs">
+            <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400">
+              Messaging
+            </label>
+            <select
+              className="input-compact"
+              value={activeWorkspace}
+              onChange={(event) =>
+                setActiveWorkspace(event.target.value as Workspace)
+              }
+            >
+              <option value="outbox">Outbox</option>
+              <option value="compose">Compose</option>
+              <option value="addressBooks">Address Books</option>
+            </select>
           </div>
         </div>
       </section>
@@ -1168,7 +1159,9 @@ export default function ChurchMessaging() {
                       ...current,
                       addressBookId: selectedBook.id,
                     }));
-                    setActiveWorkspace('upload');
+                    document
+                      .getElementById('contact-upload-panel')
+                      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                   }}
                 >
                   <Upload size={16} />
@@ -1298,8 +1291,8 @@ export default function ChurchMessaging() {
         </section>
       ) : null}
 
-      {activeWorkspace === 'upload' ? (
-        <section className="panel p-5 sm:p-6">
+      {activeWorkspace === 'addressBooks' ? (
+        <section id="contact-upload-panel" className="panel p-5 sm:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex items-start gap-3">
               <FileSpreadsheet className="mt-1 text-amber-200" size={18} />

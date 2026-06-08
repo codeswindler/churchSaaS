@@ -20,6 +20,7 @@ import PlatformCollections from './pages/platform/Collections';
 import PlatformDashboard from './pages/platform/Dashboard';
 import PlatformEnquiries from './pages/platform/Enquiries';
 import PlatformMessaging from './pages/platform/Messaging';
+import PlatformSettings from './pages/platform/Settings';
 import PlatformUsers from './pages/platform/Users';
 import PublicCongregation from './pages/public/Congregation';
 import PublicGive from './pages/public/Give';
@@ -66,6 +67,7 @@ export default function App() {
         <Route path="messaging" element={<PlatformMessaging />} />
         <Route path="enquiries" element={<PlatformEnquiries />} />
         <Route path="users" element={<PlatformUsers />} />
+        <Route path="settings" element={<PlatformSettings />} />
         <Route index element={<Navigate to="/platform/dashboard" replace />} />
       </Route>
 

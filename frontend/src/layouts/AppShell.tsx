@@ -13,6 +13,7 @@ import {
   Moon,
   Palette,
   Send,
+  Settings,
   ShieldCheck,
   Sun,
   UserCircle2,
@@ -46,6 +47,7 @@ const platformLinks = [
   { to: '/platform/messaging', label: 'Messaging', icon: Send },
   { to: '/platform/enquiries', label: 'Enquiries', icon: MessageSquareText },
   { to: '/platform/users', label: 'Platform Users', icon: Users },
+  { to: '/platform/settings', label: 'Settings', icon: Settings },
 ];
 
 const churchLinks = [
@@ -138,6 +140,11 @@ const pageMeta = {
     {
       prefix: '/platform/users',
       title: 'Platform users',
+      variant: 'compact',
+    },
+    {
+      prefix: '/platform/settings',
+      title: 'Settings',
       variant: 'compact',
     },
   ],
