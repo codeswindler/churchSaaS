@@ -466,7 +466,13 @@ export class ContributionsService {
   }
 
   async getChurchReportSummary(churchId: string, query: any = {}) {
-    const contributions = await this.listChurchContributions(churchId, query);
+    const [church, contributions] = await Promise.all([
+      this.churchRepo.findOne({ where: { id: churchId } }),
+      this.listChurchContributions(churchId, query),
+    ]);
+    if (!church) {
+      throw new NotFoundException('Church not found');
+    }
     const confirmed = contributions.filter(
       (item) => item.status === ContributionStatus.CONFIRMED,
     );
@@ -476,7 +482,7 @@ export class ContributionsService {
       0,
     );
     const commissionAmount = confirmed.reduce(
-      (sum, item) => sum + Number(item.commissionAmount || 0),
+      (sum, item) => sum + this.getContributionCommissionAmount(item, church),
       0,
     );
     const netAmount = Number((grossAmount - commissionAmount).toFixed(2));
@@ -485,7 +491,8 @@ export class ContributionsService {
       .reduce(
         (sum, item) =>
           sum +
-          (Number(item.amount || 0) - Number(item.commissionAmount || 0)),
+          (Number(item.amount || 0) -
+            this.getContributionCommissionAmount(item, church)),
         0,
       );
     const cashAmount = confirmed
@@ -493,7 +500,8 @@ export class ContributionsService {
       .reduce(
         (sum, item) =>
           sum +
-          (Number(item.amount || 0) - Number(item.commissionAmount || 0)),
+          (Number(item.amount || 0) -
+            this.getContributionCommissionAmount(item, church)),
         0,
       );
 
@@ -518,7 +526,7 @@ export class ContributionsService {
           };
         }
         const gross = Number(item.amount || 0);
-        const commission = Number(item.commissionAmount || 0);
+        const commission = this.getContributionCommissionAmount(item, church);
         const net = gross - commission;
         acc[key].grossAmount += gross;
         acc[key].commissionAmount += commission;
@@ -560,7 +568,7 @@ export class ContributionsService {
         }
 
         const gross = Number(item.amount || 0);
-        const commission = Number(item.commissionAmount || 0);
+        const commission = this.getContributionCommissionAmount(item, church);
         const net = gross - commission;
         acc[date].grossAmount += gross;
         acc[date].commissionAmount += commission;
@@ -1003,8 +1011,13 @@ export class ContributionsService {
   }
 
   private calculateCommissionFields(church: Church | null, amount: number) {
+    const billingModel =
+      church?.billingModel ||
+      (Number(church?.commissionRatePct || 0) > 0
+        ? ChurchBillingModel.COMMISSION
+        : ChurchBillingModel.SUBSCRIPTION);
     const rate =
-      church?.billingModel === ChurchBillingModel.COMMISSION
+      billingModel === ChurchBillingModel.COMMISSION
         ? Number(church?.commissionRatePct || 0)
         : 0;
     if (!rate || rate < 0) {
@@ -1018,6 +1031,27 @@ export class ContributionsService {
       commissionRatePctApplied: rate,
       commissionAmount: Number(((Number(amount || 0) * rate) / 100).toFixed(2)),
     };
+  }
+
+  private getContributionCommissionAmount(
+    contribution: Contribution,
+    church: Church | null,
+  ) {
+    if (
+      contribution.commissionAmount !== null &&
+      contribution.commissionAmount !== undefined
+    ) {
+      return Number(contribution.commissionAmount || 0);
+    }
+
+    if (contribution.channel !== ContributionChannel.MPESA) {
+      return 0;
+    }
+
+    return this.calculateCommissionFields(
+      church,
+      Number(contribution.amount || 0),
+    ).commissionAmount;
   }
 
   private applyCommissionFields(contribution: Contribution, church: Church | null) {

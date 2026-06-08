@@ -20,6 +20,7 @@ import {
   UserCheck,
   Users,
   WalletCards,
+  type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
@@ -37,20 +38,47 @@ interface AppShellProps {
   userType: 'platform' | 'church';
 }
 
+interface ShellLink {
+  to: string;
+  matchPath?: string;
+  label: string;
+  icon: LucideIcon;
+  permission?: string;
+  children?: {
+    to: string;
+    label: string;
+    tab: string;
+  }[];
+}
+
 const THEME_STORAGE_KEY = 'church_saas_theme';
 const COLOR_MODE_STORAGE_KEY = 'church_saas_color_mode';
 
-const platformLinks = [
+const platformLinks: ShellLink[] = [
   { to: '/platform/dashboard', label: 'Overview', icon: Landmark },
   { to: '/platform/churches', label: 'Churches', icon: Building2 },
   { to: '/platform/collections', label: 'Collections', icon: WalletCards },
-  { to: '/platform/messaging', label: 'Messaging', icon: Send },
+  {
+    to: '/platform/messaging?tab=outbox',
+    matchPath: '/platform/messaging',
+    label: 'Messaging',
+    icon: Send,
+    children: [
+      { to: '/platform/messaging?tab=outbox', label: 'Outbox', tab: 'outbox' },
+      { to: '/platform/messaging?tab=compose', label: 'Compose', tab: 'compose' },
+      {
+        to: '/platform/messaging?tab=addressBox',
+        label: 'Address Box',
+        tab: 'addressBox',
+      },
+    ],
+  },
   { to: '/platform/enquiries', label: 'Enquiries', icon: MessageSquareText },
   { to: '/platform/users', label: 'Platform Users', icon: Users },
   { to: '/platform/settings', label: 'Settings', icon: Settings },
 ];
 
-const churchLinks = [
+const churchLinks: ShellLink[] = [
   {
     to: '/church/dashboard',
     label: 'Overview',
@@ -70,10 +98,20 @@ const churchLinks = [
     permission: 'contributions.view',
   },
   {
-    to: '/church/messaging',
+    to: '/church/messaging?tab=outbox',
+    matchPath: '/church/messaging',
     label: 'Messaging',
     icon: Send,
     permission: 'messaging.view',
+    children: [
+      { to: '/church/messaging?tab=outbox', label: 'Outbox', tab: 'outbox' },
+      { to: '/church/messaging?tab=compose', label: 'Compose', tab: 'compose' },
+      {
+        to: '/church/messaging?tab=addressBooks',
+        label: 'Address Books',
+        tab: 'addressBooks',
+      },
+    ],
   },
   {
     to: '/church/congregation',
@@ -418,25 +456,55 @@ export function AppShell({ userType }: AppShellProps) {
     </button>
   );
 
+  const currentTab = new URLSearchParams(location.search).get('tab') || 'outbox';
   const sidebarNavigation = (
     <nav className="space-y-2">
-      {links.map(({ to, label, icon: Icon }) => (
-        <NavLink
-          key={to}
-          to={to}
-          className={({ isActive }) =>
-            `flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition ${
-              isActive
-                ? 'bg-amber-200/15 text-white ring-1 ring-amber-200/30'
-                : 'text-stone-300 hover:bg-white/5 hover:text-white'
-            }`
-          }
-          onClick={() => setIsNavOpen(false)}
-        >
-          <Icon size={18} />
-          {label}
-        </NavLink>
-      ))}
+      {links.map((link) => {
+        const { to, label, icon: Icon } = link;
+        const matchPath = link.matchPath || to.split('?')[0];
+        const isSectionActive = location.pathname === matchPath;
+
+        return (
+          <div key={to} className="space-y-1">
+            <NavLink
+              to={to}
+              className={() =>
+                `flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition ${
+                  isSectionActive
+                    ? 'bg-amber-200/15 text-white ring-1 ring-amber-200/30'
+                    : 'text-stone-300 hover:bg-white/5 hover:text-white'
+                }`
+              }
+              onClick={() => setIsNavOpen(false)}
+            >
+              <Icon size={18} />
+              {label}
+            </NavLink>
+
+            {isSectionActive && link.children ? (
+              <div className="ml-6 space-y-1 border-l border-white/10 pl-3">
+                {link.children.map((child) => {
+                  const isChildActive = currentTab === child.tab;
+                  return (
+                    <NavLink
+                      key={child.to}
+                      to={child.to}
+                      className={`block rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                        isChildActive
+                          ? 'bg-amber-200 text-stone-950'
+                          : 'text-stone-400 hover:bg-white/5 hover:text-white'
+                      }`}
+                      onClick={() => setIsNavOpen(false)}
+                    >
+                      {child.label}
+                    </NavLink>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
     </nav>
   );
 

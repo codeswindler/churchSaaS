@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
+import { useSearchParams } from "react-router-dom";
 import SmsPhonePreview from "../../components/SmsPhonePreview";
 import api from "../../services/api";
 import { getGsm7SmsMetrics } from "../../services/smsMetrics";
@@ -53,9 +54,19 @@ const selectedTileClass =
 const idleTileClass =
   "border-white/10 bg-black/10 text-stone-300 hover:border-emerald-300/35 hover:bg-emerald-300/10 hover:text-white";
 
+function normalizeWorkspace(value: string | null): Workspace {
+  return value === "compose" || value === "addressBox" ? value : "outbox";
+}
+
 export default function PlatformMessaging() {
   const queryClient = useQueryClient();
-  const [activeWorkspace, setActiveWorkspace] = useState<Workspace>("outbox");
+  const [routeSearchParams, setRouteSearchParams] = useSearchParams();
+  const activeWorkspace = normalizeWorkspace(routeSearchParams.get("tab"));
+  const setActiveWorkspace = (workspace: Workspace) => {
+    const next = new URLSearchParams(routeSearchParams);
+    next.set("tab", workspace);
+    setRouteSearchParams(next);
+  };
   const [form, setForm] = useState(initialMessageForm);
   const [filters, setFilters] = useState(initialFilters);
   const [searchTerm, setSearchTerm] = useState("");
@@ -271,22 +282,6 @@ export default function PlatformMessaging() {
             </div>
           </div>
 
-          <div className="w-full rounded-2xl border border-white/10 bg-black/10 p-3 xl:max-w-xs">
-            <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400">
-              Messaging
-            </label>
-            <select
-              className="input-compact"
-              value={activeWorkspace}
-              onChange={(event) =>
-                setActiveWorkspace(event.target.value as Workspace)
-              }
-            >
-              <option value="outbox">Outbox</option>
-              <option value="compose">Compose</option>
-              <option value="addressBox">Address Box</option>
-            </select>
-          </div>
         </div>
       </section>
 

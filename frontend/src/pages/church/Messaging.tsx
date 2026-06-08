@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
+import { useSearchParams } from 'react-router-dom';
 import SmsPhonePreview from '../../components/SmsPhonePreview';
 import api from '../../services/api';
 import {
@@ -105,11 +106,20 @@ const selectedTileClass =
 const idleTileClass =
   'border-white/10 bg-black/10 text-stone-300 hover:border-emerald-300/35 hover:bg-emerald-300/10 hover:text-white';
 
+function normalizeWorkspace(value: string | null): Workspace {
+  return value === 'compose' || value === 'addressBooks' ? value : 'outbox';
+}
+
 export default function ChurchMessaging() {
   const queryClient = useQueryClient();
   const messageTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const [activeWorkspace, setActiveWorkspace] =
-    useState<Workspace>('outbox');
+  const [routeSearchParams, setRouteSearchParams] = useSearchParams();
+  const activeWorkspace = normalizeWorkspace(routeSearchParams.get('tab'));
+  const setActiveWorkspace = (workspace: Workspace) => {
+    const next = new URLSearchParams(routeSearchParams);
+    next.set('tab', workspace);
+    setRouteSearchParams(next);
+  };
   const [form, setForm] = useState(initialMessageForm);
   const [groupForm, setGroupForm] = useState(initialGroupForm);
   const [contactForm, setContactForm] = useState(initialContactForm);
@@ -709,22 +719,6 @@ export default function ChurchMessaging() {
             </div>
           </div>
 
-          <div className="w-full rounded-2xl border border-white/10 bg-black/10 p-3 xl:max-w-xs">
-            <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400">
-              Messaging
-            </label>
-            <select
-              className="input-compact"
-              value={activeWorkspace}
-              onChange={(event) =>
-                setActiveWorkspace(event.target.value as Workspace)
-              }
-            >
-              <option value="outbox">Outbox</option>
-              <option value="compose">Compose</option>
-              <option value="addressBooks">Address Books</option>
-            </select>
-          </div>
         </div>
       </section>
 
@@ -1595,13 +1589,14 @@ export default function ChurchMessaging() {
             purchaseIsBusy ? undefined : () => closePurchaseStatus()
           }
         >
-          <section
-            aria-labelledby="sms-payment-status-title"
-            aria-modal="true"
-            className="panel modal-card max-w-lg p-5 sm:p-6"
-            role="dialog"
-            onClick={(event) => event.stopPropagation()}
-          >
+          <div className="modal-shell">
+            <section
+              aria-labelledby="sms-payment-status-title"
+              aria-modal="true"
+              className="panel modal-card max-w-lg p-5 sm:p-6"
+              role="dialog"
+              onClick={(event) => event.stopPropagation()}
+            >
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-start gap-3">
                 <div
@@ -1717,7 +1712,8 @@ export default function ChurchMessaging() {
                 Close
               </button>
             ) : null}
-          </section>
+            </section>
+          </div>
         </div>
       ) : null}
 

@@ -4,6 +4,7 @@ import {
   ArrowRightLeft,
   ChevronRight,
   Landmark,
+  MessageSquareText,
   Percent,
   Wallet,
   X,
@@ -17,6 +18,7 @@ function formatKes(value: unknown) {
 
 export default function PlatformDashboard() {
   const [showRevenueBreakdown, setShowRevenueBreakdown] = useState(false);
+  const [showSmsRevenueBreakdown, setShowSmsRevenueBreakdown] = useState(false);
   const { data, isLoading } = useQuery({
     queryKey: ['platform-dashboard'],
     queryFn: () =>
@@ -30,6 +32,7 @@ export default function PlatformDashboard() {
   const totals = data?.totals || {};
   const churches = data?.churches || [];
   const revenueBreakdown = data?.revenueBreakdown || [];
+  const smsPurchaseBreakdown = data?.smsPurchaseBreakdown || [];
   const statCards = [
     {
       label: 'Customer Churches',
@@ -63,6 +66,13 @@ export default function PlatformDashboard() {
       value: formatKes(totals.commissionRevenue),
       icon: Percent,
       hint: 'Admin revenue only',
+    },
+    {
+      label: 'SMS Revenue',
+      value: formatKes(totals.smsRevenue),
+      icon: MessageSquareText,
+      hint: `${Number(totals.smsUnitsSold || 0).toLocaleString()} units sold`,
+      onClick: () => setShowSmsRevenueBreakdown(true),
     },
   ];
 
@@ -426,6 +436,129 @@ export default function PlatformDashboard() {
                   {revenueBreakdown.length === 0 ? (
                     <tr>
                       <td colSpan={5}>No revenue records found yet.</td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {showSmsRevenueBreakdown ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => setShowSmsRevenueBreakdown(false)}
+        >
+          <section
+            aria-labelledby="platform-sms-revenue-breakdown-title"
+            aria-modal="true"
+            className="panel modal-card max-w-6xl p-5 sm:p-6"
+            role="dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+                  SMS Revenue
+                </p>
+                <h3
+                  className="mt-2 text-2xl font-semibold text-white"
+                  id="platform-sms-revenue-breakdown-title"
+                >
+                  SMS unit purchases by church
+                </h3>
+                <p className="mt-2 max-w-2xl text-sm text-stone-300">
+                  Paid SMS unit purchases count as platform SMS revenue. Pending
+                  and failed attempts remain listed for follow-up visibility.
+                </p>
+              </div>
+              <button
+                aria-label="Close SMS revenue breakdown"
+                className="btn-secondary px-3 py-2"
+                type="button"
+                onClick={() => setShowSmsRevenueBreakdown(false)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-3xl border border-white/10 bg-black/10 p-4">
+                <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                  SMS Revenue
+                </p>
+                <strong className="mt-2 block text-2xl text-white">
+                  {formatKes(totals.smsRevenue)}
+                </strong>
+              </div>
+              <div className="rounded-3xl border border-white/10 bg-black/10 p-4">
+                <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                  Units Sold
+                </p>
+                <strong className="mt-2 block text-2xl text-white">
+                  {Number(totals.smsUnitsSold || 0).toLocaleString()}
+                </strong>
+              </div>
+              <div className="rounded-3xl border border-white/10 bg-black/10 p-4">
+                <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                  Paid Purchases
+                </p>
+                <strong className="mt-2 block text-2xl text-white">
+                  {Number(totals.smsPurchaseCount || 0).toLocaleString()}
+                </strong>
+              </div>
+            </div>
+
+            <div className="table-scroll-region mt-5 rounded-3xl border border-white/10">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Church</th>
+                    <th>Buyer</th>
+                    <th>Recipients</th>
+                    <th>Units</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                    <th>When</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {smsPurchaseBreakdown.map((purchase: any) => (
+                    <tr key={purchase.id}>
+                      <td>
+                        <div className="font-semibold text-white">
+                          {purchase.churchName}
+                        </div>
+                        <div className="text-xs text-stone-400">
+                          {purchase.churchSlug}
+                        </div>
+                      </td>
+                      <td>
+                        <div>{purchase.createdByUserName || 'Church user'}</div>
+                        <div className="text-xs text-stone-400">
+                          {purchase.payerPhone || 'No phone'}
+                        </div>
+                      </td>
+                      <td>{Number(purchase.recipientCount || 0)}</td>
+                      <td className="font-semibold text-white">
+                        {Number(purchase.totalUnits || 0).toLocaleString()}
+                      </td>
+                      <td>{formatKes(purchase.amountKes)}</td>
+                      <td>{`${purchase.status || ''}`.replace(/_/g, ' ')}</td>
+                      <td>
+                        {new Date(
+                          purchase.paidAt ||
+                            purchase.sentAt ||
+                            purchase.createdAt,
+                        ).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                  {smsPurchaseBreakdown.length === 0 ? (
+                    <tr>
+                      <td colSpan={7}>No SMS unit purchases found yet.</td>
                     </tr>
                   ) : null}
                 </tbody>

@@ -38,6 +38,10 @@ import {
   SmsOutbox,
   SmsSendStatus,
 } from '../entities/sms-outbox.entity';
+import {
+  SmsUnitPurchase,
+  SmsUnitPurchaseStatus,
+} from '../entities/sms-unit-purchase.entity';
 import { SmsService } from '../sms/sms.service';
 import { ChurchSubscriptionsService } from '../subscriptions/church-subscriptions.service';
 
@@ -58,6 +62,8 @@ export class PlatformService {
     private readonly clientEnquiryRepo: Repository<ClientEnquiry>,
     @InjectRepository(SmsOutbox)
     private readonly smsOutboxRepo: Repository<SmsOutbox>,
+    @InjectRepository(SmsUnitPurchase)
+    private readonly smsUnitPurchaseRepo: Repository<SmsUnitPurchase>,
     @InjectRepository(PlatformSmsConfig)
     private readonly platformSmsConfigRepo: Repository<PlatformSmsConfig>,
     private readonly churchSubscriptionsService: ChurchSubscriptionsService,
@@ -984,21 +990,16 @@ export class PlatformService {
 
   async getDashboardSummary() {
     const churches = await this.listChurches();
-    const totalConfirmed = await this.contributionRepo
-      .createQueryBuilder('contribution')
-      .select('SUM(contribution.amount)', 'total')
-      .addSelect('SUM(COALESCE(contribution.commissionAmount, 0))', 'commission')
-      .where('contribution.status = :status', {
-        status: ContributionStatus.CONFIRMED,
-      })
-      .andWhere('contribution.channel = :channel', {
-        channel: ContributionChannel.MPESA,
-      })
-      .andWhere('contribution.sourceType IN (:...sourceTypes)', {
-        sourceTypes: this.getDirectMpesaSourceTypes(),
-      })
-      .getRawOne();
-
+    const churchRevenueTotals = churches.reduce(
+      (totals, church) => {
+        totals.totalRevenue += Number(church.contributionTotals?.total || 0);
+        totals.commissionRevenue += Number(
+          church.contributionTotals?.revenue || 0,
+        );
+        return totals;
+      },
+      { totalRevenue: 0, commissionRevenue: 0 },
+    );
     const last30Days = new Date();
     last30Days.setDate(last30Days.getDate() - 30);
     const last30Summary = await this.contributionRepo
@@ -1016,6 +1017,28 @@ export class PlatformService {
       })
       .andWhere('contribution.receivedAt >= :from', { from: last30Days })
       .getRawOne();
+    const paidSmsPurchaseStatuses = [
+      SmsUnitPurchaseStatus.CONFIRMED,
+      SmsUnitPurchaseStatus.SENDING,
+      SmsUnitPurchaseStatus.SENT,
+      SmsUnitPurchaseStatus.SEND_FAILED,
+    ];
+    const [smsPurchaseTotals, recentSmsPurchases] = await Promise.all([
+      this.smsUnitPurchaseRepo
+        .createQueryBuilder('purchase')
+        .select('SUM(purchase.amountKes)', 'revenue')
+        .addSelect('SUM(purchase.totalUnits)', 'units')
+        .addSelect('COUNT(purchase.id)', 'count')
+        .where('purchase.status IN (:...statuses)', {
+          statuses: paidSmsPurchaseStatuses,
+        })
+        .getRawOne(),
+      this.smsUnitPurchaseRepo.find({
+        relations: ['church', 'createdByUser'],
+        order: { createdAt: 'DESC' },
+        take: 100,
+      }),
+    ]);
 
     const statusCounts = churches.reduce(
       (acc, church) => {
@@ -1044,9 +1067,14 @@ export class PlatformService {
         graceChurches: statusCounts.grace || 0,
         suspendedChurches: statusCounts.suspended || 0,
         commissionChurches: statusCounts.commission || 0,
-        totalRevenue: Number(totalConfirmed?.total || 0),
-        totalCollections: Number(totalConfirmed?.total || 0),
-        commissionRevenue: Number(totalConfirmed?.commission || 0),
+        totalRevenue: Number(churchRevenueTotals.totalRevenue.toFixed(2)),
+        totalCollections: Number(churchRevenueTotals.totalRevenue.toFixed(2)),
+        commissionRevenue: Number(
+          churchRevenueTotals.commissionRevenue.toFixed(2),
+        ),
+        smsRevenue: Number(smsPurchaseTotals?.revenue || 0),
+        smsUnitsSold: Number(smsPurchaseTotals?.units || 0),
+        smsPurchaseCount: Number(smsPurchaseTotals?.count || 0),
         last30DayRevenue: Number(last30Summary?.total || 0),
         last30DayCollections: Number(last30Summary?.total || 0),
         last30DayCommissionRevenue: Number(last30Summary?.commission || 0),
@@ -1063,6 +1091,24 @@ export class PlatformService {
           contributionCount: Number(church.contributionTotals?.count || 0),
         }))
         .sort((a, b) => b.totalRevenue - a.totalRevenue),
+      smsPurchaseBreakdown: recentSmsPurchases.map((purchase) => ({
+        id: purchase.id,
+        churchId: purchase.churchId,
+        churchName: purchase.church?.name || 'Client church',
+        churchSlug: purchase.church?.slug || '',
+        createdByUserName: purchase.createdByUser?.name || null,
+        recipientCount: purchase.recipientCount,
+        totalUnits: purchase.totalUnits,
+        smsUnitRateKes: Number(purchase.smsUnitRateKes || 0),
+        amountKes: Number(purchase.amountKes || 0),
+        payerPhone: purchase.payerPhone,
+        mpesaReceipt: purchase.mpesaReceipt,
+        status: purchase.status,
+        statusDescription: purchase.statusDescription,
+        paidAt: purchase.paidAt,
+        sentAt: purchase.sentAt,
+        createdAt: purchase.createdAt,
+      })),
       expiringSoon,
       recentChurches: churches.slice(0, 5),
       churches,
