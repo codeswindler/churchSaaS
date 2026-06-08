@@ -73,6 +73,7 @@ function createInitialForm() {
       'fund_accounts',
       'messaging',
       'staff_management',
+      'discipleship',
     ],
   };
 }
@@ -98,6 +99,11 @@ const featureOptions = [
     value: 'staff_management',
     label: 'Staff management',
     description: 'Church users, roles, and permission assignment.',
+  },
+  {
+    value: 'discipleship',
+    label: 'Discipleship',
+    description: 'Members, groups, and attendance for pastoral follow-up.',
   },
 ];
 type SubscriptionActionEndpoint =

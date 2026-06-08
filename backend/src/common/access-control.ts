@@ -3,6 +3,7 @@ export enum ChurchFeature {
   FUND_ACCOUNTS = 'fund_accounts',
   MESSAGING = 'messaging',
   STAFF_MANAGEMENT = 'staff_management',
+  DISCIPLESHIP = 'discipleship',
 }
 
 export enum ChurchPermission {
@@ -22,6 +23,9 @@ export enum ChurchPermission {
   PRESENTATION_MANAGE = 'presentation.manage',
   USERS_VIEW = 'users.view',
   USERS_MANAGE = 'users.manage',
+  DISCIPLESHIP_VIEW = 'discipleship.view',
+  DISCIPLESHIP_MANAGE = 'discipleship.manage',
+  DISCIPLESHIP_ATTENDANCE_RECORD = 'discipleship.attendanceRecord',
 }
 
 export const DEFAULT_CHURCH_FEATURES = [
@@ -29,6 +33,7 @@ export const DEFAULT_CHURCH_FEATURES = [
   ChurchFeature.FUND_ACCOUNTS,
   ChurchFeature.MESSAGING,
   ChurchFeature.STAFF_MANAGEMENT,
+  ChurchFeature.DISCIPLESHIP,
 ];
 
 export const ROLE_PERMISSION_PRESETS: Record<string, ChurchPermission[]> = {
@@ -77,6 +82,10 @@ export const PERMISSION_FEATURE_MAP: Record<
   [ChurchPermission.PRESENTATION_MANAGE]: null,
   [ChurchPermission.USERS_VIEW]: ChurchFeature.STAFF_MANAGEMENT,
   [ChurchPermission.USERS_MANAGE]: ChurchFeature.STAFF_MANAGEMENT,
+  [ChurchPermission.DISCIPLESHIP_VIEW]: ChurchFeature.DISCIPLESHIP,
+  [ChurchPermission.DISCIPLESHIP_MANAGE]: ChurchFeature.DISCIPLESHIP,
+  [ChurchPermission.DISCIPLESHIP_ATTENDANCE_RECORD]:
+    ChurchFeature.DISCIPLESHIP,
 };
 
 export function normalizeChurchRole(role?: string | null) {

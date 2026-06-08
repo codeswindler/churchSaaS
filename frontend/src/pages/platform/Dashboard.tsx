@@ -1,8 +1,22 @@
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, ArrowRightLeft, Landmark, Wallet } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowRightLeft,
+  ChevronRight,
+  Landmark,
+  Percent,
+  Wallet,
+  X,
+} from 'lucide-react';
+import { useState } from 'react';
 import api from '../../services/api';
 
+function formatKes(value: unknown) {
+  return `KES ${Number(value || 0).toLocaleString()}`;
+}
+
 export default function PlatformDashboard() {
+  const [showRevenueBreakdown, setShowRevenueBreakdown] = useState(false);
   const { data, isLoading } = useQuery({
     queryKey: ['platform-dashboard'],
     queryFn: () =>
@@ -15,49 +29,87 @@ export default function PlatformDashboard() {
 
   const totals = data?.totals || {};
   const churches = data?.churches || [];
+  const revenueBreakdown = data?.revenueBreakdown || [];
+  const statCards = [
+    {
+      label: 'Customer Churches',
+      value: totals.churches || 0,
+      icon: Landmark,
+    },
+    {
+      label: 'Active Subscriptions',
+      value: totals.activeChurches || 0,
+      icon: ArrowRightLeft,
+    },
+    {
+      label: 'Commission Churches',
+      value: totals.commissionChurches || 0,
+      icon: Wallet,
+    },
+    {
+      label: 'In Grace Period',
+      value: totals.graceChurches || 0,
+      icon: AlertTriangle,
+    },
+    {
+      label: 'Total Revenue',
+      value: formatKes(totals.totalRevenue ?? totals.totalCollections),
+      icon: Wallet,
+      hint: 'View church breakdown',
+      onClick: () => setShowRevenueBreakdown(true),
+    },
+    {
+      label: 'Platform Commission',
+      value: formatKes(totals.commissionRevenue),
+      icon: Percent,
+      hint: 'Admin revenue only',
+    },
+  ];
 
   return (
     <div className="space-y-6">
       <div className="overview-stat-grid">
-        {[
-          {
-            label: 'Customer Churches',
-            value: totals.churches || 0,
-            icon: Landmark,
-          },
-          {
-            label: 'Active Subscriptions',
-            value: totals.activeChurches || 0,
-            icon: ArrowRightLeft,
-          },
-          {
-            label: 'Commission Churches',
-            value: totals.commissionChurches || 0,
-            icon: Wallet,
-          },
-          {
-            label: 'In Grace Period',
-            value: totals.graceChurches || 0,
-            icon: AlertTriangle,
-          },
-          {
-            label: 'Total Collections',
-            value: `KES ${Number(totals.totalCollections || 0).toLocaleString()}`,
-            icon: Wallet,
-          },
-        ].map((item) => (
-          <div key={item.label} className="stat-card">
-            <div className="flex items-center justify-between">
-              <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-                {item.label}
+        {statCards.map((item) =>
+          item.onClick ? (
+            <button
+              key={item.label}
+              className="stat-card text-left transition hover:border-amber-200/40 hover:bg-amber-200/10"
+              type="button"
+              onClick={item.onClick}
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+                  {item.label}
+                </p>
+                <item.icon size={18} className="text-amber-200" />
+              </div>
+              <div className="mt-5 text-3xl font-semibold text-white">
+                {item.value}
+              </div>
+              <p className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-amber-100">
+                {item.hint}
+                <ChevronRight size={14} />
               </p>
-              <item.icon size={18} className="text-amber-200" />
+            </button>
+          ) : (
+            <div key={item.label} className="stat-card">
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+                  {item.label}
+                </p>
+                <item.icon size={18} className="text-amber-200" />
+              </div>
+              <div className="mt-5 text-3xl font-semibold text-white">
+                {item.value}
+              </div>
+              {item.hint ? (
+                <p className="mt-3 text-xs font-semibold text-stone-400">
+                  {item.hint}
+                </p>
+              ) : null}
             </div>
-            <div className="mt-5 text-3xl font-semibold text-white">
-              {item.value}
-            </div>
-          </div>
-        ))}
+          ),
+        )}
       </div>
 
       <div className="overview-shell-grid">
@@ -262,13 +314,13 @@ export default function PlatformDashboard() {
                     </div>
                     <div>
                       <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400">
-                        Collections
+                        Revenue
                       </p>
                       <p className="mt-2 text-sm font-semibold text-white">
-                        KES{' '}
-                        {Number(
-                          church.contributionTotals?.total || 0,
-                        ).toLocaleString()}
+                        {formatKes(church.contributionTotals?.total)}
+                      </p>
+                      <p className="mt-1 text-xs text-stone-400">
+                        Commission {formatKes(church.contributionTotals?.revenue)}
                       </p>
                     </div>
                   </div>
@@ -278,6 +330,110 @@ export default function PlatformDashboard() {
           </div>
         </section>
       </div>
+
+      {showRevenueBreakdown ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => setShowRevenueBreakdown(false)}
+        >
+          <section
+            aria-labelledby="platform-revenue-breakdown-title"
+            aria-modal="true"
+            className="panel modal-card max-w-5xl p-5 sm:p-6"
+            role="dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+                  Revenue Breakdown
+                </p>
+                <h3
+                  className="mt-2 text-2xl font-semibold text-white"
+                  id="platform-revenue-breakdown-title"
+                >
+                  Church earnings and admin commission
+                </h3>
+                <p className="mt-2 max-w-2xl text-sm text-stone-300">
+                  Total revenue is the gross direct M-Pesa amount collected by
+                  churches. Platform commission is the admin revenue.
+                </p>
+              </div>
+              <button
+                aria-label="Close revenue breakdown"
+                className="btn-secondary px-3 py-2"
+                type="button"
+                onClick={() => setShowRevenueBreakdown(false)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-3xl border border-white/10 bg-black/10 p-4">
+                <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                  Total Revenue
+                </p>
+                <strong className="mt-2 block text-2xl text-white">
+                  {formatKes(totals.totalRevenue ?? totals.totalCollections)}
+                </strong>
+              </div>
+              <div className="rounded-3xl border border-amber-200/20 bg-amber-200/10 p-4">
+                <p className="text-xs uppercase tracking-[0.22em] text-amber-100">
+                  Platform Commission
+                </p>
+                <strong className="mt-2 block text-2xl text-white">
+                  {formatKes(totals.commissionRevenue)}
+                </strong>
+              </div>
+            </div>
+
+            <div className="table-scroll-region mt-5 rounded-3xl border border-white/10">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Church</th>
+                    <th>Billing</th>
+                    <th>Transactions</th>
+                    <th>Total Revenue</th>
+                    <th>Admin Commission</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {revenueBreakdown.map((church: any) => (
+                    <tr key={church.id}>
+                      <td>
+                        <div className="font-semibold text-white">
+                          {church.name}
+                        </div>
+                        <div className="text-xs text-stone-400">
+                          {church.slug}
+                        </div>
+                      </td>
+                      <td>
+                        {church.billingModel === 'commission'
+                          ? `${Number(church.commissionRatePct || 0)}% commission`
+                          : 'Subscription'}
+                      </td>
+                      <td>{Number(church.contributionCount || 0)}</td>
+                      <td>{formatKes(church.totalRevenue)}</td>
+                      <td className="font-semibold text-amber-100">
+                        {formatKes(church.commissionRevenue)}
+                      </td>
+                    </tr>
+                  ))}
+                  {revenueBreakdown.length === 0 ? (
+                    <tr>
+                      <td colSpan={5}>No revenue records found yet.</td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

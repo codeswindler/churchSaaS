@@ -8,6 +8,7 @@ import ChurchAccessHome from './pages/church/AccessHome';
 import ChurchContributions from './pages/church/Contributions';
 import ChurchCongregation from './pages/church/Congregation';
 import ChurchDashboard from './pages/church/Dashboard';
+import ChurchDiscipleship from './pages/church/Discipleship';
 import ChurchFundAccounts from './pages/church/FundAccounts';
 import ChurchMessaging from './pages/church/Messaging';
 import ChurchPresentation from './pages/church/Presentation';
@@ -114,6 +115,14 @@ export default function App() {
           element={
             <ChurchPermissionRoute permission="messaging.view">
               <ChurchMessaging />
+            </ChurchPermissionRoute>
+          }
+        />
+        <Route
+          path="discipleship"
+          element={
+            <ChurchPermissionRoute permission="discipleship.view">
+              <ChurchDiscipleship />
             </ChurchPermissionRoute>
           }
         />

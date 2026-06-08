@@ -668,15 +668,22 @@ export default function PlatformMessaging() {
                     Platform M-Pesa STK credentials
                   </h4>
                 </div>
-                <span
-                  className={`rounded-2xl border px-3 py-2 text-xs font-semibold ${
-                    platformMpesaReady
-                      ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-100"
-                      : "border-amber-200/30 bg-amber-200/10 text-amber-100"
-                  }`}
-                >
-                  {platformMpesaReady ? "Paybill ready" : "Paybill missing"}
-                </span>
+                <div className="flex flex-wrap gap-2">
+                  <span
+                    className={`rounded-2xl border px-3 py-2 text-xs font-semibold ${
+                      platformMpesaReady
+                        ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-100"
+                        : "border-amber-200/30 bg-amber-200/10 text-amber-100"
+                    }`}
+                  >
+                    {platformMpesaReady ? "Paybill ready" : "Paybill missing"}
+                  </span>
+                  <span className="rounded-2xl border border-sky-300/20 bg-sky-300/10 px-3 py-2 text-xs font-semibold text-sky-100">
+                    {senderForm.mpesaEnvironment === "production"
+                      ? "Production Daraja"
+                      : "Sandbox Daraja"}
+                  </span>
+                </div>
               </div>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <div>

@@ -238,8 +238,12 @@ export default function ChurchReports() {
                 to: buildLedgerPath(),
               },
               {
-                label: 'Total Amount',
+                label: 'Total Collections',
                 value: `KES ${Number(data?.totals?.totalAmount || 0).toLocaleString()}`,
+                hint:
+                  Number(data?.totals?.commissionAmount || 0) > 0
+                    ? `After KES ${Number(data?.totals?.commissionAmount || 0).toLocaleString()} commission`
+                    : 'Net confirmed collections',
                 to: buildLedgerPath(),
               },
               {
@@ -252,7 +256,7 @@ export default function ChurchReports() {
                 value: `KES ${Number(data?.totals?.cashAmount || 0).toLocaleString()}`,
                 to: buildLedgerPath({ channel: 'manual_cash' }),
               },
-            ].map(({ label, value, to }) => (
+            ].map(({ label, value, hint, to }) => (
               <Link
                 key={label}
                 className="stat-card block transition hover:-translate-y-0.5 hover:bg-white/5"
@@ -262,6 +266,11 @@ export default function ChurchReports() {
                   {label}
                 </p>
                 <div className="mt-5 text-3xl font-semibold text-white">{value}</div>
+                {hint ? (
+                  <p className="mt-3 text-xs font-semibold text-stone-400">
+                    {hint}
+                  </p>
+                ) : null}
                 <p className="mt-4 text-xs font-semibold uppercase tracking-[0.2em] text-amber-200">
                   View transactions
                 </p>

@@ -6,6 +6,10 @@ import { ChurchCongregationPage } from '../entities/church-congregation-page.ent
 import { Church } from '../entities/church.entity';
 import { ChurchUser } from '../entities/church-user.entity';
 import { Contributor } from '../entities/contributor.entity';
+import { DiscipleshipAttendance } from '../entities/discipleship-attendance.entity';
+import { DiscipleshipGroup } from '../entities/discipleship-group.entity';
+import { DiscipleshipMember } from '../entities/discipleship-member.entity';
+import { DiscipleshipMembership } from '../entities/discipleship-membership.entity';
 import { FundAccount } from '../entities/fund-account.entity';
 import { SmsAddressBook } from '../entities/sms-address-book.entity';
 import { SmsAddressBookContact } from '../entities/sms-address-book-contact.entity';
@@ -22,6 +26,10 @@ import { ChurchService } from './church.service';
       ChurchUser,
       FundAccount,
       Contributor,
+      DiscipleshipAttendance,
+      DiscipleshipGroup,
+      DiscipleshipMember,
+      DiscipleshipMembership,
       SmsAddressBook,
       SmsAddressBookContact,
     ]),

@@ -55,6 +55,147 @@ export class ChurchController {
     return this.churchService.getSubscriptionStatus(req.user.churchId);
   }
 
+  @Get('discipleship/summary')
+  @Permissions(ChurchPermission.DISCIPLESHIP_VIEW)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+    ChurchUserRole.MEDIA,
+  )
+  getDiscipleshipSummary(@Request() req: any) {
+    return this.churchService.getDiscipleshipSummary(req.user.churchId);
+  }
+
+  @Get('discipleship/members')
+  @Permissions(ChurchPermission.DISCIPLESHIP_VIEW)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+    ChurchUserRole.MEDIA,
+  )
+  listDiscipleshipMembers(@Request() req: any, @Query() query: any) {
+    return this.churchService.listDiscipleshipMembers(
+      req.user.churchId,
+      query,
+    );
+  }
+
+  @Post('discipleship/members')
+  @Permissions(ChurchPermission.DISCIPLESHIP_MANAGE)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+    ChurchUserRole.MEDIA,
+  )
+  createDiscipleshipMember(@Request() req: any, @Body() body: any) {
+    return this.churchService.createDiscipleshipMember(
+      req.user.churchId,
+      req.user.id,
+      body,
+    );
+  }
+
+  @Patch('discipleship/members/:memberId')
+  @Permissions(ChurchPermission.DISCIPLESHIP_MANAGE)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+    ChurchUserRole.MEDIA,
+  )
+  updateDiscipleshipMember(
+    @Request() req: any,
+    @Param('memberId') memberId: string,
+    @Body() body: any,
+  ) {
+    return this.churchService.updateDiscipleshipMember(
+      req.user.churchId,
+      memberId,
+      body,
+    );
+  }
+
+  @Get('discipleship/groups')
+  @Permissions(ChurchPermission.DISCIPLESHIP_VIEW)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+    ChurchUserRole.MEDIA,
+  )
+  listDiscipleshipGroups(@Request() req: any) {
+    return this.churchService.listDiscipleshipGroups(req.user.churchId);
+  }
+
+  @Post('discipleship/groups')
+  @Permissions(ChurchPermission.DISCIPLESHIP_MANAGE)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+    ChurchUserRole.MEDIA,
+  )
+  createDiscipleshipGroup(@Request() req: any, @Body() body: any) {
+    return this.churchService.createDiscipleshipGroup(
+      req.user.churchId,
+      body,
+    );
+  }
+
+  @Patch('discipleship/groups/:groupId')
+  @Permissions(ChurchPermission.DISCIPLESHIP_MANAGE)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+    ChurchUserRole.MEDIA,
+  )
+  updateDiscipleshipGroup(
+    @Request() req: any,
+    @Param('groupId') groupId: string,
+    @Body() body: any,
+  ) {
+    return this.churchService.updateDiscipleshipGroup(
+      req.user.churchId,
+      groupId,
+      body,
+    );
+  }
+
+  @Get('discipleship/attendance')
+  @Permissions(ChurchPermission.DISCIPLESHIP_VIEW)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+    ChurchUserRole.MEDIA,
+  )
+  listDiscipleshipAttendance(@Request() req: any, @Query() query: any) {
+    return this.churchService.listDiscipleshipAttendance(
+      req.user.churchId,
+      query,
+    );
+  }
+
+  @Post('discipleship/attendance/mark')
+  @Permissions(ChurchPermission.DISCIPLESHIP_ATTENDANCE_RECORD)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+    ChurchUserRole.MEDIA,
+  )
+  markDiscipleshipAttendance(@Request() req: any, @Body() body: any) {
+    return this.churchService.markDiscipleshipAttendance(
+      req.user.churchId,
+      req.user.id,
+      body,
+    );
+  }
+
   @Get('congregation-page')
   @Permissions(ChurchPermission.CONGREGATION_PAGE_MANAGE)
   @Roles(ChurchUserRole.PRIEST, ChurchUserRole.SECRETARY)

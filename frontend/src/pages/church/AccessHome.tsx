@@ -5,6 +5,7 @@ import {
   MonitorPlay,
   Send,
   ShieldCheck,
+  UserCheck,
   Users,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -45,6 +46,13 @@ const accessCards = [
     description: 'Compose SMS messages and review recipient groups.',
     to: '/church/messaging',
     icon: Send,
+  },
+  {
+    permission: 'discipleship.view',
+    title: 'Discipleship',
+    description: 'Track members, groups, and Sunday attendance.',
+    to: '/church/discipleship',
+    icon: UserCheck,
   },
   {
     permission: 'users.view',

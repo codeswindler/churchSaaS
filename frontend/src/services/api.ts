@@ -39,6 +39,9 @@ const rolePermissionPresets: Record<string, string[]> = {
     'presentation.manage',
     'users.view',
     'users.manage',
+    'discipleship.view',
+    'discipleship.manage',
+    'discipleship.attendanceRecord',
   ],
   treasurer: [
     'dashboard.view',
@@ -81,6 +84,9 @@ const permissionFeatureMap: Record<string, string | null> = {
   'presentation.manage': null,
   'users.view': 'staff_management',
   'users.manage': 'staff_management',
+  'discipleship.view': 'discipleship',
+  'discipleship.manage': 'discipleship',
+  'discipleship.attendanceRecord': 'discipleship',
 };
 
 function normalizeChurchRole(role?: string | null) {

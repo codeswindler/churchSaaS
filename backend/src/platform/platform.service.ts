@@ -987,6 +987,7 @@ export class PlatformService {
     const totalConfirmed = await this.contributionRepo
       .createQueryBuilder('contribution')
       .select('SUM(contribution.amount)', 'total')
+      .addSelect('SUM(COALESCE(contribution.commissionAmount, 0))', 'commission')
       .where('contribution.status = :status', {
         status: ContributionStatus.CONFIRMED,
       })
@@ -1003,6 +1004,7 @@ export class PlatformService {
     const last30Summary = await this.contributionRepo
       .createQueryBuilder('contribution')
       .select('SUM(contribution.amount)', 'total')
+      .addSelect('SUM(COALESCE(contribution.commissionAmount, 0))', 'commission')
       .where('contribution.status = :status', {
         status: ContributionStatus.CONFIRMED,
       })
@@ -1042,9 +1044,25 @@ export class PlatformService {
         graceChurches: statusCounts.grace || 0,
         suspendedChurches: statusCounts.suspended || 0,
         commissionChurches: statusCounts.commission || 0,
+        totalRevenue: Number(totalConfirmed?.total || 0),
         totalCollections: Number(totalConfirmed?.total || 0),
+        commissionRevenue: Number(totalConfirmed?.commission || 0),
+        last30DayRevenue: Number(last30Summary?.total || 0),
         last30DayCollections: Number(last30Summary?.total || 0),
+        last30DayCommissionRevenue: Number(last30Summary?.commission || 0),
       },
+      revenueBreakdown: churches
+        .map((church) => ({
+          id: church.id,
+          name: church.name,
+          slug: church.slug,
+          billingModel: church.billingModel,
+          commissionRatePct: Number(church.commissionRatePct || 0),
+          totalRevenue: Number(church.contributionTotals?.total || 0),
+          commissionRevenue: Number(church.contributionTotals?.revenue || 0),
+          contributionCount: Number(church.contributionTotals?.count || 0),
+        }))
+        .sort((a, b) => b.totalRevenue - a.totalRevenue),
       expiringSoon,
       recentChurches: churches.slice(0, 5),
       churches,

@@ -654,6 +654,10 @@ export default function ChurchDashboard() {
     {
       label: 'Total Collections',
       value: `KES ${Number(totals.totalAmount || 0).toLocaleString()}`,
+      hint:
+        Number(totals.commissionAmount || 0) > 0
+          ? `After KES ${Number(totals.commissionAmount || 0).toLocaleString()} commission`
+          : 'Net confirmed collections',
       to: buildLedgerPath(),
     },
     {
@@ -785,7 +789,7 @@ export default function ChurchDashboard() {
       </section>
 
       <div className="overview-stat-grid">
-        {overviewKpis.map(({ label, value, to }) => (
+        {overviewKpis.map(({ label, value, to, hint }) => (
           <Link
             key={label}
             className="stat-card block transition hover:-translate-y-0.5 hover:bg-white/5"
@@ -797,6 +801,11 @@ export default function ChurchDashboard() {
             <div className="mt-5 text-3xl font-semibold text-white">
               {value}
             </div>
+            {hint ? (
+              <p className="mt-3 text-xs font-semibold text-stone-400">
+                {hint}
+              </p>
+            ) : null}
             <p className="mt-4 text-xs font-semibold uppercase tracking-[0.2em] text-amber-200">
               Open ledger
             </p>

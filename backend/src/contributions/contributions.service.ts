@@ -471,16 +471,31 @@ export class ContributionsService {
       (item) => item.status === ContributionStatus.CONFIRMED,
     );
 
-    const totalAmount = confirmed.reduce(
+    const grossAmount = confirmed.reduce(
       (sum, item) => sum + Number(item.amount || 0),
       0,
     );
+    const commissionAmount = confirmed.reduce(
+      (sum, item) => sum + Number(item.commissionAmount || 0),
+      0,
+    );
+    const netAmount = Number((grossAmount - commissionAmount).toFixed(2));
     const mpesaAmount = confirmed
       .filter((item) => item.channel === ContributionChannel.MPESA)
-      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+      .reduce(
+        (sum, item) =>
+          sum +
+          (Number(item.amount || 0) - Number(item.commissionAmount || 0)),
+        0,
+      );
     const cashAmount = confirmed
       .filter((item) => item.channel === ContributionChannel.MANUAL_CASH)
-      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+      .reduce(
+        (sum, item) =>
+          sum +
+          (Number(item.amount || 0) - Number(item.commissionAmount || 0)),
+        0,
+      );
 
     const byFundAccount = confirmed.reduce(
       (acc, item) => {
@@ -496,10 +511,19 @@ export class ContributionsService {
               item.fundAccount?.code ||
               (isUnassignedFallback ? 'general' : null),
             totalAmount: 0,
+            grossAmount: 0,
+            commissionAmount: 0,
+            netAmount: 0,
             count: 0,
           };
         }
-        acc[key].totalAmount += Number(item.amount || 0);
+        const gross = Number(item.amount || 0);
+        const commission = Number(item.commissionAmount || 0);
+        const net = gross - commission;
+        acc[key].grossAmount += gross;
+        acc[key].commissionAmount += commission;
+        acc[key].netAmount += net;
+        acc[key].totalAmount += net;
         acc[key].count += 1;
         return acc;
       },
@@ -510,6 +534,9 @@ export class ContributionsService {
           fundAccountName: string;
           code: string | null;
           totalAmount: number;
+          grossAmount: number;
+          commissionAmount: number;
+          netAmount: number;
           count: number;
         }
       >,
@@ -525,11 +552,20 @@ export class ContributionsService {
           acc[date] = {
             date,
             totalAmount: 0,
+            grossAmount: 0,
+            commissionAmount: 0,
+            netAmount: 0,
             count: 0,
           };
         }
 
-        acc[date].totalAmount += Number(item.amount || 0);
+        const gross = Number(item.amount || 0);
+        const commission = Number(item.commissionAmount || 0);
+        const net = gross - commission;
+        acc[date].grossAmount += gross;
+        acc[date].commissionAmount += commission;
+        acc[date].netAmount += net;
+        acc[date].totalAmount += net;
         acc[date].count += 1;
         return acc;
       },
@@ -538,6 +574,9 @@ export class ContributionsService {
         {
           date: string;
           totalAmount: number;
+          grossAmount: number;
+          commissionAmount: number;
+          netAmount: number;
           count: number;
         }
       >,
@@ -546,9 +585,12 @@ export class ContributionsService {
     return {
       totals: {
         contributionCount: confirmed.length,
-        totalAmount,
-        mpesaAmount,
-        cashAmount,
+        totalAmount: netAmount,
+        grossAmount,
+        commissionAmount,
+        netAmount,
+        mpesaAmount: Number(mpesaAmount.toFixed(2)),
+        cashAmount: Number(cashAmount.toFixed(2)),
       },
       byFundAccount: Object.values(byFundAccount).sort(
         (a, b) => b.totalAmount - a.totalAmount,

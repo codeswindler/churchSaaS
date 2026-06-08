@@ -7,7 +7,7 @@ export class MpesaService {
   private readonly logger = new Logger(MpesaService.name);
 
   private getBaseUrl(environment: string | null | undefined) {
-    return (environment || process.env.MPESA_ENV) === 'sandbox'
+    return this.normalizeEnvironment(environment) === 'sandbox'
       ? 'https://sandbox.safaricom.co.ke'
       : 'https://api.safaricom.co.ke';
   }
@@ -17,16 +17,25 @@ export class MpesaService {
     const credentials = Buffer.from(
       `${resolved.consumerKey}:${resolved.consumerSecret}`,
     ).toString('base64');
-    const response = await axios.get(
-      `${this.getBaseUrl(resolved.environment)}/oauth/v1/generate?grant_type=client_credentials`,
-      {
-        headers: {
-          Authorization: `Basic ${credentials}`,
+    try {
+      const response = await axios.get(
+        `${this.getBaseUrl(resolved.environment)}/oauth/v1/generate?grant_type=client_credentials`,
+        {
+          headers: {
+            Authorization: `Basic ${credentials}`,
+          },
         },
-      },
-    );
+      );
 
-    return response.data.access_token;
+      return response.data.access_token;
+    } catch (error) {
+      this.logger.error(
+        `M-Pesa access token failed | ${this.formatDiagnostics(resolved)} | ${this.describeAxiosError(error)}`,
+      );
+      throw new BadRequestException(
+        'Unable to generate M-Pesa access token. Check that the selected Daraja environment matches the consumer key and consumer secret.',
+      );
+    }
   }
 
   assertConfigured(config: ChurchMpesaConfig = {}) {
@@ -72,17 +81,33 @@ export class MpesaService {
       `Initiating STK Push for ${formattedPhone} amount KES ${amount}`,
     );
 
-    const response = await axios.post(
-      `${this.getBaseUrl(resolved.environment)}/mpesa/stkpush/v1/processrequest`,
-      payload,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
+    try {
+      const response = await axios.post(
+        `${this.getBaseUrl(resolved.environment)}/mpesa/stkpush/v1/processrequest`,
+        payload,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
         },
-      },
-    );
+      );
 
-    return response.data;
+      return response.data;
+    } catch (error) {
+      this.logger.error(
+        `M-Pesa STK push failed | ${this.formatDiagnostics(resolved)} | ${this.describeAxiosError(error)}`,
+      );
+      const providerMessage = this.getProviderMessage(error);
+      if (/invalid access token/i.test(providerMessage)) {
+        throw new BadRequestException(
+          'Daraja rejected the STK push with Invalid Access Token. Check that the M-Pesa environment matches the saved credentials, shortcode, and passkey.',
+        );
+      }
+      throw new BadRequestException(
+        providerMessage ||
+          'Unable to initiate M-Pesa STK push. Check the M-Pesa configuration.',
+      );
+    }
   }
 
   private getTimestamp(): string {
@@ -99,7 +124,9 @@ export class MpesaService {
   private resolveConfig(config: ChurchMpesaConfig) {
     const resolved = {
       environment:
-        config.mpesaEnvironment || process.env.MPESA_ENV || 'sandbox',
+        this.normalizeEnvironment(
+          config.mpesaEnvironment || process.env.MPESA_ENV || 'sandbox',
+        ),
       consumerKey: config.mpesaConsumerKey,
       consumerSecret: config.mpesaConsumerSecret,
       passkey: config.mpesaPasskey,
@@ -124,5 +151,59 @@ export class MpesaService {
     }
 
     return resolved;
+  }
+
+  private normalizeEnvironment(value: string | null | undefined) {
+    return `${value || 'sandbox'}`.toLowerCase() === 'production'
+      ? 'production'
+      : 'sandbox';
+  }
+
+  private formatDiagnostics(resolved: ReturnType<typeof this.resolveConfig>) {
+    return [
+      `environment=${resolved.environment}`,
+      `shortcode=${this.maskSecret(resolved.shortcode)}`,
+      `consumerKeyPresent=${Boolean(resolved.consumerKey)}`,
+      `consumerSecretPresent=${Boolean(resolved.consumerSecret)}`,
+      `passkeyPresent=${Boolean(resolved.passkey)}`,
+      `callbackUrlPresent=${Boolean(resolved.callbackUrl)}`,
+    ].join(' | ');
+  }
+
+  private getProviderMessage(error: any) {
+    const data = axios.isAxiosError(error) ? error.response?.data : null;
+    return (
+      data?.errorMessage ||
+      data?.errorMessageEn ||
+      data?.ResponseDescription ||
+      data?.responseDescription ||
+      data?.error ||
+      error?.message ||
+      ''
+    );
+  }
+
+  private describeAxiosError(error: any) {
+    if (!axios.isAxiosError(error)) {
+      return `message=${error?.message || 'Unknown error'}`;
+    }
+
+    const data = error.response?.data;
+    return [
+      `status=${error.response?.status || 'no-status'}`,
+      `message=${error.message}`,
+      `providerMessage=${this.getProviderMessage(error) || 'n/a'}`,
+      `providerCode=${data?.errorCode || data?.ResponseCode || 'n/a'}`,
+    ].join(' | ');
+  }
+
+  private maskSecret(value: string | null | undefined) {
+    if (!value) {
+      return 'missing';
+    }
+    if (value.length <= 4) {
+      return `***${value.slice(-1)}`;
+    }
+    return `${'*'.repeat(Math.max(3, value.length - 4))}${value.slice(-4)}`;
   }
 }

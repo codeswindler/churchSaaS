@@ -13,6 +13,7 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
     await this.ensureRevenueAndAccessColumns();
     await this.ensureClientEnquiryTable();
     await this.ensureSmsMessagingTables();
+    await this.ensureDiscipleshipTables();
     await this.ensureCongregationPageTable();
   }
 
@@ -551,6 +552,99 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `);
         this.logger.log('Created SMS unit purchases table.');
+      }
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  private async ensureDiscipleshipTables() {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+
+    try {
+      const members = await queryRunner.getTable('discipleship_members');
+      if (!members) {
+        await queryRunner.query(`
+          CREATE TABLE \`discipleship_members\` (
+            \`id\` varchar(36) NOT NULL,
+            \`churchId\` varchar(36) NOT NULL,
+            \`fullName\` varchar(180) NOT NULL,
+            \`phone\` varchar(40) NULL,
+            \`email\` varchar(160) NULL,
+            \`gender\` varchar(20) NULL,
+            \`enrollmentDate\` date NULL,
+            \`status\` varchar(40) NOT NULL DEFAULT 'active',
+            \`notes\` text NULL,
+            \`createdByUserId\` varchar(36) NULL,
+            \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            \`updatedAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+            PRIMARY KEY (\`id\`),
+            INDEX \`IDX_discipleship_members_church_name\` (\`churchId\`, \`fullName\`),
+            INDEX \`IDX_discipleship_members_church_phone\` (\`churchId\`, \`phone\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        this.logger.log('Created discipleship members table.');
+      }
+
+      const groups = await queryRunner.getTable('discipleship_groups');
+      if (!groups) {
+        await queryRunner.query(`
+          CREATE TABLE \`discipleship_groups\` (
+            \`id\` varchar(36) NOT NULL,
+            \`churchId\` varchar(36) NOT NULL,
+            \`name\` varchar(160) NOT NULL,
+            \`description\` text NULL,
+            \`isActive\` tinyint NOT NULL DEFAULT 1,
+            \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            \`updatedAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+            PRIMARY KEY (\`id\`),
+            INDEX \`IDX_discipleship_groups_church_name\` (\`churchId\`, \`name\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        this.logger.log('Created discipleship groups table.');
+      }
+
+      const memberships = await queryRunner.getTable(
+        'discipleship_memberships',
+      );
+      if (!memberships) {
+        await queryRunner.query(`
+          CREATE TABLE \`discipleship_memberships\` (
+            \`id\` varchar(36) NOT NULL,
+            \`churchId\` varchar(36) NOT NULL,
+            \`memberId\` varchar(36) NOT NULL,
+            \`groupId\` varchar(36) NOT NULL,
+            \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            PRIMARY KEY (\`id\`),
+            UNIQUE KEY \`UQ_discipleship_member_group\` (\`memberId\`, \`groupId\`),
+            INDEX \`IDX_discipleship_memberships_church_member\` (\`churchId\`, \`memberId\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        this.logger.log('Created discipleship memberships table.');
+      }
+
+      const attendance = await queryRunner.getTable('discipleship_attendance');
+      if (!attendance) {
+        await queryRunner.query(`
+          CREATE TABLE \`discipleship_attendance\` (
+            \`id\` varchar(36) NOT NULL,
+            \`churchId\` varchar(36) NOT NULL,
+            \`memberId\` varchar(36) NOT NULL,
+            \`attendanceDate\` date NOT NULL,
+            \`weekday\` varchar(20) NOT NULL,
+            \`attendanceType\` varchar(20) NOT NULL,
+            \`groupId\` varchar(36) NULL,
+            \`eventName\` varchar(160) NULL,
+            \`markedByUserId\` varchar(36) NULL,
+            \`markedAt\` datetime NULL,
+            \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            PRIMARY KEY (\`id\`),
+            INDEX \`IDX_discipleship_attendance_church_date\` (\`churchId\`, \`attendanceDate\`),
+            INDEX \`IDX_discipleship_attendance_member_date\` (\`memberId\`, \`attendanceDate\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        this.logger.log('Created discipleship attendance table.');
       }
     } finally {
       await queryRunner.release();

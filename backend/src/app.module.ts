@@ -17,6 +17,10 @@ import { ChurchUser } from './entities/church-user.entity';
 import { ClientEnquiry } from './entities/client-enquiry.entity';
 import { Contribution } from './entities/contribution.entity';
 import { Contributor } from './entities/contributor.entity';
+import { DiscipleshipAttendance } from './entities/discipleship-attendance.entity';
+import { DiscipleshipGroup } from './entities/discipleship-group.entity';
+import { DiscipleshipMember } from './entities/discipleship-member.entity';
+import { DiscipleshipMembership } from './entities/discipleship-membership.entity';
 import { FundAccount } from './entities/fund-account.entity';
 import { PlatformUser } from './entities/platform-user.entity';
 import { PlatformSmsConfig } from './entities/platform-sms-config.entity';
@@ -49,6 +53,10 @@ import { SchemaBootstrapService } from './common/schema-bootstrap.service';
         ChurchSubscriptionAdjustment,
         FundAccount,
         Contributor,
+        DiscipleshipAttendance,
+        DiscipleshipGroup,
+        DiscipleshipMember,
+        DiscipleshipMembership,
         Contribution,
         ClientEnquiry,
         SmsAddressBook,

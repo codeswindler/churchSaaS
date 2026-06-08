@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   Sun,
   UserCircle2,
+  UserCheck,
   Users,
   WalletCards,
 } from 'lucide-react';
@@ -77,6 +78,12 @@ const churchLinks = [
     label: 'Verses & Announcements',
     icon: BookOpenText,
     permission: 'congregation.manage',
+  },
+  {
+    to: '/church/discipleship',
+    label: 'Discipleship',
+    icon: UserCheck,
+    permission: 'discipleship.view',
   },
   {
     to: '/church/users',
@@ -164,6 +171,11 @@ const pageMeta = {
     {
       prefix: '/church/congregation',
       title: 'Verses & Announcements',
+      variant: 'compact',
+    },
+    {
+      prefix: '/church/discipleship',
+      title: 'Discipleship',
       variant: 'compact',
     },
     { prefix: '/church/users', title: 'Staff users', variant: 'compact' },

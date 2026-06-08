@@ -8,7 +8,7 @@ import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { extname, join } from 'path';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   ChurchFeature,
   ChurchPermission,
@@ -31,6 +31,16 @@ import {
 import { Church } from '../entities/church.entity';
 import { ChurchUser, ChurchUserRole } from '../entities/church-user.entity';
 import { Contributor } from '../entities/contributor.entity';
+import {
+  DiscipleshipAttendance,
+  DiscipleshipAttendanceType,
+} from '../entities/discipleship-attendance.entity';
+import { DiscipleshipGroup } from '../entities/discipleship-group.entity';
+import {
+  DiscipleshipMember,
+  DiscipleshipMemberStatus,
+} from '../entities/discipleship-member.entity';
+import { DiscipleshipMembership } from '../entities/discipleship-membership.entity';
 import { FundAccount } from '../entities/fund-account.entity';
 import { SmsAddressBookContact } from '../entities/sms-address-book-contact.entity';
 import { SmsAddressBook } from '../entities/sms-address-book.entity';
@@ -97,6 +107,14 @@ export class ChurchService {
     private readonly fundAccountRepo: Repository<FundAccount>,
     @InjectRepository(Contributor)
     private readonly contributorRepo: Repository<Contributor>,
+    @InjectRepository(DiscipleshipMember)
+    private readonly discipleshipMemberRepo: Repository<DiscipleshipMember>,
+    @InjectRepository(DiscipleshipGroup)
+    private readonly discipleshipGroupRepo: Repository<DiscipleshipGroup>,
+    @InjectRepository(DiscipleshipMembership)
+    private readonly discipleshipMembershipRepo: Repository<DiscipleshipMembership>,
+    @InjectRepository(DiscipleshipAttendance)
+    private readonly discipleshipAttendanceRepo: Repository<DiscipleshipAttendance>,
     @InjectRepository(SmsAddressBook)
     private readonly addressBookRepo: Repository<SmsAddressBook>,
     @InjectRepository(SmsAddressBookContact)
@@ -186,6 +204,385 @@ export class ChurchService {
       },
       activeFundAccounts: fundAccounts.filter((item) => item.isActive).length,
     };
+  }
+
+  async getDiscipleshipSummary(churchId: string) {
+    const today = this.getNairobiDateParts();
+    const monthStart = `${today.date.slice(0, 8)}01`;
+    const [totalMembers, activeMembers, newThisMonth, groups, presentToday] =
+      await Promise.all([
+        this.discipleshipMemberRepo.count({ where: { churchId } }),
+        this.discipleshipMemberRepo.count({
+          where: { churchId, status: DiscipleshipMemberStatus.ACTIVE },
+        }),
+        this.discipleshipMemberRepo
+          .createQueryBuilder('member')
+          .where('member.churchId = :churchId', { churchId })
+          .andWhere('member.enrollmentDate >= :monthStart', { monthStart })
+          .getCount(),
+        this.discipleshipGroupRepo.count({
+          where: { churchId, isActive: true },
+        }),
+        this.discipleshipAttendanceRepo.count({
+          where: { churchId, attendanceDate: today.date },
+        }),
+      ]);
+
+    const recentAttendance = await this.discipleshipAttendanceRepo.find({
+      where: { churchId },
+      relations: ['member', 'group', 'markedByUser'],
+      order: { attendanceDate: 'DESC', createdAt: 'DESC' },
+      take: 8,
+    });
+
+    return {
+      today,
+      totals: {
+        totalMembers,
+        activeMembers,
+        inactiveMembers: Math.max(0, totalMembers - activeMembers),
+        newThisMonth,
+        activeGroups: groups,
+        presentToday,
+      },
+      recentAttendance,
+    };
+  }
+
+  async listDiscipleshipGroups(churchId: string) {
+    const groups = await this.discipleshipGroupRepo.find({
+      where: { churchId },
+      order: { isActive: 'DESC', name: 'ASC' },
+    });
+
+    if (groups.length === 0) {
+      return [];
+    }
+
+    const counts = await this.discipleshipMembershipRepo
+      .createQueryBuilder('membership')
+      .select('membership.groupId', 'groupId')
+      .addSelect('COUNT(membership.id)', 'memberCount')
+      .where('membership.churchId = :churchId', { churchId })
+      .groupBy('membership.groupId')
+      .getRawMany();
+    const countByGroupId = new Map(
+      counts.map((item) => [item.groupId, Number(item.memberCount || 0)]),
+    );
+
+    return groups.map((group) => ({
+      ...group,
+      memberCount: countByGroupId.get(group.id) || 0,
+    }));
+  }
+
+  async createDiscipleshipGroup(churchId: string, body: any) {
+    const name = this.normalizeOptionalText(body.name, 160);
+    if (!name) {
+      throw new BadRequestException('Group name is required');
+    }
+
+    const existing = await this.discipleshipGroupRepo.findOne({
+      where: { churchId, name },
+    });
+    if (existing) {
+      throw new BadRequestException('A discipleship group with this name exists');
+    }
+
+    const group = await this.discipleshipGroupRepo.save(
+      this.discipleshipGroupRepo.create({
+        churchId,
+        name,
+        description: this.normalizeOptionalText(body.description, 700),
+        isActive: this.normalizeBoolean(body.isActive, true),
+      }),
+    );
+
+    return { ...group, memberCount: 0 };
+  }
+
+  async updateDiscipleshipGroup(
+    churchId: string,
+    groupId: string,
+    body: any,
+  ) {
+    const group = await this.discipleshipGroupRepo.findOne({
+      where: { id: groupId, churchId },
+    });
+    if (!group) {
+      throw new NotFoundException('Discipleship group not found');
+    }
+
+    if (body.name !== undefined) {
+      const name = this.normalizeOptionalText(body.name, 160);
+      if (!name) {
+        throw new BadRequestException('Group name is required');
+      }
+      if (name !== group.name) {
+        const existing = await this.discipleshipGroupRepo.findOne({
+          where: { churchId, name },
+        });
+        if (existing && existing.id !== group.id) {
+          throw new BadRequestException(
+            'A discipleship group with this name exists',
+          );
+        }
+      }
+      group.name = name;
+    }
+    if (body.description !== undefined) {
+      group.description = this.normalizeOptionalText(body.description, 700);
+    }
+    if (body.isActive !== undefined) {
+      group.isActive = this.normalizeBoolean(body.isActive, group.isActive);
+    }
+
+    const saved = await this.discipleshipGroupRepo.save(group);
+    const memberCount = await this.discipleshipMembershipRepo.count({
+      where: { churchId, groupId },
+    });
+    return { ...saved, memberCount };
+  }
+
+  async listDiscipleshipMembers(churchId: string, query: any = {}) {
+    const qb = this.discipleshipMemberRepo
+      .createQueryBuilder('member')
+      .where('member.churchId = :churchId', { churchId })
+      .orderBy('member.fullName', 'ASC');
+
+    if (query.search) {
+      qb.andWhere(
+        '(member.fullName LIKE :search OR member.phone LIKE :search OR member.email LIKE :search)',
+        { search: `%${query.search}%` },
+      );
+    }
+    if (query.status === 'active' || query.status === 'inactive') {
+      qb.andWhere('member.status = :status', { status: query.status });
+    }
+    if (query.groupId) {
+      const memberships = await this.discipleshipMembershipRepo.find({
+        where: { churchId, groupId: query.groupId },
+      });
+      const memberIds = memberships.map((item) => item.memberId);
+      if (memberIds.length === 0) {
+        return [];
+      }
+      qb.andWhere('member.id IN (:...memberIds)', { memberIds });
+    }
+
+    return this.withDiscipleshipMemberGroups(await qb.getMany());
+  }
+
+  async createDiscipleshipMember(
+    churchId: string,
+    createdByUserId: string,
+    body: any,
+  ) {
+    const fullName = this.normalizeOptionalText(body.fullName || body.name, 180);
+    if (!fullName) {
+      throw new BadRequestException('Member name is required');
+    }
+
+    const member = await this.discipleshipMemberRepo.save(
+      this.discipleshipMemberRepo.create({
+        churchId,
+        fullName,
+        phone: this.normalizeOptionalText(body.phone, 40),
+        email: this.normalizeOptionalText(body.email, 160),
+        gender: this.normalizeGenderText(body.gender),
+        enrollmentDate:
+          this.normalizeDateOnly(body.enrollmentDate) ||
+          this.getNairobiDateParts().date,
+        status: this.normalizeDiscipleshipMemberStatus(body.status),
+        notes: this.normalizeOptionalText(body.notes, 1200),
+        createdByUserId,
+      }),
+    );
+
+    await this.syncDiscipleshipMemberGroups(
+      churchId,
+      member.id,
+      body.groupIds,
+    );
+
+    return (
+      await this.withDiscipleshipMemberGroups([member])
+    )[0];
+  }
+
+  async updateDiscipleshipMember(
+    churchId: string,
+    memberId: string,
+    body: any,
+  ) {
+    const member = await this.discipleshipMemberRepo.findOne({
+      where: { id: memberId, churchId },
+    });
+    if (!member) {
+      throw new NotFoundException('Discipleship member not found');
+    }
+
+    if (body.fullName !== undefined || body.name !== undefined) {
+      const fullName = this.normalizeOptionalText(
+        body.fullName || body.name,
+        180,
+      );
+      if (!fullName) {
+        throw new BadRequestException('Member name is required');
+      }
+      member.fullName = fullName;
+    }
+    if (body.phone !== undefined) {
+      member.phone = this.normalizeOptionalText(body.phone, 40);
+    }
+    if (body.email !== undefined) {
+      member.email = this.normalizeOptionalText(body.email, 160);
+    }
+    if (body.gender !== undefined) {
+      member.gender = this.normalizeGenderText(body.gender);
+    }
+    if (body.enrollmentDate !== undefined) {
+      member.enrollmentDate = this.normalizeDateOnly(body.enrollmentDate);
+    }
+    if (body.status !== undefined) {
+      member.status = this.normalizeDiscipleshipMemberStatus(body.status);
+    }
+    if (body.notes !== undefined) {
+      member.notes = this.normalizeOptionalText(body.notes, 1200);
+    }
+
+    const saved = await this.discipleshipMemberRepo.save(member);
+    if (body.groupIds !== undefined) {
+      await this.syncDiscipleshipMemberGroups(churchId, memberId, body.groupIds);
+    }
+
+    return (
+      await this.withDiscipleshipMemberGroups([saved])
+    )[0];
+  }
+
+  async listDiscipleshipAttendance(churchId: string, query: any = {}) {
+    const qb = this.discipleshipAttendanceRepo
+      .createQueryBuilder('attendance')
+      .leftJoinAndSelect('attendance.member', 'member')
+      .leftJoinAndSelect('attendance.group', 'group')
+      .leftJoinAndSelect('attendance.markedByUser', 'markedByUser')
+      .where('attendance.churchId = :churchId', { churchId })
+      .orderBy('attendance.attendanceDate', 'DESC')
+      .addOrderBy('attendance.createdAt', 'DESC');
+
+    if (query.from) {
+      qb.andWhere('attendance.attendanceDate >= :from', {
+        from: this.normalizeDateOnly(query.from),
+      });
+    }
+    if (query.to) {
+      qb.andWhere('attendance.attendanceDate <= :to', {
+        to: this.normalizeDateOnly(query.to),
+      });
+    }
+    if (query.memberId) {
+      qb.andWhere('attendance.memberId = :memberId', {
+        memberId: query.memberId,
+      });
+    }
+    if (query.groupId) {
+      qb.andWhere('attendance.groupId = :groupId', { groupId: query.groupId });
+    }
+    if (query.type === 'service' || query.type === 'group') {
+      qb.andWhere('attendance.attendanceType = :type', { type: query.type });
+    }
+
+    return qb.take(250).getMany();
+  }
+
+  async markDiscipleshipAttendance(
+    churchId: string,
+    markedByUserId: string,
+    body: any,
+  ) {
+    const memberId = this.normalizeOptionalText(body.memberId, 36);
+    if (!memberId) {
+      throw new BadRequestException('Select a member to mark present');
+    }
+    const member = await this.discipleshipMemberRepo.findOne({
+      where: { id: memberId, churchId },
+    });
+    if (!member) {
+      throw new BadRequestException('Discipleship member not found');
+    }
+
+    const attendanceType =
+      body.attendanceType === DiscipleshipAttendanceType.GROUP ||
+      body.type === DiscipleshipAttendanceType.GROUP
+        ? DiscipleshipAttendanceType.GROUP
+        : DiscipleshipAttendanceType.SERVICE;
+    const dateParts = this.getNairobiDateParts(
+      this.normalizeDateOnly(body.attendanceDate),
+    );
+    const eventName = this.normalizeOptionalText(body.eventName, 160);
+    let groupId: string | null = null;
+
+    if (attendanceType === DiscipleshipAttendanceType.GROUP) {
+      groupId = this.normalizeOptionalText(body.groupId, 36);
+      if (!groupId) {
+        throw new BadRequestException('Select a group for group attendance');
+      }
+      const group = await this.discipleshipGroupRepo.findOne({
+        where: { id: groupId, churchId },
+      });
+      if (!group) {
+        throw new BadRequestException('Discipleship group not found');
+      }
+    }
+
+    const duplicateQb = this.discipleshipAttendanceRepo
+      .createQueryBuilder('attendance')
+      .where('attendance.churchId = :churchId', { churchId })
+      .andWhere('attendance.memberId = :memberId', { memberId })
+      .andWhere('attendance.attendanceDate = :attendanceDate', {
+        attendanceDate: dateParts.date,
+      })
+      .andWhere('attendance.attendanceType = :attendanceType', {
+        attendanceType,
+      });
+
+    if (groupId) {
+      duplicateQb.andWhere('attendance.groupId = :groupId', { groupId });
+    } else {
+      duplicateQb.andWhere('attendance.groupId IS NULL');
+    }
+    if (eventName) {
+      duplicateQb.andWhere('attendance.eventName = :eventName', { eventName });
+    } else {
+      duplicateQb.andWhere('attendance.eventName IS NULL');
+    }
+
+    const duplicate = await duplicateQb.getOne();
+    if (duplicate) {
+      throw new BadRequestException(
+        'This member is already marked present for this attendance record',
+      );
+    }
+
+    const attendance = await this.discipleshipAttendanceRepo.save(
+      this.discipleshipAttendanceRepo.create({
+        churchId,
+        memberId,
+        attendanceDate: dateParts.date,
+        weekday: dateParts.weekday,
+        attendanceType,
+        groupId,
+        eventName,
+        markedByUserId,
+        markedAt: new Date(),
+      }),
+    );
+
+    return this.discipleshipAttendanceRepo.findOne({
+      where: { id: attendance.id, churchId },
+      relations: ['member', 'group', 'markedByUser'],
+    });
   }
 
   async getSubscriptionStatus(churchId: string) {
@@ -1237,6 +1634,182 @@ export class ChurchService {
       );
     }
     return template;
+  }
+
+  private normalizeBoolean(value: unknown, fallback: boolean) {
+    if (value === undefined || value === null || value === '') {
+      return fallback;
+    }
+
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    const normalized = `${value}`.trim().toLowerCase();
+    if (['true', '1', 'yes', 'on'].includes(normalized)) {
+      return true;
+    }
+    if (['false', '0', 'no', 'off'].includes(normalized)) {
+      return false;
+    }
+
+    return fallback;
+  }
+
+  private normalizeGenderText(value: unknown) {
+    const gender = this.normalizeOptionalText(value, 20);
+    return gender ? gender.toLowerCase() : null;
+  }
+
+  private normalizeDiscipleshipMemberStatus(value: unknown) {
+    const status = this.normalizeOptionalText(value, 40);
+    if (!status) {
+      return DiscipleshipMemberStatus.ACTIVE;
+    }
+
+    if (
+      status === DiscipleshipMemberStatus.ACTIVE ||
+      status === DiscipleshipMemberStatus.INACTIVE
+    ) {
+      return status;
+    }
+
+    throw new BadRequestException('Member status must be active or inactive');
+  }
+
+  private normalizeDateOnly(value: unknown) {
+    const date = this.normalizeOptionalText(value, 40);
+    if (!date) {
+      return null;
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new BadRequestException('Date values must use YYYY-MM-DD format.');
+    }
+
+    const parsed = new Date(`${date}T12:00:00+03:00`);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+      throw new BadRequestException('Date value is invalid.');
+    }
+
+    return date;
+  }
+
+  private getNairobiDateParts(date?: string | null) {
+    if (date) {
+      const normalized = this.normalizeDateOnly(date) as string;
+      const parsed = new Date(`${normalized}T12:00:00+03:00`);
+      const weekday = new Intl.DateTimeFormat('en-US', {
+        weekday: 'long',
+        timeZone: 'Africa/Nairobi',
+      }).format(parsed);
+      return { date: normalized, weekday };
+    }
+
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Africa/Nairobi',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      weekday: 'long',
+    }).formatToParts(new Date());
+    const byType = new Map(parts.map((part) => [part.type, part.value]));
+    return {
+      date: `${byType.get('year')}-${byType.get('month')}-${byType.get('day')}`,
+      weekday: byType.get('weekday') || '',
+    };
+  }
+
+  private normalizeDiscipleshipGroupIds(value: unknown) {
+    if (value === undefined || value === null || value === '') {
+      return [];
+    }
+
+    if (!Array.isArray(value)) {
+      throw new BadRequestException('Group assignments must be a list');
+    }
+
+    const groupIds = value
+      .map((item) => this.normalizeOptionalText(item, 36))
+      .filter(Boolean) as string[];
+    return [...new Set(groupIds)];
+  }
+
+  private async syncDiscipleshipMemberGroups(
+    churchId: string,
+    memberId: string,
+    value: unknown,
+  ) {
+    const nextGroupIds = this.normalizeDiscipleshipGroupIds(value);
+
+    if (nextGroupIds.length > 0) {
+      const groups = await this.discipleshipGroupRepo.find({
+        where: { churchId, id: In(nextGroupIds) },
+      });
+      if (groups.length !== nextGroupIds.length) {
+        throw new BadRequestException(
+          'One or more selected discipleship groups could not be found',
+        );
+      }
+    }
+
+    const existing = await this.discipleshipMembershipRepo.find({
+      where: { churchId, memberId },
+    });
+    const existingIds = new Set(existing.map((item) => item.groupId));
+    const nextIds = new Set(nextGroupIds);
+    const removeIds = existing
+      .filter((item) => !nextIds.has(item.groupId))
+      .map((item) => item.id);
+
+    if (removeIds.length > 0) {
+      await this.discipleshipMembershipRepo.delete({ id: In(removeIds) });
+    }
+
+    const additions = nextGroupIds
+      .filter((groupId) => !existingIds.has(groupId))
+      .map((groupId) =>
+        this.discipleshipMembershipRepo.create({
+          churchId,
+          memberId,
+          groupId,
+        }),
+      );
+
+    if (additions.length > 0) {
+      await this.discipleshipMembershipRepo.save(additions);
+    }
+  }
+
+  private async withDiscipleshipMemberGroups(
+    members: DiscipleshipMember[],
+  ) {
+    if (members.length === 0) {
+      return [];
+    }
+
+    const memberIds = members.map((member) => member.id);
+    const memberships = await this.discipleshipMembershipRepo.find({
+      where: { memberId: In(memberIds) },
+      relations: ['group'],
+    });
+    const groupsByMemberId = new Map<string, DiscipleshipGroup[]>();
+
+    memberships.forEach((membership) => {
+      const groups = groupsByMemberId.get(membership.memberId) || [];
+      if (membership.group) {
+        groups.push(membership.group);
+      }
+      groupsByMemberId.set(membership.memberId, groups);
+    });
+
+    return members.map((member) => ({
+      ...member,
+      groups: groupsByMemberId.get(member.id) || [],
+      groupIds: (groupsByMemberId.get(member.id) || []).map(
+        (group) => group.id,
+      ),
+    }));
   }
 
   private sanitizeChurchUser(user: ChurchUser) {

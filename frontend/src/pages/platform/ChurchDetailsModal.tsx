@@ -67,6 +67,9 @@ const permissionOptions = [
   ['presentation.manage', 'Manage presentation'],
   ['users.view', 'View staff users'],
   ['users.manage', 'Manage staff users'],
+  ['discipleship.view', 'View discipleship'],
+  ['discipleship.manage', 'Manage discipleship members'],
+  ['discipleship.attendanceRecord', 'Record discipleship attendance'],
 ] as const;
 
 const rolePermissionPresets: Record<string, string[]> = {
