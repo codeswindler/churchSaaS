@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarCheck2,
   CheckCircle2,
+  ChevronDown,
   PencilLine,
   Plus,
   Search,
@@ -104,13 +105,20 @@ export default function ChurchDiscipleship() {
   const [memberStatus, setMemberStatus] = useState('');
   const [memberGroupFilter, setMemberGroupFilter] = useState('');
   const [selectedMemberId, setSelectedMemberId] = useState('');
-  const [attendanceForm, setAttendanceForm] = useState({
+  const [isAttendanceTypeOpen, setIsAttendanceTypeOpen] = useState(false);
+  const [attendanceForm, setAttendanceForm] = useState<{
+    attendanceDate: string;
+    attendanceType: 'service' | 'group';
+    groupId: string;
+    eventName: string;
+  }>({
     attendanceDate: getNairobiToday(),
     attendanceType: 'service',
     groupId: '',
     eventName: '',
   });
   const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
+  const [detailMemberId, setDetailMemberId] = useState('');
   const [memberEditor, setMemberEditor] = useState<DiscipleshipMember | null>(
     null,
   );
@@ -159,9 +167,23 @@ export default function ChurchDiscipleship() {
         .then((response) => response.data),
   });
 
+  const { data: memberAttendance = [], isLoading: memberAttendanceLoading } =
+    useQuery<DiscipleshipAttendance[]>({
+      queryKey: ['discipleship-member-attendance', detailMemberId],
+      enabled: Boolean(detailMemberId),
+      queryFn: () =>
+        api
+          .get(`/church/discipleship/attendance?memberId=${detailMemberId}`)
+          .then((response) => response.data),
+    });
+
   const selectedMember = useMemo(
     () => members.find((member) => member.id === selectedMemberId),
     [members, selectedMemberId],
+  );
+  const detailMember = useMemo(
+    () => members.find((member) => member.id === detailMemberId),
+    [detailMemberId, members],
   );
 
   const refreshDiscipleship = () => {
@@ -306,6 +328,28 @@ export default function ChurchDiscipleship() {
     ['Groups', summary?.totals?.activeGroups ?? 0],
     ['Present today', summary?.totals?.presentToday ?? 0],
   ];
+  const activeGroups = groups.filter((group) => group.isActive !== false);
+  const attendanceTypeValue =
+    attendanceForm.attendanceType === 'group' && attendanceForm.groupId
+      ? `group:${attendanceForm.groupId}`
+      : 'service';
+  const attendanceTypeLabel =
+    attendanceForm.attendanceType === 'group'
+      ? activeGroups.find((group) => group.id === attendanceForm.groupId)
+          ?.name || 'Select attendance type'
+      : 'Service';
+  const memberAttendanceSummary = useMemo(() => {
+    const serviceCount = memberAttendance.filter(
+      (item) => item.attendanceType === 'service',
+    ).length;
+    const groupCount = memberAttendance.length - serviceCount;
+    return {
+      total: memberAttendance.length,
+      serviceCount,
+      groupCount,
+      lastAttended: memberAttendance[0]?.attendanceDate || 'No attendance yet',
+    };
+  }, [memberAttendance]);
 
   return (
     <div className="space-y-6">
@@ -378,7 +422,8 @@ export default function ChurchDiscipleship() {
                       size={17}
                     />
                     <input
-                      className="input pl-11"
+                      className="input"
+                      style={{ paddingLeft: '2.75rem' }}
                       placeholder="Search by name, phone, or email"
                       value={memberSearch}
                       onChange={(event) => setMemberSearch(event.target.value)}
@@ -461,75 +506,87 @@ export default function ChurchDiscipleship() {
                     />
                   </label>
 
-                  <label className="space-y-2">
+                  <div className="relative space-y-2">
                     <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
                       Attendance type
                     </span>
-                    <select
-                      className="input"
-                      value={attendanceForm.attendanceType}
-                      onChange={(event) =>
-                        setAttendanceForm((current) => ({
-                          ...current,
-                          attendanceType: event.target.value,
-                          groupId:
-                            event.target.value === 'group'
-                              ? current.groupId
-                              : '',
-                          eventName:
-                            event.target.value === 'group'
-                              ? current.eventName
-                              : '',
-                        }))
+                    <button
+                      aria-expanded={isAttendanceTypeOpen}
+                      className="input flex items-center justify-between gap-3 text-left"
+                      type="button"
+                      onClick={() =>
+                        setIsAttendanceTypeOpen((current) => !current)
                       }
                     >
-                      <option value="service">Service</option>
-                      <option value="group">Group attendance</option>
-                    </select>
-                  </label>
+                      <span>{attendanceTypeLabel}</span>
+                      <ChevronDown
+                        className={`shrink-0 transition ${
+                          isAttendanceTypeOpen ? 'rotate-180' : ''
+                        }`}
+                        size={17}
+                      />
+                    </button>
+                    {isAttendanceTypeOpen ? (
+                      <div className="absolute left-0 right-0 top-full z-30 mt-2 max-h-64 space-y-1 overflow-y-auto rounded-2xl border border-white/10 bg-stone-950 p-2 shadow-2xl">
+                        {[
+                          { value: 'service', label: 'Service' },
+                          ...activeGroups.map((group) => ({
+                            value: `group:${group.id}`,
+                            label: group.name,
+                          })),
+                        ].map((option) => (
+                          <button
+                            key={option.value}
+                            className={`w-full rounded-xl px-3 py-2.5 text-left text-sm transition ${
+                              attendanceTypeValue === option.value
+                                ? 'bg-amber-200 text-stone-950'
+                                : 'text-stone-200 hover:bg-white/10'
+                            }`}
+                            type="button"
+                            onClick={() => {
+                              const value = option.value;
+                              setIsAttendanceTypeOpen(false);
+                              if (value === 'service') {
+                                setAttendanceForm((current) => ({
+                                  ...current,
+                                  attendanceType: 'service',
+                                  groupId: '',
+                                  eventName: '',
+                                }));
+                                return;
+                              }
+
+                              setAttendanceForm((current) => ({
+                                ...current,
+                                attendanceType: 'group',
+                                groupId: value.replace('group:', ''),
+                              }));
+                            }}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
 
                   {attendanceForm.attendanceType === 'group' && (
-                    <>
-                      <label className="space-y-2">
-                        <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
-                          Group
-                        </span>
-                        <select
-                          className="input"
-                          value={attendanceForm.groupId}
-                          onChange={(event) =>
-                            setAttendanceForm((current) => ({
-                              ...current,
-                              groupId: event.target.value,
-                            }))
-                          }
-                        >
-                          <option value="">Select group</option>
-                          {groups.map((group) => (
-                            <option key={group.id} value={group.id}>
-                              {group.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label className="space-y-2">
-                        <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
-                          Event name
-                        </span>
-                        <input
-                          className="input"
-                          placeholder="Men's seminar, choir practice..."
-                          value={attendanceForm.eventName}
-                          onChange={(event) =>
-                            setAttendanceForm((current) => ({
-                              ...current,
-                              eventName: event.target.value,
-                            }))
-                          }
-                        />
-                      </label>
-                    </>
+                    <label className="space-y-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
+                        Event name
+                      </span>
+                      <input
+                        className="input"
+                        placeholder="Men's seminar, choir practice..."
+                        value={attendanceForm.eventName}
+                        onChange={(event) =>
+                          setAttendanceForm((current) => ({
+                            ...current,
+                            eventName: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
                   )}
 
                   <button
@@ -650,7 +707,15 @@ export default function ChurchDiscipleship() {
               members.map((member) => (
                 <div
                   key={member.id}
-                  className="grid gap-4 p-5 md:grid-cols-[1fr_0.8fr_auto] md:items-center"
+                  className="grid cursor-pointer gap-4 p-5 transition hover:bg-white/5 md:grid-cols-[1fr_0.8fr_auto] md:items-center"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setDetailMemberId(member.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      setDetailMemberId(member.id);
+                    }
+                  }}
                 >
                   <div>
                     <h4 className="font-semibold text-white">
@@ -669,7 +734,10 @@ export default function ChurchDiscipleship() {
                   <button
                     className="rounded-full border border-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/5"
                     type="button"
-                    onClick={() => openMemberEditor(member)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openMemberEditor(member);
+                    }}
                   >
                     Edit
                   </button>
@@ -749,12 +817,13 @@ export default function ChurchDiscipleship() {
             setMemberForm(createMemberForm());
           }}
         >
-          <section
-            className="panel modal-card max-w-4xl p-5 sm:p-6"
-            role="dialog"
-            aria-modal="true"
-            onClick={(event) => event.stopPropagation()}
-          >
+          <div className="modal-shell">
+            <section
+              className="panel modal-card max-w-4xl p-5 sm:p-6"
+              role="dialog"
+              aria-modal="true"
+              onClick={(event) => event.stopPropagation()}
+            >
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
@@ -928,7 +997,155 @@ export default function ChurchDiscipleship() {
                 Save member
               </button>
             </form>
-          </section>
+            </section>
+          </div>
+        </div>
+      ) : null}
+
+      {detailMemberId ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => setDetailMemberId('')}
+        >
+          <div className="modal-shell">
+            <section
+              className="panel modal-card max-w-4xl p-5 sm:p-6"
+              role="dialog"
+              aria-modal="true"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+                    Member profile
+                  </p>
+                  <h3 className="mt-2 text-2xl font-semibold text-white">
+                    {detailMember?.fullName || 'Member details'}
+                  </h3>
+                  <p className="mt-2 text-sm text-stone-300">
+                    Enrolled {detailMember?.enrollmentDate || 'not set'} ·{' '}
+                    {detailMember?.status || 'active'}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  {detailMember ? (
+                    <button
+                      className="btn-secondary"
+                      type="button"
+                      onClick={() => {
+                        setDetailMemberId('');
+                        openMemberEditor(detailMember);
+                      }}
+                    >
+                      <PencilLine size={16} />
+                      Edit member
+                    </button>
+                  ) : null}
+                  <button
+                    className="rounded-full border border-white/10 p-2 text-stone-200 hover:bg-white/5"
+                    type="button"
+                    onClick={() => setDetailMemberId('')}
+                    title="Close member details"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  ['Attendance marks', memberAttendanceSummary.total],
+                  ['Services', memberAttendanceSummary.serviceCount],
+                  ['Group events', memberAttendanceSummary.groupCount],
+                  ['Last attended', memberAttendanceSummary.lastAttended],
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="rounded-2xl border border-white/10 bg-black/10 p-4"
+                  >
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-stone-400">
+                      {label}
+                    </p>
+                    <p className="mt-2 font-semibold text-white">{value}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6 grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
+                <div className="rounded-3xl border border-white/10 bg-black/10 p-5">
+                  <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                    Member information
+                  </p>
+                  <dl className="mt-4 space-y-4 text-sm">
+                    {[
+                      ['Phone', detailMember?.phone || 'Not set'],
+                      ['Email', detailMember?.email || 'Not set'],
+                      ['Gender', detailMember?.gender || 'Not set'],
+                      [
+                        'Groups',
+                        (detailMember?.groups || [])
+                          .map((group) => group.name)
+                          .join(', ') || 'No groups assigned',
+                      ],
+                      ['Notes', detailMember?.notes || 'No notes'],
+                    ].map(([label, value]) => (
+                      <div key={label}>
+                        <dt className="text-xs uppercase tracking-[0.18em] text-stone-400">
+                          {label}
+                        </dt>
+                        <dd className="mt-1 text-stone-100">{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+
+                <div className="rounded-3xl border border-white/10 bg-black/10 p-5">
+                  <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                    Attendance history
+                  </p>
+                  <div className="mt-4 max-h-[420px] space-y-2 overflow-y-auto pr-1">
+                    {memberAttendanceLoading ? (
+                      <p className="text-sm text-stone-300">
+                        Loading attendance...
+                      </p>
+                    ) : memberAttendance.length === 0 ? (
+                      <p className="text-sm text-stone-300">
+                        No attendance has been recorded for this member.
+                      </p>
+                    ) : (
+                      memberAttendance.map((item) => (
+                        <div
+                          key={item.id}
+                          className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="font-semibold text-white">
+                                {item.attendanceType === 'service'
+                                  ? item.eventName || 'Church service'
+                                  : item.eventName ||
+                                    item.group?.name ||
+                                    'Group attendance'}
+                              </p>
+                              <p className="mt-1 text-xs text-stone-400">
+                                {item.weekday}, {item.attendanceDate}
+                              </p>
+                            </div>
+                            <span className="rounded-full border border-amber-200/30 px-3 py-1 text-xs font-semibold text-amber-100">
+                              {item.attendanceType === 'group'
+                                ? item.group?.name || 'Group'
+                                : 'Service'}
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
         </div>
       ) : null}
 
@@ -942,91 +1159,93 @@ export default function ChurchDiscipleship() {
             setGroupForm(createGroupForm());
           }}
         >
-          <section
-            className="panel modal-card max-w-2xl p-5 sm:p-6"
-            role="dialog"
-            aria-modal="true"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-                  {groupEditor ? 'Edit group' : 'New group'}
-                </p>
-                <h3 className="mt-2 text-xl font-semibold text-white">
-                  Group details
-                </h3>
+          <div className="modal-shell">
+            <section
+              className="panel modal-card max-w-2xl p-5 sm:p-6"
+              role="dialog"
+              aria-modal="true"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+                    {groupEditor ? 'Edit group' : 'New group'}
+                  </p>
+                  <h3 className="mt-2 text-xl font-semibold text-white">
+                    Group details
+                  </h3>
+                </div>
+                <button
+                  className="rounded-full border border-white/10 p-2 text-stone-200 hover:bg-white/5"
+                  type="button"
+                  onClick={() => {
+                    setIsGroupModalOpen(false);
+                    setGroupEditor(null);
+                    setGroupForm(createGroupForm());
+                  }}
+                >
+                  <X size={18} />
+                </button>
               </div>
-              <button
-                className="rounded-full border border-white/10 p-2 text-stone-200 hover:bg-white/5"
-                type="button"
-                onClick={() => {
-                  setIsGroupModalOpen(false);
-                  setGroupEditor(null);
-                  setGroupForm(createGroupForm());
-                }}
-              >
-                <X size={18} />
-              </button>
-            </div>
 
-            <form className="mt-6 space-y-5" onSubmit={submitGroup}>
-              <label className="space-y-2">
-                <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
-                  Group name
-                </span>
-                <input
-                  className="input"
-                  required
-                  value={groupForm.name}
-                  onChange={(event) =>
-                    setGroupForm((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
-                  }
-                />
-              </label>
+              <form className="mt-6 space-y-5" onSubmit={submitGroup}>
+                <label className="space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
+                    Group name
+                  </span>
+                  <input
+                    className="input"
+                    required
+                    value={groupForm.name}
+                    onChange={(event) =>
+                      setGroupForm((current) => ({
+                        ...current,
+                        name: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
 
-              <label className="space-y-2">
-                <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
-                  Description
-                </span>
-                <textarea
-                  className="input min-h-28"
-                  value={groupForm.description}
-                  onChange={(event) =>
-                    setGroupForm((current) => ({
-                      ...current,
-                      description: event.target.value,
-                    }))
-                  }
-                />
-              </label>
+                <label className="space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
+                    Description
+                  </span>
+                  <textarea
+                    className="input min-h-28"
+                    value={groupForm.description}
+                    onChange={(event) =>
+                      setGroupForm((current) => ({
+                        ...current,
+                        description: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
 
-              <label className="flex items-center gap-3 rounded-2xl border border-white/10 p-4 text-sm font-semibold text-stone-200">
-                <input
-                  checked={groupForm.isActive}
-                  type="checkbox"
-                  onChange={(event) =>
-                    setGroupForm((current) => ({
-                      ...current,
-                      isActive: event.target.checked,
-                    }))
-                  }
-                />
-                Active group
-              </label>
+                <label className="flex items-center gap-3 rounded-2xl border border-white/10 p-4 text-sm font-semibold text-stone-200">
+                  <input
+                    checked={groupForm.isActive}
+                    type="checkbox"
+                    onChange={(event) =>
+                      setGroupForm((current) => ({
+                        ...current,
+                        isActive: event.target.checked,
+                      }))
+                    }
+                  />
+                  Active group
+                </label>
 
-              <button
-                className="btn-primary w-full justify-center"
-                disabled={groupMutation.isPending}
-                type="submit"
-              >
-                Save group
-              </button>
-            </form>
-          </section>
+                <button
+                  className="btn-primary w-full justify-center"
+                  disabled={groupMutation.isPending}
+                  type="submit"
+                >
+                  Save group
+                </button>
+              </form>
+            </section>
+          </div>
         </div>
       ) : null}
     </div>

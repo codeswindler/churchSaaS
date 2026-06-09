@@ -58,6 +58,8 @@ function createInitialForm() {
     smsApiKey: '',
     smsShortcode: '',
     smsShortcodes: '',
+    smsSenderIds: [] as string[],
+    defaultSmsSenderId: '',
     smsBaseUrl: 'https://quicksms.advantasms.com',
     smsUnitRateKes: 0,
     mpesaEnvironment: 'sandbox',
@@ -162,12 +164,23 @@ export default function PlatformChurches() {
   const [selectedChurchIds, setSelectedChurchIds] = useState<string[]>([]);
   const [batchBillingDialog, setBatchBillingDialog] =
     useState<BatchBillingDialogState | null>(null);
+  const [senderSearch, setSenderSearch] = useState('');
 
   const { data: churches, isLoading } = useQuery({
     queryKey: ['platform-churches'],
     queryFn: () =>
       api.get('/platform/churches').then((response) => response.data),
   });
+  const { data: senders = [] } = useQuery({
+    queryKey: ['platform-senders'],
+    queryFn: () =>
+      api.get('/platform/senders').then((response) => response.data),
+  });
+  const filteredSenders = senders.filter((sender: any) =>
+    `${sender.name}`
+      .toLowerCase()
+      .includes(senderSearch.trim().toLowerCase()),
+  );
 
   const { data: history } = useQuery({
     queryKey: ['platform-church-history', selectedChurchId],
@@ -453,12 +466,32 @@ export default function PlatformChurches() {
     });
   };
 
+  const toggleSmsSender = (senderId: string) => {
+    setForm((current) => {
+      const selected = new Set(current.smsSenderIds);
+      if (selected.has(senderId)) {
+        selected.delete(senderId);
+      } else {
+        selected.add(senderId);
+      }
+      const smsSenderIds = Array.from(selected);
+      return {
+        ...current,
+        smsSenderIds,
+        defaultSmsSenderId: smsSenderIds.includes(current.defaultSmsSenderId)
+          ? current.defaultSmsSenderId
+          : smsSenderIds[0] || '',
+      };
+    });
+  };
+
   const openCreateModal = () => {
     setForm(createInitialForm());
     setFormMode('create');
     setEditingChurchId(null);
     setIsLoadingChurchDetails(false);
     setVisibleCredentialFields({});
+    setSenderSearch('');
     setIsChurchModalOpen(true);
   };
 
@@ -468,6 +501,7 @@ export default function PlatformChurches() {
     setIsChurchModalOpen(true);
     setIsLoadingChurchDetails(true);
     setVisibleCredentialFields({});
+    setSenderSearch('');
 
     try {
       const response = await api.get(`/platform/churches/${churchId}`);
@@ -489,6 +523,8 @@ export default function PlatformChurches() {
         smsShortcodes: (response.data.smsShortcodes || [])
           .filter((shortcode: string) => shortcode !== response.data.smsShortcode)
           .join('\n'),
+        smsSenderIds: response.data.smsSenderIds || [],
+        defaultSmsSenderId: response.data.defaultSmsSenderId || '',
         smsBaseUrl:
           response.data.smsBaseUrl || 'https://quicksms.advantasms.com',
         smsUnitRateKes: Number(response.data.smsUnitRateKes || 0),
@@ -525,6 +561,7 @@ export default function PlatformChurches() {
     setEditingChurchId(null);
     setForm(createInitialForm());
     setVisibleCredentialFields({});
+    setSenderSearch('');
   };
 
   const openChurchDetails = (
@@ -1421,7 +1458,6 @@ export default function PlatformChurches() {
                     <div className="mt-4 grid gap-4 md:grid-cols-2">
                       {[
                         ['smsPartnerId', 'Partner ID'],
-                        ['smsShortcode', 'Default shortcode'],
                         ['smsBaseUrl', 'Base URL'],
                       ].map(([key, label]) => (
                         <div key={key}>
@@ -1457,21 +1493,70 @@ export default function PlatformChurches() {
                       </div>
                       {renderSensitiveField('smsApiKey', 'API key')}
                       <div className="md:col-span-2">
-                        <label className="label">
-                          Additional SMS shortcodes
-                        </label>
-                        <textarea
-                          className="input min-h-24 resize-y"
-                          placeholder="One shortcode per line. The default shortcode above is used for auto responses."
-                          value={form.smsShortcodes}
-                          onChange={(event) =>
-                            updateForm('smsShortcodes', event.target.value)
-                          }
+                        <label className="label">Allocated sender IDs</label>
+                        <input
+                          className="input"
+                          placeholder="Search available sender IDs"
+                          value={senderSearch}
+                          onChange={(event) => setSenderSearch(event.target.value)}
                         />
+                        <div className="mt-3 grid max-h-56 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                          {filteredSenders.map((sender: any) => (
+                            <label
+                              key={sender.id}
+                              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-stone-200"
+                            >
+                              <input
+                                checked={form.smsSenderIds.includes(sender.id)}
+                                type="checkbox"
+                                onChange={() => toggleSmsSender(sender.id)}
+                              />
+                              <span className="min-w-0 flex-1 truncate">
+                                {sender.name}
+                              </span>
+                              {!sender.isActive ? (
+                                <span className="text-xs text-stone-400">
+                                  Inactive
+                                </span>
+                              ) : null}
+                            </label>
+                          ))}
+                          {filteredSenders.length === 0 ? (
+                            <p className="text-sm text-stone-400">
+                              No sender IDs found. Create them from the Senders
+                              module first.
+                            </p>
+                          ) : null}
+                        </div>
                         <p className="mt-2 text-xs text-stone-400">
-                          Churches can choose any listed shortcode when sending
-                          bulk SMS. Receipt and automatic responses use the
-                          default shortcode unless changed here.
+                          The church can choose any allocated sender when
+                          composing bulk SMS.
+                        </p>
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="label">Default sender ID</label>
+                        <select
+                          className="input"
+                          value={form.defaultSmsSenderId}
+                          onChange={(event) =>
+                            updateForm('defaultSmsSenderId', event.target.value)
+                          }
+                        >
+                          <option value="">Select default sender</option>
+                          {senders
+                            .filter((sender: any) =>
+                              form.smsSenderIds.includes(sender.id),
+                            )
+                            .map((sender: any) => (
+                              <option key={sender.id} value={sender.id}>
+                                {sender.name}
+                              </option>
+                            ))}
+                        </select>
+                        <p className="mt-2 text-xs text-stone-400">
+                          Automatic receipts and new bulk messages use this
+                          sender unless the church chooses another allocated
+                          sender.
                         </p>
                       </div>
                     </div>
@@ -1953,6 +2038,8 @@ function buildUpdatePayload(form: ChurchFormState) {
     smsApiKey: form.smsApiKey,
     smsShortcode: form.smsShortcode,
     smsShortcodes: form.smsShortcodes,
+    smsSenderIds: form.smsSenderIds,
+    defaultSmsSenderId: form.defaultSmsSenderId,
     smsBaseUrl: form.smsBaseUrl,
     smsUnitRateKes: form.smsUnitRateKes,
     mpesaEnvironment: form.mpesaEnvironment,

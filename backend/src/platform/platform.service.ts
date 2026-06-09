@@ -16,6 +16,7 @@ import {
   ChurchBillingModel,
   ChurchStatus,
 } from '../entities/church.entity';
+import { ChurchSmsSender } from '../entities/church-sms-sender.entity';
 import { ChurchUser, ChurchUserRole } from '../entities/church-user.entity';
 import { ClientEnquiry } from '../entities/client-enquiry.entity';
 import {
@@ -38,6 +39,7 @@ import {
   SmsOutbox,
   SmsSendStatus,
 } from '../entities/sms-outbox.entity';
+import { SmsSender } from '../entities/sms-sender.entity';
 import {
   SmsUnitPurchase,
   SmsUnitPurchaseStatus,
@@ -52,6 +54,8 @@ export class PlatformService {
     private readonly platformUserRepo: Repository<PlatformUser>,
     @InjectRepository(Church)
     private readonly churchRepo: Repository<Church>,
+    @InjectRepository(ChurchSmsSender)
+    private readonly churchSmsSenderRepo: Repository<ChurchSmsSender>,
     @InjectRepository(ChurchUser)
     private readonly churchUserRepo: Repository<ChurchUser>,
     @InjectRepository(Contribution)
@@ -62,6 +66,8 @@ export class PlatformService {
     private readonly clientEnquiryRepo: Repository<ClientEnquiry>,
     @InjectRepository(SmsOutbox)
     private readonly smsOutboxRepo: Repository<SmsOutbox>,
+    @InjectRepository(SmsSender)
+    private readonly smsSenderRepo: Repository<SmsSender>,
     @InjectRepository(SmsUnitPurchase)
     private readonly smsUnitPurchaseRepo: Repository<SmsUnitPurchase>,
     @InjectRepository(PlatformSmsConfig)
@@ -127,6 +133,124 @@ export class PlatformService {
     }));
   }
 
+  async listSmsSenders() {
+    await this.ensureLegacySmsSenderAllocations();
+    const senders = await this.smsSenderRepo.find({
+      order: { isActive: 'DESC', name: 'ASC' },
+    });
+    const counts = await this.churchSmsSenderRepo
+      .createQueryBuilder('allocation')
+      .select('allocation.senderId', 'senderId')
+      .addSelect('COUNT(allocation.id)', 'churchCount')
+      .groupBy('allocation.senderId')
+      .getRawMany();
+    const countBySenderId = new Map(
+      counts.map((item) => [item.senderId, Number(item.churchCount || 0)]),
+    );
+
+    return senders.map((sender) => ({
+      ...sender,
+      churchCount: countBySenderId.get(sender.id) || 0,
+    }));
+  }
+
+  async createSmsSender(body: any) {
+    const name = this.normalizeOptionalText(body.name);
+    if (!name) {
+      throw new BadRequestException('Sender ID name is required');
+    }
+    const existing = await this.smsSenderRepo.findOne({ where: { name } });
+    if (existing) {
+      throw new BadRequestException('This sender ID already exists');
+    }
+
+    return this.smsSenderRepo.save(
+      this.smsSenderRepo.create({
+        name,
+        isActive: this.normalizeBoolean(body.isActive, true),
+      }),
+    );
+  }
+
+  async updateSmsSender(senderId: string, body: any) {
+    const sender = await this.smsSenderRepo.findOne({ where: { id: senderId } });
+    if (!sender) {
+      throw new BadRequestException('Sender ID not found');
+    }
+
+    let shouldSyncAllocations = false;
+    if (body.name !== undefined) {
+      const name = this.normalizeOptionalText(body.name);
+      if (!name) {
+        throw new BadRequestException('Sender ID name is required');
+      }
+      const existing = await this.smsSenderRepo.findOne({ where: { name } });
+      if (existing && existing.id !== sender.id) {
+        throw new BadRequestException('This sender ID already exists');
+      }
+      shouldSyncAllocations = shouldSyncAllocations || sender.name !== name;
+      sender.name = name;
+    }
+    if (body.isActive !== undefined) {
+      const isActive = this.normalizeBoolean(body.isActive, sender.isActive);
+      shouldSyncAllocations =
+        shouldSyncAllocations || sender.isActive !== isActive;
+      sender.isActive = isActive;
+    }
+
+    const saved = await this.smsSenderRepo.save(sender);
+    if (shouldSyncAllocations) {
+      await this.syncChurchLegacySenderFieldsForSender(sender.id);
+    }
+    return saved;
+  }
+
+  async setChurchSmsSenders(churchId: string, body: any) {
+    const church = await this.ensureChurchExists(churchId);
+    const senderIds = Array.isArray(body.senderIds)
+      ? Array.from(
+          new Set(
+            body.senderIds
+              .map((item: unknown) => this.normalizeOptionalText(item))
+              .filter(Boolean),
+          ),
+        )
+      : [];
+    const defaultSenderId = this.normalizeOptionalText(body.defaultSenderId);
+    if (defaultSenderId && !senderIds.includes(defaultSenderId)) {
+      throw new BadRequestException(
+        'Default sender must be included in the church sender allocation',
+      );
+    }
+
+    const senders =
+      senderIds.length > 0
+        ? await this.smsSenderRepo.find({ where: { id: In(senderIds) } })
+        : [];
+    if (senders.length !== senderIds.length) {
+      throw new BadRequestException(
+        'One or more selected sender IDs were not found',
+      );
+    }
+
+    await this.churchSmsSenderRepo.delete({ churchId });
+    const resolvedDefaultId = defaultSenderId || senders[0]?.id || null;
+    if (senders.length > 0) {
+      await this.churchSmsSenderRepo.save(
+        senders.map((sender) =>
+          this.churchSmsSenderRepo.create({
+            churchId,
+            senderId: sender.id,
+            isDefault: sender.id === resolvedDefaultId,
+          }),
+        ),
+      );
+    }
+    await this.syncChurchLegacySenderFields(church, senders, resolvedDefaultId);
+
+    return this.getChurchSenderAllocation(churchId);
+  }
+
   async createChurch(body: any, performedByPlatformUserId: string) {
     const adminPhone = this.normalizeOptionalText(body.adminPhone);
 
@@ -180,6 +304,12 @@ export class PlatformService {
         status: ChurchStatus.ACTIVE,
       }),
     );
+    if (Array.isArray(body.smsSenderIds)) {
+      await this.setChurchSmsSenders(church.id, {
+        senderIds: body.smsSenderIds,
+        defaultSenderId: body.defaultSmsSenderId,
+      });
+    }
 
     const adminUser = await this.churchUserRepo.save(
       this.churchUserRepo.create({
@@ -328,12 +458,15 @@ export class PlatformService {
 
     const billingModel =
       church.billingModel || this.inferBillingModel(church.commissionRatePct);
-    const [subscription, userCount, fundAccountCount] = await Promise.all([
+    await this.ensureChurchSenderAllocationsFromLegacy(church);
+    const [subscription, userCount, fundAccountCount, senderAllocation] =
+      await Promise.all([
       billingModel === ChurchBillingModel.SUBSCRIPTION
         ? this.churchSubscriptionsService.getChurchSubscriptionStatus(church.id)
         : Promise.resolve(null),
       this.churchUserRepo.count({ where: { churchId: church.id } }),
       this.fundAccountRepo.count({ where: { churchId: church.id } }),
+      this.getChurchSenderAllocation(church.id),
     ]);
 
     return {
@@ -351,6 +484,9 @@ export class PlatformService {
       smsApiKey: church.smsApiKey,
       smsShortcode: church.smsShortcode,
       smsShortcodes: church.smsShortcodes || [],
+      smsSenderIds: senderAllocation.senderIds,
+      defaultSmsSenderId: senderAllocation.defaultSenderId,
+      smsSenders: senderAllocation.senders,
       smsBaseUrl: church.smsBaseUrl,
       smsUnitRateKes: Number(church.smsUnitRateKes || 0),
       mpesaEnvironment: church.mpesaEnvironment || 'sandbox',
@@ -684,6 +820,12 @@ export class PlatformService {
     }
 
     const saved = await this.churchRepo.save(church);
+    if (Array.isArray(body.smsSenderIds)) {
+      await this.setChurchSmsSenders(church.id, {
+        senderIds: body.smsSenderIds,
+        defaultSenderId: body.defaultSmsSenderId,
+      });
+    }
     if (nextBillingModel === ChurchBillingModel.SUBSCRIPTION) {
       await this.churchSubscriptionsService.ensureSubscriptionForBilling(
         church.id,
@@ -1370,6 +1512,136 @@ export class PlatformService {
       enabledFeatures: normalizeFeatureList(church.enabledFeatures),
       smsShortcodes: church.smsShortcodes || [],
     };
+  }
+
+  private async getChurchSenderAllocation(churchId: string) {
+    const allocations = await this.churchSmsSenderRepo.find({
+      where: { churchId },
+      relations: ['sender'],
+    });
+    allocations.sort((left, right) => {
+      if (left.isDefault !== right.isDefault) {
+        return left.isDefault ? -1 : 1;
+      }
+      return left.sender.name.localeCompare(right.sender.name);
+    });
+
+    return {
+      senderIds: allocations.map((allocation) => allocation.senderId),
+      defaultSenderId:
+        allocations.find((allocation) => allocation.isDefault)?.senderId ||
+        allocations[0]?.senderId ||
+        null,
+      senders: allocations.map((allocation) => ({
+        id: allocation.sender.id,
+        name: allocation.sender.name,
+        isActive: allocation.sender.isActive,
+        isDefault: allocation.isDefault,
+      })),
+    };
+  }
+
+  private async ensureLegacySmsSenderAllocations() {
+    const churches = await this.churchRepo.find();
+    for (const church of churches) {
+      await this.ensureChurchSenderAllocationsFromLegacy(church);
+    }
+  }
+
+  private async ensureChurchSenderAllocationsFromLegacy(church: Church) {
+    const existingCount = await this.churchSmsSenderRepo.count({
+      where: { churchId: church.id },
+    });
+    if (existingCount > 0) {
+      return;
+    }
+
+    const names = Array.from(
+      new Set(
+        [church.smsShortcode, ...(church.smsShortcodes || [])]
+          .map((item) => `${item || ''}`.trim())
+          .filter(Boolean),
+      ),
+    );
+    if (names.length === 0) {
+      return;
+    }
+
+    const senders: SmsSender[] = [];
+    for (const name of names) {
+      let sender = await this.smsSenderRepo.findOne({ where: { name } });
+      if (!sender) {
+        sender = await this.smsSenderRepo.save(
+          this.smsSenderRepo.create({ name, isActive: true }),
+        );
+      }
+      senders.push(sender);
+    }
+
+    await this.churchSmsSenderRepo.save(
+      senders.map((sender, index) =>
+        this.churchSmsSenderRepo.create({
+          churchId: church.id,
+          senderId: sender.id,
+          isDefault: sender.name === church.smsShortcode || index === 0,
+        }),
+      ),
+    );
+  }
+
+  private async syncChurchLegacySenderFields(
+    church: Church,
+    senders: SmsSender[],
+    requestedDefaultSenderId?: string | null,
+  ) {
+    const activeSenders = senders.filter((sender) => sender.isActive);
+    const defaultSender =
+      activeSenders.find((sender) => sender.id === requestedDefaultSenderId) ||
+      activeSenders[0] ||
+      null;
+    church.smsShortcode = defaultSender?.name || null;
+    const additional = activeSenders
+      .filter((sender) => sender.id !== defaultSender?.id)
+      .map((sender) => sender.name);
+    church.smsShortcodes = additional.length > 0 ? additional : null;
+    await this.churchRepo.save(church);
+    await this.churchSmsSenderRepo.update(
+      { churchId: church.id },
+      { isDefault: false },
+    );
+    if (defaultSender) {
+      await this.churchSmsSenderRepo.update(
+        { churchId: church.id, senderId: defaultSender.id },
+        { isDefault: true },
+      );
+    }
+  }
+
+  private async syncChurchLegacySenderFieldsForSender(senderId: string) {
+    const allocations = await this.churchSmsSenderRepo.find({
+      where: { senderId },
+    });
+    const churchIds = Array.from(
+      new Set(allocations.map((allocation) => allocation.churchId)),
+    );
+    for (const churchId of churchIds) {
+      const church = await this.churchRepo.findOne({ where: { id: churchId } });
+      if (!church) {
+        continue;
+      }
+      const allocation = await this.getChurchSenderAllocation(churchId);
+      const senders =
+        allocation.senderIds.length > 0
+          ? await this.smsSenderRepo.find({
+              where: { id: In(allocation.senderIds) },
+            })
+          : [];
+      await this.syncChurchLegacySenderFields(
+        church,
+        senders,
+        allocation.defaultSenderId,
+      );
+    }
   }
 
   private getDirectMpesaSourceTypes() {

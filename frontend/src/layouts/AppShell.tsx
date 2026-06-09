@@ -59,26 +59,33 @@ const platformLinks: ShellLink[] = [
   { to: '/platform/churches', label: 'Churches', icon: Building2 },
   { to: '/platform/collections', label: 'Collections', icon: WalletCards },
   {
-    to: '/platform/messaging?tab=outbox',
+    to: '/platform/messaging?tab=compose',
     matchPath: '/platform/messaging',
     label: 'Messaging',
     icon: Send,
     children: [
-      { to: '/platform/messaging?tab=outbox', label: 'Outbox', tab: 'outbox' },
       { to: '/platform/messaging?tab=compose', label: 'Compose', tab: 'compose' },
       {
         to: '/platform/messaging?tab=addressBox',
         label: 'Address Box',
         tab: 'addressBox',
       },
+      { to: '/platform/messaging?tab=outbox', label: 'Outbox', tab: 'outbox' },
     ],
   },
   { to: '/platform/enquiries', label: 'Enquiries', icon: MessageSquareText },
   { to: '/platform/users', label: 'Platform Users', icon: Users },
+  { to: '/platform/senders', label: 'Senders', icon: Send },
   { to: '/platform/settings', label: 'Settings', icon: Settings },
 ];
 
 const churchLinks: ShellLink[] = [
+  {
+    to: '/church/discipleship',
+    label: 'Discipleship',
+    icon: UserCheck,
+    permission: 'discipleship.view',
+  },
   {
     to: '/church/dashboard',
     label: 'Overview',
@@ -98,19 +105,19 @@ const churchLinks: ShellLink[] = [
     permission: 'contributions.view',
   },
   {
-    to: '/church/messaging?tab=outbox',
+    to: '/church/messaging?tab=compose',
     matchPath: '/church/messaging',
     label: 'Messaging',
     icon: Send,
     permission: 'messaging.view',
     children: [
-      { to: '/church/messaging?tab=outbox', label: 'Outbox', tab: 'outbox' },
       { to: '/church/messaging?tab=compose', label: 'Compose', tab: 'compose' },
       {
         to: '/church/messaging?tab=addressBooks',
         label: 'Address Books',
         tab: 'addressBooks',
       },
+      { to: '/church/messaging?tab=outbox', label: 'Outbox', tab: 'outbox' },
     ],
   },
   {
@@ -118,12 +125,6 @@ const churchLinks: ShellLink[] = [
     label: 'Verses & Announcements',
     icon: BookOpenText,
     permission: 'congregation.manage',
-  },
-  {
-    to: '/church/discipleship',
-    label: 'Discipleship',
-    icon: UserCheck,
-    permission: 'discipleship.view',
   },
   {
     to: '/church/users',
@@ -178,6 +179,11 @@ const pageMeta = {
     {
       prefix: '/platform/users',
       title: 'Platform users',
+      variant: 'compact',
+    },
+    {
+      prefix: '/platform/senders',
+      title: 'Senders',
       variant: 'compact',
     },
     {
@@ -456,7 +462,8 @@ export function AppShell({ userType }: AppShellProps) {
     </button>
   );
 
-  const currentTab = new URLSearchParams(location.search).get('tab') || 'outbox';
+  const currentTab =
+    new URLSearchParams(location.search).get('tab') || 'compose';
   const sidebarNavigation = (
     <nav className="space-y-2">
       {links.map((link) => {

@@ -55,7 +55,7 @@ const idleTileClass =
   "border-white/10 bg-black/10 text-stone-300 hover:border-emerald-300/35 hover:bg-emerald-300/10 hover:text-white";
 
 function normalizeWorkspace(value: string | null): Workspace {
-  return value === "compose" || value === "addressBox" ? value : "outbox";
+  return value === "outbox" || value === "addressBox" ? value : "compose";
 }
 
 export default function PlatformMessaging() {

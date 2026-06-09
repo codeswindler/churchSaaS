@@ -168,6 +168,21 @@ export default function ChurchContributions() {
   };
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
+  const contributionRows = contributions || [];
+  const contributorSummary = useMemo(
+    () => ({
+      count: contributionRows.length,
+      confirmedCount: contributionRows.filter(
+        (item: any) => item.status === 'confirmed',
+      ).length,
+      totalAmount: contributionRows.reduce(
+        (sum: number, item: any) =>
+          item.status === 'confirmed' ? sum + Number(item.amount || 0) : sum,
+        0,
+      ),
+    }),
+    [contributionRows],
+  );
 
   return (
     <div className="space-y-6">
@@ -210,9 +225,26 @@ export default function ChurchContributions() {
               </p>
             </div>
 
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/10 px-3 py-2 text-sm text-stone-300">
-              <Search size={15} />
-              {(contributions || []).length} rows
+            <div className="w-full max-w-md">
+              <label className="label-compact">Search contributor</label>
+              <div className="relative mt-2">
+                <Search
+                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-stone-400"
+                  size={16}
+                />
+                <input
+                  className="input-compact"
+                  style={{ paddingLeft: '2.65rem' }}
+                  placeholder="Search by contributor name or phone"
+                  value={filters.contributor}
+                  onChange={(event) =>
+                    setFilters((current) => ({
+                      ...current,
+                      contributor: event.target.value,
+                    }))
+                  }
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -342,6 +374,29 @@ export default function ChurchContributions() {
           </div>
         </div>
 
+        {filters.contributor.trim() ? (
+          <div className="grid gap-3 border-b border-white/10 px-5 py-5 sm:grid-cols-3 xl:px-6">
+            <div className="rounded-2xl border border-white/10 bg-black/10 p-4">
+              <p className="label-compact">Matching contributions</p>
+              <p className="mt-2 text-2xl font-semibold text-white">
+                {contributorSummary.count.toLocaleString()}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/10 p-4">
+              <p className="label-compact">Confirmed collections</p>
+              <p className="mt-2 text-2xl font-semibold text-white">
+                {contributorSummary.confirmedCount.toLocaleString()}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/10 p-4">
+              <p className="label-compact">Confirmed amount</p>
+              <p className="mt-2 text-2xl font-semibold text-white">
+                KES {contributorSummary.totalAmount.toLocaleString()}
+              </p>
+            </div>
+          </div>
+        ) : null}
+
         {isLoading ? (
           <div className="p-6 text-stone-300">Loading contributions...</div>
         ) : (
@@ -359,7 +414,7 @@ export default function ChurchContributions() {
                 </tr>
               </thead>
               <tbody>
-                {(contributions || []).map((item: any) => (
+                {contributionRows.map((item: any) => (
                   <tr key={item.id}>
                     <td className="mono text-xs" data-label="Date">
                       {new Date(item.receivedAt || item.createdAt).toLocaleString()}

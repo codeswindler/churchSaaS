@@ -13,8 +13,52 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
     await this.ensureRevenueAndAccessColumns();
     await this.ensureClientEnquiryTable();
     await this.ensureSmsMessagingTables();
+    await this.ensureSmsSenderTables();
     await this.ensureDiscipleshipTables();
     await this.ensureCongregationPageTable();
+  }
+
+  private async ensureSmsSenderTables() {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+
+    try {
+      const senders = await queryRunner.getTable('sms_senders');
+      if (!senders) {
+        await queryRunner.query(`
+          CREATE TABLE \`sms_senders\` (
+            \`id\` varchar(36) NOT NULL,
+            \`name\` varchar(80) NOT NULL,
+            \`isActive\` tinyint NOT NULL DEFAULT 1,
+            \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            \`updatedAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+            PRIMARY KEY (\`id\`),
+            UNIQUE KEY \`UQ_sms_senders_name\` (\`name\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        this.logger.log('Created SMS senders table.');
+      }
+
+      const allocations = await queryRunner.getTable('church_sms_senders');
+      if (!allocations) {
+        await queryRunner.query(`
+          CREATE TABLE \`church_sms_senders\` (
+            \`id\` varchar(36) NOT NULL,
+            \`churchId\` varchar(36) NOT NULL,
+            \`senderId\` varchar(36) NOT NULL,
+            \`isDefault\` tinyint NOT NULL DEFAULT 0,
+            \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            PRIMARY KEY (\`id\`),
+            UNIQUE KEY \`UQ_church_sms_sender\` (\`churchId\`, \`senderId\`),
+            INDEX \`IDX_church_sms_senders_church\` (\`churchId\`),
+            INDEX \`IDX_church_sms_senders_sender\` (\`senderId\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        this.logger.log('Created church SMS sender allocations table.');
+      }
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   private async ensureChurchCredentialColumns() {

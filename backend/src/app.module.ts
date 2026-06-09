@@ -10,6 +10,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { PlatformModule } from './platform/platform.module';
 import { PublicModule } from './public/public.module';
 import { Church } from './entities/church.entity';
+import { ChurchSmsSender } from './entities/church-sms-sender.entity';
 import { ChurchCongregationPage } from './entities/church-congregation-page.entity';
 import { ChurchSubscription } from './entities/church-subscription.entity';
 import { ChurchSubscriptionAdjustment } from './entities/church-subscription-adjustment.entity';
@@ -28,6 +29,7 @@ import { SmsAddressBook } from './entities/sms-address-book.entity';
 import { SmsAddressBookContact } from './entities/sms-address-book-contact.entity';
 import { SmsBatch } from './entities/sms-batch.entity';
 import { SmsOutbox } from './entities/sms-outbox.entity';
+import { SmsSender } from './entities/sms-sender.entity';
 import { SmsUnitPurchase } from './entities/sms-unit-purchase.entity';
 import { SmsModule } from './sms/sms.module';
 import { ChurchSubscriptionsModule } from './subscriptions/church-subscriptions.module';
@@ -47,6 +49,7 @@ import { SchemaBootstrapService } from './common/schema-bootstrap.service';
         PlatformUser,
         PlatformSmsConfig,
         Church,
+        ChurchSmsSender,
         ChurchCongregationPage,
         ChurchUser,
         ChurchSubscription,
@@ -63,6 +66,7 @@ import { SchemaBootstrapService } from './common/schema-bootstrap.service';
         SmsAddressBookContact,
         SmsBatch,
         SmsOutbox,
+        SmsSender,
         SmsUnitPurchase,
       ],
       synchronize: (process.env.DB_SYNCHRONIZE || 'false') === 'true',

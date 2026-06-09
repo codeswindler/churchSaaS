@@ -107,7 +107,7 @@ const idleTileClass =
   'border-white/10 bg-black/10 text-stone-300 hover:border-emerald-300/35 hover:bg-emerald-300/10 hover:text-white';
 
 function normalizeWorkspace(value: string | null): Workspace {
-  return value === 'compose' || value === 'addressBooks' ? value : 'outbox';
+  return value === 'outbox' || value === 'addressBooks' ? value : 'compose';
 }
 
 export default function ChurchMessaging() {
@@ -800,30 +800,6 @@ export default function ChurchMessaging() {
                 </div>
               </div>
 
-              <div>
-                <label className="label">Sender shortcode</label>
-                <select
-                  className="input"
-                  value={form.smsShortcode}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      smsShortcode: event.target.value,
-                    }))
-                  }
-                >
-                  {shortcodes.length === 0 ? (
-                    <option value="">Default shortcode</option>
-                  ) : null}
-                  {shortcodes.map((shortcode: string) => (
-                    <option key={shortcode} value={shortcode}>
-                      {shortcode}
-                      {shortcode === defaultShortcode ? ' (default)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
               <div className="lg:col-span-2">
                 <label className="label">Address book groups</label>
                 <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
@@ -906,6 +882,29 @@ export default function ChurchMessaging() {
                     }))
                   }
                 />
+                <div className="mt-4 max-w-md">
+                  <label className="label">Sender ID</label>
+                  <select
+                    className="input"
+                    value={form.smsShortcode}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        smsShortcode: event.target.value,
+                      }))
+                    }
+                  >
+                    {shortcodes.length === 0 ? (
+                      <option value="">Default sender</option>
+                    ) : null}
+                    {shortcodes.map((shortcode: string) => (
+                      <option key={shortcode} value={shortcode}>
+                        {shortcode}
+                        {shortcode === defaultShortcode ? ' (default)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="lg:col-span-2 rounded-3xl border border-white/10 bg-black/10 p-4">
@@ -988,6 +987,15 @@ export default function ChurchMessaging() {
                     </div>
                   </div>
                 ) : null}
+                <p className="mt-4 text-xs leading-5 text-stone-400">
+                  Selected sources: {form.fundAccountIds.length} fund account
+                  {form.fundAccountIds.length === 1 ? '' : 's'},{' '}
+                  {form.addressBookIds.length} address book
+                  {form.addressBookIds.length === 1 ? '' : 's'}
+                  {form.pastedContacts.trim() ? ', plus pasted contacts' : ''}.
+                  The quote resolves every selected source and drops duplicate
+                  recipients before payment and sending.
+                </p>
               </div>
 
               <div className="lg:col-span-2">

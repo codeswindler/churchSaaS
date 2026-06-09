@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Request,
   UseGuards,
@@ -30,6 +31,29 @@ export class PlatformController {
   @Get('churches')
   listChurches() {
     return this.platformService.listChurches();
+  }
+
+  @Get('senders')
+  listSmsSenders() {
+    return this.platformService.listSmsSenders();
+  }
+
+  @Post('senders')
+  createSmsSender(@Body() body: any) {
+    return this.platformService.createSmsSender(body);
+  }
+
+  @Patch('senders/:senderId')
+  updateSmsSender(@Param('senderId') senderId: string, @Body() body: any) {
+    return this.platformService.updateSmsSender(senderId, body);
+  }
+
+  @Put('churches/:churchId/senders')
+  setChurchSmsSenders(
+    @Param('churchId') churchId: string,
+    @Body() body: any,
+  ) {
+    return this.platformService.setChurchSmsSenders(churchId, body);
   }
 
   @Get('collections')
