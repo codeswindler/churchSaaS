@@ -512,28 +512,20 @@ export class ChurchService {
       throw new BadRequestException('Discipleship member not found');
     }
 
-    const attendanceType =
-      body.attendanceType === DiscipleshipAttendanceType.GROUP ||
-      body.type === DiscipleshipAttendanceType.GROUP
-        ? DiscipleshipAttendanceType.GROUP
-        : DiscipleshipAttendanceType.SERVICE;
+    const attendanceType = DiscipleshipAttendanceType.GROUP;
     const dateParts = this.getNairobiDateParts(
       this.normalizeDateOnly(body.attendanceDate),
     );
     const eventName = this.normalizeOptionalText(body.eventName, 160);
-    let groupId: string | null = null;
-
-    if (attendanceType === DiscipleshipAttendanceType.GROUP) {
-      groupId = this.normalizeOptionalText(body.groupId, 36);
-      if (!groupId) {
-        throw new BadRequestException('Select a group for group attendance');
-      }
-      const group = await this.discipleshipGroupRepo.findOne({
-        where: { id: groupId, churchId },
-      });
-      if (!group) {
-        throw new BadRequestException('Discipleship group not found');
-      }
+    const groupId = this.normalizeOptionalText(body.groupId, 36);
+    if (!groupId) {
+      throw new BadRequestException('Select an attendance group');
+    }
+    const group = await this.discipleshipGroupRepo.findOne({
+      where: { id: groupId, churchId, isActive: true },
+    });
+    if (!group) {
+      throw new BadRequestException('Select an active discipleship group');
     }
 
     const duplicateQb = this.discipleshipAttendanceRepo

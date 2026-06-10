@@ -10,7 +10,7 @@ import {
   UsersRound,
   X,
 } from 'lucide-react';
-import { type FormEvent, useMemo, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 
@@ -73,7 +73,6 @@ function createMemberForm() {
   return {
     fullName: '',
     phone: '',
-    email: '',
     gender: '',
     enrollmentDate: getNairobiToday(),
     status: 'active',
@@ -108,12 +107,10 @@ export default function ChurchDiscipleship() {
   const [isAttendanceTypeOpen, setIsAttendanceTypeOpen] = useState(false);
   const [attendanceForm, setAttendanceForm] = useState<{
     attendanceDate: string;
-    attendanceType: 'service' | 'group';
     groupId: string;
     eventName: string;
   }>({
     attendanceDate: getNairobiToday(),
-    attendanceType: 'service',
     groupId: '',
     eventName: '',
   });
@@ -248,6 +245,7 @@ export default function ChurchDiscipleship() {
       api
         .post('/church/discipleship/attendance/mark', {
           memberId: selectedMemberId,
+          attendanceType: 'group',
           ...attendanceForm,
         })
         .then((response) => response.data),
@@ -274,7 +272,6 @@ export default function ChurchDiscipleship() {
         ? {
             fullName: member.fullName || '',
             phone: member.phone || '',
-            email: member.email || '',
             gender: member.gender || '',
             enrollmentDate: member.enrollmentDate || getNairobiToday(),
             status: member.status || 'active',
@@ -329,24 +326,31 @@ export default function ChurchDiscipleship() {
     ['Present today', summary?.totals?.presentToday ?? 0],
   ];
   const activeGroups = groups.filter((group) => group.isActive !== false);
-  const attendanceTypeValue =
-    attendanceForm.attendanceType === 'group' && attendanceForm.groupId
-      ? `group:${attendanceForm.groupId}`
-      : 'service';
   const attendanceTypeLabel =
-    attendanceForm.attendanceType === 'group'
-      ? activeGroups.find((group) => group.id === attendanceForm.groupId)
-          ?.name || 'Select attendance type'
-      : 'Service';
+    activeGroups.find((group) => group.id === attendanceForm.groupId)?.name ||
+    'Select attendance group';
+
+  useEffect(() => {
+    if (
+      activeGroups.length > 0 &&
+      !activeGroups.some((group) => group.id === attendanceForm.groupId)
+    ) {
+      setAttendanceForm((current) => ({
+        ...current,
+        groupId: activeGroups[0].id,
+      }));
+    }
+  }, [activeGroups, attendanceForm.groupId]);
   const memberAttendanceSummary = useMemo(() => {
-    const serviceCount = memberAttendance.filter(
-      (item) => item.attendanceType === 'service',
-    ).length;
-    const groupCount = memberAttendance.length - serviceCount;
+    const groupEvents = memberAttendance.filter(
+      (item) => item.attendanceType === 'group',
+    );
     return {
       total: memberAttendance.length,
-      serviceCount,
-      groupCount,
+      groupCount: groupEvents.length,
+      groupsAttended: new Set(
+        groupEvents.map((item) => item.group?.id).filter(Boolean),
+      ).size,
       lastAttended: memberAttendance[0]?.attendanceDate || 'No attendance yet',
     };
   }, [memberAttendance]);
@@ -424,7 +428,7 @@ export default function ChurchDiscipleship() {
                     <input
                       className="input"
                       style={{ paddingLeft: '2.75rem' }}
-                      placeholder="Search by name, phone, or email"
+                      placeholder="Search by name or phone"
                       value={memberSearch}
                       onChange={(event) => setMemberSearch(event.target.value)}
                     />
@@ -508,7 +512,7 @@ export default function ChurchDiscipleship() {
 
                   <div className="relative space-y-2">
                     <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
-                      Attendance type
+                      Attendance group
                     </span>
                     <button
                       aria-expanded={isAttendanceTypeOpen}
@@ -528,71 +532,59 @@ export default function ChurchDiscipleship() {
                     </button>
                     {isAttendanceTypeOpen ? (
                       <div className="absolute left-0 right-0 top-full z-30 mt-2 max-h-64 space-y-1 overflow-y-auto rounded-2xl border border-white/10 bg-stone-950 p-2 shadow-2xl">
-                        {[
-                          { value: 'service', label: 'Service' },
-                          ...activeGroups.map((group) => ({
-                            value: `group:${group.id}`,
-                            label: group.name,
-                          })),
-                        ].map((option) => (
+                        {activeGroups.length === 0 ? (
+                          <p className="px-3 py-2.5 text-sm text-stone-400">
+                            Create an active group before marking attendance.
+                          </p>
+                        ) : activeGroups.map((group) => (
                           <button
-                            key={option.value}
+                            key={group.id}
                             className={`w-full rounded-xl px-3 py-2.5 text-left text-sm transition ${
-                              attendanceTypeValue === option.value
+                              attendanceForm.groupId === group.id
                                 ? 'bg-amber-200 text-stone-950'
                                 : 'text-stone-200 hover:bg-white/10'
                             }`}
                             type="button"
                             onClick={() => {
-                              const value = option.value;
                               setIsAttendanceTypeOpen(false);
-                              if (value === 'service') {
-                                setAttendanceForm((current) => ({
-                                  ...current,
-                                  attendanceType: 'service',
-                                  groupId: '',
-                                  eventName: '',
-                                }));
-                                return;
-                              }
-
                               setAttendanceForm((current) => ({
                                 ...current,
-                                attendanceType: 'group',
-                                groupId: value.replace('group:', ''),
+                                groupId: group.id,
                               }));
                             }}
                           >
-                            {option.label}
+                            {group.name}
                           </button>
                         ))}
                       </div>
                     ) : null}
                   </div>
 
-                  {attendanceForm.attendanceType === 'group' && (
-                    <label className="space-y-2">
-                      <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
-                        Event name
-                      </span>
-                      <input
-                        className="input"
-                        placeholder="Men's seminar, choir practice..."
-                        value={attendanceForm.eventName}
-                        onChange={(event) =>
-                          setAttendanceForm((current) => ({
-                            ...current,
-                            eventName: event.target.value,
-                          }))
-                        }
-                      />
-                    </label>
-                  )}
+                  <label className="space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
+                      Event name
+                    </span>
+                    <input
+                      className="input"
+                      placeholder="Optional: Sunday service, choir practice..."
+                      value={attendanceForm.eventName}
+                      onChange={(event) =>
+                        setAttendanceForm((current) => ({
+                          ...current,
+                          eventName: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
 
                   <button
                     className="btn-primary w-full justify-center"
                     type="button"
-                    disabled={!selectedMemberId || attendanceMutation.isPending}
+                    disabled={
+                      !selectedMemberId ||
+                      !attendanceForm.groupId ||
+                      attendanceMutation.isPending
+                    }
                     onClick={() => attendanceMutation.mutate()}
                   >
                     <CheckCircle2 size={17} />
@@ -631,7 +623,7 @@ export default function ChurchDiscipleship() {
                         </p>
                       </div>
                       <span className="rounded-full border border-amber-200/40 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-amber-100">
-                        {item.attendanceType}
+                        {item.group?.name || item.attendanceType}
                       </span>
                     </div>
                     {(item.group || item.eventName) && (
@@ -897,22 +889,6 @@ export default function ChurchDiscipleship() {
                 </label>
                 <label className="space-y-2">
                   <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
-                    Email
-                  </span>
-                  <input
-                    className="input"
-                    type="email"
-                    value={memberForm.email}
-                    onChange={(event) =>
-                      setMemberForm((current) => ({
-                        ...current,
-                        email: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label className="space-y-2">
-                  <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
                     Gender
                   </span>
                   <input
@@ -1056,7 +1032,7 @@ export default function ChurchDiscipleship() {
               <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {[
                   ['Attendance marks', memberAttendanceSummary.total],
-                  ['Services', memberAttendanceSummary.serviceCount],
+                  ['Groups attended', memberAttendanceSummary.groupsAttended],
                   ['Group events', memberAttendanceSummary.groupCount],
                   ['Last attended', memberAttendanceSummary.lastAttended],
                 ].map(([label, value]) => (
@@ -1080,7 +1056,6 @@ export default function ChurchDiscipleship() {
                   <dl className="mt-4 space-y-4 text-sm">
                     {[
                       ['Phone', detailMember?.phone || 'Not set'],
-                      ['Email', detailMember?.email || 'Not set'],
                       ['Gender', detailMember?.gender || 'Not set'],
                       [
                         'Groups',

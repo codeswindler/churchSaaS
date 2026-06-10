@@ -17,7 +17,7 @@ function formatKes(value: unknown) {
 }
 
 export default function PlatformDashboard() {
-  const [showRevenueBreakdown, setShowRevenueBreakdown] = useState(false);
+  const [showCommissionBreakdown, setShowCommissionBreakdown] = useState(false);
   const [showSmsRevenueBreakdown, setShowSmsRevenueBreakdown] = useState(false);
   const { data, isLoading } = useQuery({
     queryKey: ['platform-dashboard'],
@@ -55,17 +55,11 @@ export default function PlatformDashboard() {
       icon: AlertTriangle,
     },
     {
-      label: 'Total Revenue',
-      value: formatKes(totals.totalRevenue ?? totals.totalCollections),
-      icon: Wallet,
-      hint: 'View church breakdown',
-      onClick: () => setShowRevenueBreakdown(true),
-    },
-    {
-      label: 'Platform Commission',
+      label: 'Commission Revenue',
       value: formatKes(totals.commissionRevenue),
       icon: Percent,
-      hint: 'Admin revenue only',
+      hint: 'View church breakdown',
+      onClick: () => setShowCommissionBreakdown(true),
     },
     {
       label: 'SMS Revenue',
@@ -195,10 +189,7 @@ export default function PlatformDashboard() {
                       {church.userCount} staff users
                     </p>
                     <p className="text-xs text-stone-400">
-                      KES{' '}
-                      {Number(
-                        church.contributionTotals?.total || 0,
-                      ).toLocaleString()}
+                      Commission {formatKes(church.contributionTotals?.revenue)}
                     </p>
                   </div>
                 </div>
@@ -265,8 +256,8 @@ export default function PlatformDashboard() {
               </h3>
             </div>
             <p className="max-w-2xl text-sm text-stone-300">
-              A wider desktop view of customer subscription health, staffing, and
-              collections across the churches already onboarded.
+              A wider desktop view of customer subscription health, staffing,
+              and platform commission across the churches already onboarded.
             </p>
           </div>
 
@@ -324,13 +315,10 @@ export default function PlatformDashboard() {
                     </div>
                     <div>
                       <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400">
-                        Revenue
+                        Commission Revenue
                       </p>
                       <p className="mt-2 text-sm font-semibold text-white">
-                        {formatKes(church.contributionTotals?.total)}
-                      </p>
-                      <p className="mt-1 text-xs text-stone-400">
-                        Commission {formatKes(church.contributionTotals?.revenue)}
+                        {formatKes(church.contributionTotals?.revenue)}
                       </p>
                     </div>
                   </div>
@@ -341,11 +329,11 @@ export default function PlatformDashboard() {
         </section>
       </div>
 
-      {showRevenueBreakdown ? (
+      {showCommissionBreakdown ? (
         <div
           className="modal-backdrop"
           role="presentation"
-          onClick={() => setShowRevenueBreakdown(false)}
+          onClick={() => setShowCommissionBreakdown(false)}
         >
           <section
             aria-labelledby="platform-revenue-breakdown-title"
@@ -363,35 +351,27 @@ export default function PlatformDashboard() {
                   className="mt-2 text-2xl font-semibold text-white"
                   id="platform-revenue-breakdown-title"
                 >
-                  Church earnings and admin commission
+                  Commission revenue by church
                 </h3>
                 <p className="mt-2 max-w-2xl text-sm text-stone-300">
-                  Total revenue is the gross direct M-Pesa amount collected by
-                  churches. Platform commission is the admin revenue.
+                  Platform commission earned from churches using commission
+                  billing.
                 </p>
               </div>
               <button
                 aria-label="Close revenue breakdown"
                 className="btn-secondary px-3 py-2"
                 type="button"
-                onClick={() => setShowRevenueBreakdown(false)}
+                onClick={() => setShowCommissionBreakdown(false)}
               >
                 <X size={16} />
               </button>
             </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-3xl border border-white/10 bg-black/10 p-4">
-                <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
-                  Total Revenue
-                </p>
-                <strong className="mt-2 block text-2xl text-white">
-                  {formatKes(totals.totalRevenue ?? totals.totalCollections)}
-                </strong>
-              </div>
+            <div className="mt-5">
               <div className="rounded-3xl border border-amber-200/20 bg-amber-200/10 p-4">
                 <p className="text-xs uppercase tracking-[0.22em] text-amber-100">
-                  Platform Commission
+                  Commission Revenue
                 </p>
                 <strong className="mt-2 block text-2xl text-white">
                   {formatKes(totals.commissionRevenue)}
@@ -406,8 +386,7 @@ export default function PlatformDashboard() {
                     <th>Church</th>
                     <th>Billing</th>
                     <th>Transactions</th>
-                    <th>Total Revenue</th>
-                    <th>Admin Commission</th>
+                    <th>Commission Revenue</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -427,7 +406,6 @@ export default function PlatformDashboard() {
                           : 'Subscription'}
                       </td>
                       <td>{Number(church.contributionCount || 0)}</td>
-                      <td>{formatKes(church.totalRevenue)}</td>
                       <td className="font-semibold text-amber-100">
                         {formatKes(church.commissionRevenue)}
                       </td>
@@ -435,7 +413,7 @@ export default function PlatformDashboard() {
                   ))}
                   {revenueBreakdown.length === 0 ? (
                     <tr>
-                      <td colSpan={5}>No revenue records found yet.</td>
+                      <td colSpan={4}>No commission records found yet.</td>
                     </tr>
                   ) : null}
                 </tbody>

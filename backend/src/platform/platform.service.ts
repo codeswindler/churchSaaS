@@ -1232,7 +1232,7 @@ export class PlatformService {
           commissionRevenue: Number(church.contributionTotals?.revenue || 0),
           contributionCount: Number(church.contributionTotals?.count || 0),
         }))
-        .sort((a, b) => b.totalRevenue - a.totalRevenue),
+        .sort((a, b) => b.commissionRevenue - a.commissionRevenue),
       smsPurchaseBreakdown: recentSmsPurchases.map((purchase) => ({
         id: purchase.id,
         churchId: purchase.churchId,
@@ -1398,7 +1398,40 @@ export class PlatformService {
       qb.andWhere('message.createdAt <= :to', { to: new Date(query.to) });
     }
 
-    const messages = await qb.getMany();
+    const purchaseQb = this.smsUnitPurchaseRepo
+      .createQueryBuilder('purchase')
+      .select('SUM(purchase.amountKes)', 'revenue')
+      .addSelect('SUM(purchase.totalUnits)', 'unitsSold')
+      .addSelect('COUNT(purchase.id)', 'purchaseCount')
+      .where('purchase.status IN (:...statuses)', {
+        statuses: [
+          SmsUnitPurchaseStatus.CONFIRMED,
+          SmsUnitPurchaseStatus.SENDING,
+          SmsUnitPurchaseStatus.SENT,
+          SmsUnitPurchaseStatus.SEND_FAILED,
+        ],
+      });
+
+    if (query.churchId) {
+      purchaseQb.andWhere('purchase.churchId = :churchId', {
+        churchId: query.churchId,
+      });
+    }
+    if (query.from) {
+      purchaseQb.andWhere('purchase.createdAt >= :from', {
+        from: new Date(query.from),
+      });
+    }
+    if (query.to) {
+      purchaseQb.andWhere('purchase.createdAt <= :to', {
+        to: new Date(query.to),
+      });
+    }
+
+    const [messages, purchaseTotals] = await Promise.all([
+      qb.getMany(),
+      purchaseQb.getRawOne(),
+    ]);
     return {
       totals: {
         messageCount: messages.length,
@@ -1406,6 +1439,9 @@ export class PlatformService {
           (sum, item) => sum + Number(item.estimatedUnits || 0),
           0,
         ),
+        revenue: Number(purchaseTotals?.revenue || 0),
+        unitsSold: Number(purchaseTotals?.unitsSold || 0),
+        purchaseCount: Number(purchaseTotals?.purchaseCount || 0),
       },
       messages,
     };

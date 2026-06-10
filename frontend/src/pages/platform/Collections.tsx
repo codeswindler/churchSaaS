@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { MessageSquareText, Percent, WalletCards } from 'lucide-react';
+import { MessageSquareText, Percent } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
@@ -62,12 +62,11 @@ export default function PlatformCollections() {
               Platform Revenue
             </p>
             <h3 className="mt-2 text-2xl font-semibold text-white">
-              Direct M-Pesa collections and SMS usage
+              Commission and SMS revenue
             </h3>
             <p className="mt-2 max-w-3xl text-sm text-stone-300">
-              Admin revenue is calculated only from direct M-Pesa callbacks.
-              Manual church records stay visible to the church, but do not count
-              toward platform commission.
+              Platform revenue comes from commission on eligible direct M-Pesa
+              payments and paid SMS unit purchases.
             </p>
           </div>
 
@@ -133,16 +132,7 @@ export default function PlatformCollections() {
         </div>
       </section>
 
-      <div className="grid gap-5 md:grid-cols-3">
-        <div className="stat-card">
-          <WalletCards className="text-emerald-300" size={20} />
-          <p className="mt-4 text-xs uppercase tracking-[0.24em] text-stone-400">
-            Direct M-Pesa
-          </p>
-          <div className="mt-4 text-3xl font-semibold text-white">
-            KES {Number(collections?.totals?.totalAmount || 0).toLocaleString()}
-          </div>
-        </div>
+      <div className="grid gap-5 md:grid-cols-2">
         <div className="stat-card">
           <Percent className="text-amber-200" size={20} />
           <p className="mt-4 text-xs uppercase tracking-[0.24em] text-stone-400">
@@ -155,11 +145,15 @@ export default function PlatformCollections() {
         <div className="stat-card">
           <MessageSquareText className="text-sky-300" size={20} />
           <p className="mt-4 text-xs uppercase tracking-[0.24em] text-stone-400">
-            SMS Units
+            SMS Revenue
           </p>
           <div className="mt-4 text-3xl font-semibold text-white">
-            {Number(smsUsage?.totals?.units || 0).toLocaleString()}
+            KES {Number(smsUsage?.totals?.revenue || 0).toLocaleString()}
           </div>
+          <p className="mt-3 text-xs text-stone-400">
+            {Number(smsUsage?.totals?.unitsSold || 0).toLocaleString()} paid
+            units sold
+          </p>
         </div>
       </div>
 

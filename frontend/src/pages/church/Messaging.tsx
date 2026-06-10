@@ -165,12 +165,6 @@ export default function ChurchMessaging() {
       api.get('/church/messaging/config').then((response) => response.data),
   });
 
-  const { data: usage } = useQuery({
-    queryKey: ['church-sms-usage'],
-    queryFn: () =>
-      api.get('/church/messaging/usage').then((response) => response.data),
-  });
-
   const { data: addressBooks } = useQuery({
     queryKey: ['church-address-books'],
     queryFn: () =>
@@ -298,7 +292,6 @@ export default function ChurchMessaging() {
       setPaymentPhone('');
       setActiveWorkspace('outbox');
       queryClient.invalidateQueries({ queryKey: ['church-sms-outbox'] });
-      queryClient.invalidateQueries({ queryKey: ['church-sms-usage'] });
     },
     onError: (error: any) => {
       toast.error(
@@ -643,7 +636,6 @@ export default function ChurchMessaging() {
         `Checked ${Number(data.checked || 0).toLocaleString()} delivery report${Number(data.checked || 0) === 1 ? '' : 's'}`,
       );
       queryClient.invalidateQueries({ queryKey: ['church-sms-outbox'] });
-      queryClient.invalidateQueries({ queryKey: ['church-sms-usage'] });
     },
     onError: (error: any) => {
       toast.error(
@@ -708,20 +700,6 @@ export default function ChurchMessaging() {
 
   return (
     <div className="space-y-5">
-      <section className="panel p-3 sm:p-4">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
-            <p className="text-[11px] uppercase tracking-[0.22em] text-stone-400">
-              SMS units used
-            </p>
-            <div className="mt-1 text-xl font-semibold text-white">
-              {Number(usage?.units || 0).toLocaleString()}
-            </div>
-          </div>
-
-        </div>
-      </section>
-
       {activeWorkspace === 'compose' ? (
         <section className="panel p-5 sm:p-6">
           <form

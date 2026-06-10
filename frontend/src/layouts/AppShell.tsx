@@ -57,7 +57,7 @@ const COLOR_MODE_STORAGE_KEY = 'church_saas_color_mode';
 const platformLinks: ShellLink[] = [
   { to: '/platform/dashboard', label: 'Overview', icon: Landmark },
   { to: '/platform/churches', label: 'Churches', icon: Building2 },
-  { to: '/platform/collections', label: 'Collections', icon: WalletCards },
+  { to: '/platform/collections', label: 'Revenue', icon: WalletCards },
   {
     to: '/platform/messaging?tab=compose',
     matchPath: '/platform/messaging',
@@ -163,7 +163,7 @@ const pageMeta = {
     { prefix: '/platform/churches', title: 'Churches', variant: 'compact' },
     {
       prefix: '/platform/collections',
-      title: 'Collections',
+      title: 'Revenue',
       variant: 'compact',
     },
     {
