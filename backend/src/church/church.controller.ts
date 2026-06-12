@@ -158,6 +158,39 @@ export class ChurchController {
     );
   }
 
+  @Get('discipleship/duplicate-members')
+  @Permissions(ChurchPermission.DISCIPLESHIP_MANAGE)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+    ChurchUserRole.MEDIA,
+  )
+  listDiscipleshipDuplicateMembers(@Request() req: any) {
+    return this.churchService.listDiscipleshipDuplicateMemberClusters(
+      req.user.churchId,
+    );
+  }
+
+  @Post('discipleship/duplicate-members/review')
+  @Permissions(ChurchPermission.DISCIPLESHIP_MANAGE)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+    ChurchUserRole.MEDIA,
+  )
+  reviewDiscipleshipDuplicateMembers(
+    @Request() req: any,
+    @Body() body: any,
+  ) {
+    return this.churchService.reviewDiscipleshipDuplicateMembers(
+      req.user.churchId,
+      req.user.id,
+      body,
+    );
+  }
+
   @Post('discipleship/matches/:candidateId/review')
   @Permissions(ChurchPermission.DISCIPLESHIP_MANAGE)
   @Roles(

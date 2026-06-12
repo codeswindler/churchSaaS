@@ -41,6 +41,10 @@ import {
   DiscipleshipAttendance,
   DiscipleshipAttendanceType,
 } from '../entities/discipleship-attendance.entity';
+import {
+  DiscipleshipDuplicateReview,
+  DiscipleshipDuplicateReviewStatus,
+} from '../entities/discipleship-duplicate-review.entity';
 import { DiscipleshipGroup } from '../entities/discipleship-group.entity';
 import {
   DiscipleshipMatchCandidate,
@@ -149,6 +153,8 @@ export class ChurchService {
     private readonly discipleshipMatchCandidateRepo: Repository<DiscipleshipMatchCandidate>,
     @InjectRepository(DiscipleshipAttendance)
     private readonly discipleshipAttendanceRepo: Repository<DiscipleshipAttendance>,
+    @InjectRepository(DiscipleshipDuplicateReview)
+    private readonly discipleshipDuplicateReviewRepo: Repository<DiscipleshipDuplicateReview>,
     @InjectRepository(SmsAddressBook)
     private readonly addressBookRepo: Repository<SmsAddressBook>,
     @InjectRepository(SmsAddressBookContact)
@@ -798,6 +804,215 @@ export class ChurchService {
       relations: ['contributor', 'candidateMember'],
       order: { matchScore: 'DESC', createdAt: 'ASC' },
     });
+  }
+
+  async listDiscipleshipDuplicateMemberClusters(churchId: string) {
+    await this.runDiscipleshipTransactionSync(churchId);
+    const members = await this.discipleshipMemberRepo.find({
+      where: { churchId },
+      order: { createdAt: 'ASC' },
+    });
+    if (members.length < 2) {
+      return [];
+    }
+
+    const aliases = await this.discipleshipMemberAliasRepo.find({
+      where: { churchId },
+    });
+    const skippedReviews = await this.discipleshipDuplicateReviewRepo.find({
+      where: {
+        churchId,
+        status: DiscipleshipDuplicateReviewStatus.SKIPPED,
+      },
+    });
+    const skippedKeys = new Set(
+      skippedReviews.map((review) => review.clusterKey),
+    );
+    const memberIds = members.map((member) => member.id);
+    const parent = new Map(memberIds.map((id) => [id, id]));
+    const clusterReasons = new Map<
+      string,
+      {
+        score: number;
+        reasons: Set<string>;
+      }
+    >();
+    const find = (id: string): string => {
+      const current = parent.get(id) || id;
+      if (current === id) {
+        return id;
+      }
+      const root = find(current);
+      parent.set(id, root);
+      return root;
+    };
+    const union = (leftId: string, rightId: string, score: number, reason: string) => {
+      const leftRoot = find(leftId);
+      const rightRoot = find(rightId);
+      if (leftRoot !== rightRoot) {
+        parent.set(rightRoot, leftRoot);
+      }
+      const key = [leftId, rightId].sort().join('|');
+      const detail =
+        clusterReasons.get(key) || { score: 0, reasons: new Set<string>() };
+      detail.score = Math.max(detail.score, score);
+      detail.reasons.add(reason);
+      clusterReasons.set(key, detail);
+    };
+
+    for (let leftIndex = 0; leftIndex < members.length; leftIndex += 1) {
+      for (
+        let rightIndex = leftIndex + 1;
+        rightIndex < members.length;
+        rightIndex += 1
+      ) {
+        const left = members[leftIndex];
+        const right = members[rightIndex];
+        const phoneMatch =
+          this.normalizePlainPhone(left.phone) &&
+          this.normalizePlainPhone(left.phone) ===
+            this.normalizePlainPhone(right.phone);
+        const nameScore = this.scoreDiscipleshipDuplicatePair(
+          left,
+          right,
+          aliases,
+        );
+        if (phoneMatch) {
+          union(left.id, right.id, 400, 'same phone number');
+        } else if (nameScore >= 180) {
+          union(left.id, right.id, nameScore, 'matching name parts');
+        } else if (nameScore >= 70) {
+          union(left.id, right.id, nameScore, 'same first name');
+        }
+      }
+    }
+
+    const groupedIds = new Map<string, string[]>();
+    memberIds.forEach((id) => {
+      const root = find(id);
+      const items = groupedIds.get(root) || [];
+      items.push(id);
+      groupedIds.set(root, items);
+    });
+
+    const duplicateGroups = [...groupedIds.values()].filter(
+      (ids) => ids.length > 1,
+    );
+    if (duplicateGroups.length === 0) {
+      return [];
+    }
+
+    const enrichedMembers = await this.withDiscipleshipMemberGroups(members);
+    const enrichedById = new Map(enrichedMembers.map((member) => [member.id, member]));
+    const attendanceCounts = await this.getDiscipleshipAttendanceCounts(
+      churchId,
+      memberIds,
+    );
+
+    return duplicateGroups
+      .map((ids) => {
+        const clusterKey = this.buildDiscipleshipDuplicateClusterKey(ids);
+        const pairDetails = [...clusterReasons.entries()].filter(([key]) => {
+          const pairIds = key.split('|');
+          return pairIds.every((id) => ids.includes(id));
+        });
+        const score = Math.max(
+          ...pairDetails.map(([, detail]) => detail.score),
+          0,
+        );
+        const reasons = [
+          ...new Set(
+            pairDetails.flatMap(([, detail]) => [...detail.reasons.values()]),
+          ),
+        ];
+        const clusterMembers = ids
+          .map((id) => enrichedById.get(id))
+          .filter(Boolean)
+          .map((member: any) => ({
+            ...member,
+            isManual: Boolean(member.createdByUserId),
+            attendanceCount: attendanceCounts.get(member.id) || 0,
+          }))
+          .sort((left, right) => {
+            if (!!left.createdByUserId !== !!right.createdByUserId) {
+              return left.createdByUserId ? -1 : 1;
+            }
+            return `${left.fullName || ''}`.localeCompare(
+              `${right.fullName || ''}`,
+            );
+          });
+        return {
+          id: clusterKey,
+          clusterKey,
+          score,
+          reasons,
+          members: clusterMembers,
+          recommendedCanonicalId:
+            this.sortDiscipleshipMergeCandidates(
+              clusterMembers as DiscipleshipMember[],
+            )[0]?.id || null,
+        };
+      })
+      .filter((cluster) => !skippedKeys.has(cluster.clusterKey))
+      .sort(
+        (left, right) =>
+          right.score - left.score || right.members.length - left.members.length,
+      );
+  }
+
+  async reviewDiscipleshipDuplicateMembers(
+    churchId: string,
+    reviewedByUserId: string,
+    body: any,
+  ) {
+    const action = body?.action;
+    if (action !== 'merge' && action !== 'skip') {
+      throw new BadRequestException('Duplicate review action must be merge or skip');
+    }
+    const memberIds: string[] = Array.from(
+      new Set<string>(
+        (Array.isArray(body?.memberIds) ? body.memberIds : [])
+          .map((id) => this.normalizeOptionalText(id, 36))
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    if (memberIds.length < 2) {
+      throw new BadRequestException('Select at least two members to review');
+    }
+    const members = await this.discipleshipMemberRepo.find({
+      where: { churchId, id: In(memberIds) },
+    });
+    if (members.length !== memberIds.length) {
+      throw new BadRequestException('One or more selected members were not found');
+    }
+    const clusterKey = this.buildDiscipleshipDuplicateClusterKey(memberIds);
+    const review = await this.upsertDiscipleshipDuplicateReview(
+      churchId,
+      reviewedByUserId,
+      clusterKey,
+      memberIds,
+      action === 'merge'
+        ? DiscipleshipDuplicateReviewStatus.MERGED
+        : DiscipleshipDuplicateReviewStatus.SKIPPED,
+    );
+
+    if (action === 'skip') {
+      return { review, merged: false };
+    }
+
+    const canonicalId = body?.canonicalMemberId;
+    const canonical =
+      (canonicalId
+        ? members.find((member) => member.id === canonicalId)
+        : null) || this.sortDiscipleshipMergeCandidates(members)[0];
+    const duplicates = members.filter((member) => member.id !== canonical.id);
+    await this.mergeDiscipleshipMemberRecords(churchId, canonical, duplicates);
+    await this.runDiscipleshipTransactionSync(churchId);
+    return {
+      review,
+      merged: true,
+      canonical: (await this.withDiscipleshipMemberGroups([canonical]))[0],
+    };
   }
 
   async reviewDiscipleshipMatchCandidate(
@@ -2552,6 +2767,114 @@ export class ChurchService {
     }
 
     return null;
+  }
+
+  private scoreDiscipleshipDuplicatePair(
+    left: DiscipleshipMember,
+    right: DiscipleshipMember,
+    aliases: DiscipleshipMemberAlias[],
+  ) {
+    const leftNames = this.getDiscipleshipKnownNames(left, aliases);
+    const rightNames = this.getDiscipleshipKnownNames(right, aliases);
+    let bestScore = 0;
+    for (const leftName of leftNames) {
+      for (const rightName of rightNames) {
+        const leftKey = this.normalizeImportKey(leftName);
+        const rightKey = this.normalizeImportKey(rightName);
+        if (leftKey && leftKey === rightKey) {
+          bestScore = Math.max(bestScore, 300);
+          continue;
+        }
+        bestScore = Math.max(
+          bestScore,
+          this.scoreDiscipleshipNameMatch(leftName, rightName),
+          this.scoreDiscipleshipLooseNameReview(leftName, rightName),
+        );
+      }
+    }
+    return bestScore;
+  }
+
+  private getDiscipleshipKnownNames(
+    member: DiscipleshipMember,
+    aliases: DiscipleshipMemberAlias[],
+  ) {
+    return [
+      member.fullName,
+      ...aliases
+        .filter((alias) => alias.memberId === member.id)
+        .map((alias) => alias.alias),
+    ].filter(Boolean);
+  }
+
+  private scoreDiscipleshipLooseNameReview(left: string, right: string) {
+    const leftParts = this.getDiscipleshipNameParts(left);
+    const rightParts = this.getDiscipleshipNameParts(right);
+    if (leftParts.length === 0 || rightParts.length === 0) {
+      return 0;
+    }
+    const leftFirst = leftParts[0];
+    const rightFirst = rightParts[0];
+    if (leftFirst !== rightFirst) {
+      return 0;
+    }
+    const leftSet = new Set(leftParts);
+    const rightSet = new Set(rightParts);
+    const shared = [...leftSet].filter((part) => rightSet.has(part));
+    if (shared.length >= 2) {
+      return shared.length * 80 - Math.abs(leftSet.size - rightSet.size) * 10;
+    }
+    if (leftParts.length === 1 || rightParts.length === 1) {
+      return 70;
+    }
+    return 0;
+  }
+
+  private buildDiscipleshipDuplicateClusterKey(memberIds: string[]) {
+    return [...new Set(memberIds)].sort().join('|');
+  }
+
+  private async getDiscipleshipAttendanceCounts(
+    churchId: string,
+    memberIds: string[],
+  ) {
+    if (memberIds.length === 0) {
+      return new Map<string, number>();
+    }
+    const rows = await this.discipleshipAttendanceRepo
+      .createQueryBuilder('attendance')
+      .select('attendance.memberId', 'memberId')
+      .addSelect('COUNT(*)', 'count')
+      .where('attendance.churchId = :churchId', { churchId })
+      .andWhere('attendance.memberId IN (:...memberIds)', { memberIds })
+      .groupBy('attendance.memberId')
+      .getRawMany();
+    return new Map(
+      rows.map((row) => [row.memberId, Number(row.count || 0)] as const),
+    );
+  }
+
+  private async upsertDiscipleshipDuplicateReview(
+    churchId: string,
+    reviewedByUserId: string,
+    clusterKey: string,
+    memberIds: string[],
+    status: DiscipleshipDuplicateReviewStatus,
+  ) {
+    let review = await this.discipleshipDuplicateReviewRepo.findOne({
+      where: { churchId, clusterKey },
+    });
+    review =
+      review ||
+      this.discipleshipDuplicateReviewRepo.create({
+        churchId,
+        clusterKey,
+      });
+    review.memberIdsSnapshot = JSON.stringify([...new Set(memberIds)].sort());
+    review.status = status;
+    review.reviewedByUserId = reviewedByUserId;
+    review.reviewedAt = new Date();
+    return this.discipleshipDuplicateReviewRepo.save(review);
   }
 
   private scoreDiscipleshipNameMatch(left: string, right: string) {

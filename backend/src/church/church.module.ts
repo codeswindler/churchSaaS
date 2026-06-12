@@ -8,6 +8,7 @@ import { ChurchUser } from '../entities/church-user.entity';
 import { Contribution } from '../entities/contribution.entity';
 import { Contributor } from '../entities/contributor.entity';
 import { DiscipleshipAttendance } from '../entities/discipleship-attendance.entity';
+import { DiscipleshipDuplicateReview } from '../entities/discipleship-duplicate-review.entity';
 import { DiscipleshipGroup } from '../entities/discipleship-group.entity';
 import { DiscipleshipMatchCandidate } from '../entities/discipleship-match-candidate.entity';
 import { DiscipleshipMemberAlias } from '../entities/discipleship-member-alias.entity';
@@ -32,6 +33,7 @@ import { ChurchService } from './church.service';
       FundAccount,
       Contributor,
       DiscipleshipAttendance,
+      DiscipleshipDuplicateReview,
       DiscipleshipGroup,
       DiscipleshipMatchCandidate,
       DiscipleshipMemberAlias,

@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  AlertTriangle,
   CalendarCheck2,
   CheckCircle2,
   ChevronDown,
   Download,
   FileSpreadsheet,
+  GitMerge,
   PencilLine,
   Plus,
   Search,
@@ -79,6 +81,18 @@ interface DiscipleshipMatchCandidate {
     phone?: string | null;
   };
   candidateMember?: DiscipleshipMember;
+}
+
+interface DiscipleshipDuplicateCluster {
+  id: string;
+  clusterKey: string;
+  score: number;
+  reasons: string[];
+  recommendedCanonicalId?: string | null;
+  members: (DiscipleshipMember & {
+    isManual?: boolean;
+    attendanceCount?: number;
+  })[];
 }
 
 interface DiscipleshipAttendance {
@@ -205,6 +219,10 @@ export default function ChurchDiscipleship() {
   const [batchSummary, setBatchSummary] = useState<BatchImportSummary | null>(
     null,
   );
+  const [duplicateReviewClusterId, setDuplicateReviewClusterId] = useState('');
+  const [selectedDuplicateMemberIds, setSelectedDuplicateMemberIds] = useState<
+    string[]
+  >([]);
 
   const { data: summary } = useQuery({
     queryKey: ['discipleship-summary'],
@@ -268,6 +286,15 @@ export default function ChurchDiscipleship() {
         .get('/church/discipleship/matches')
         .then((response) => response.data),
   });
+  const { data: duplicateClusters = [] } = useQuery<
+    DiscipleshipDuplicateCluster[]
+  >({
+    queryKey: ['discipleship-duplicate-members'],
+    queryFn: () =>
+      api
+        .get('/church/discipleship/duplicate-members')
+        .then((response) => response.data),
+  });
 
   const { data: memberAttendance = [], isLoading: memberAttendanceLoading } =
     useQuery<DiscipleshipAttendance[]>({
@@ -292,6 +319,13 @@ export default function ChurchDiscipleship() {
     () => members.find((member) => member.id === selectedMemberId),
     [members, selectedMemberId],
   );
+  const duplicateReviewCluster = useMemo(
+    () =>
+      duplicateClusters.find(
+        (cluster) => cluster.id === duplicateReviewClusterId,
+      ) || null,
+    [duplicateClusters, duplicateReviewClusterId],
+  );
 
   const refreshDiscipleship = () => {
     queryClient.invalidateQueries({ queryKey: ['discipleship-summary'] });
@@ -299,6 +333,9 @@ export default function ChurchDiscipleship() {
     queryClient.invalidateQueries({ queryKey: ['discipleship-groups'] });
     queryClient.invalidateQueries({ queryKey: ['discipleship-attendance'] });
     queryClient.invalidateQueries({ queryKey: ['discipleship-matches'] });
+    queryClient.invalidateQueries({
+      queryKey: ['discipleship-duplicate-members'],
+    });
     queryClient.invalidateQueries({ queryKey: ['discipleship-member-detail'] });
   };
 
@@ -448,6 +485,40 @@ export default function ChurchDiscipleship() {
     },
   });
 
+  const duplicateReviewMutation = useMutation({
+    mutationFn: ({
+      action,
+      memberIds,
+      canonicalMemberId,
+    }: {
+      action: 'merge' | 'skip';
+      memberIds: string[];
+      canonicalMemberId?: string | null;
+    }) =>
+      api
+        .post('/church/discipleship/duplicate-members/review', {
+          action,
+          memberIds,
+          canonicalMemberId,
+        })
+        .then((response) => response.data),
+    onSuccess: (_data, variables) => {
+      refreshDiscipleship();
+      setDuplicateReviewClusterId('');
+      setSelectedDuplicateMemberIds([]);
+      toast.success(
+        variables.action === 'merge'
+          ? 'Duplicate disciple records merged'
+          : 'Duplicate suggestion skipped',
+      );
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message || 'Unable to review duplicate records',
+      );
+    },
+  });
+
   const attendanceMutation = useMutation({
     mutationFn: async () =>
       api
@@ -493,6 +564,12 @@ export default function ChurchDiscipleship() {
           }
         : createMemberForm(),
     );
+  };
+
+  const openDuplicateReview = (cluster: DiscipleshipDuplicateCluster) => {
+    setDuplicateReviewClusterId(cluster.id);
+    setSelectedDuplicateMemberIds(cluster.members.map((member) => member.id));
+    setActiveTab('members');
   };
 
   const openGroupEditor = (group?: DiscipleshipGroup) => {
@@ -622,6 +699,18 @@ export default function ChurchDiscipleship() {
       .filter((member) => !latestAttendanceMemberIds.has(member.id))
       .slice(0, 6);
   }, [recentAttendance, recentAttendanceSearch, recentMemberSearchResults]);
+  const selectedDuplicateMembers = useMemo(() => {
+    if (!duplicateReviewCluster) {
+      return [];
+    }
+    return duplicateReviewCluster.members.filter((member) =>
+      selectedDuplicateMemberIds.includes(member.id),
+    );
+  }, [duplicateReviewCluster, selectedDuplicateMemberIds]);
+  const duplicateCanonicalId =
+    selectedDuplicateMembers.find((member) => member.isManual)?.id ||
+    selectedDuplicateMembers[0]?.id ||
+    null;
 
   return (
     <div className="space-y-6">
@@ -659,6 +748,42 @@ export default function ChurchDiscipleship() {
           })}
         </div>
       </section>
+
+      {duplicateClusters.length > 0 ? (
+        <section className="rounded-3xl border border-amber-200/30 bg-amber-200/10 p-4 sm:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex gap-3">
+              <span className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-amber-200/30 bg-amber-200/15 text-amber-100">
+                <AlertTriangle size={19} />
+              </span>
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-amber-100">
+                  Duplicate records found
+                </p>
+                <h3 className="mt-1 text-lg font-semibold text-white">
+                  {duplicateClusters.length} possible duplicate group
+                  {duplicateClusters.length === 1 ? '' : 's'} need review
+                </h3>
+                <p className="mt-1 text-sm text-stone-300">
+                  {duplicateClusters[0].members
+                    .map((member) => member.fullName)
+                    .slice(0, 4)
+                    .join(', ')}
+                  {duplicateClusters[0].members.length > 4 ? ', ...' : ''}
+                </p>
+              </div>
+            </div>
+            <button
+              className="btn-primary justify-center"
+              type="button"
+              onClick={() => openDuplicateReview(duplicateClusters[0])}
+            >
+              <GitMerge size={17} />
+              Review details
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       {activeTab === 'attendance' && (
         <section className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
@@ -1661,6 +1786,178 @@ export default function ChurchDiscipleship() {
                     : 'Upload and review summary'}
                 </button>
               )}
+            </section>
+          </div>
+        </div>
+      ) : null}
+
+      {duplicateReviewCluster ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => {
+            setDuplicateReviewClusterId('');
+            setSelectedDuplicateMemberIds([]);
+          }}
+        >
+          <div className="modal-shell">
+            <section
+              className="panel modal-card max-w-5xl p-5 sm:p-6"
+              role="dialog"
+              aria-modal="true"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.24em] text-amber-100">
+                    Duplicate review
+                  </p>
+                  <h3 className="mt-2 text-2xl font-semibold text-white">
+                    These records look similar
+                  </h3>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-300">
+                    Select only the records that belong to the same disciple.
+                    Manual records are preferred as the main profile when a
+                    merge is saved.
+                  </p>
+                  {duplicateReviewCluster.reasons.length > 0 ? (
+                    <p className="mt-2 text-xs text-stone-400">
+                      Matched by:{' '}
+                      {duplicateReviewCluster.reasons.join(', ')}
+                    </p>
+                  ) : null}
+                </div>
+                <button
+                  className="rounded-full border border-white/10 p-2 text-stone-200 hover:bg-white/5"
+                  type="button"
+                  onClick={() => {
+                    setDuplicateReviewClusterId('');
+                    setSelectedDuplicateMemberIds([]);
+                  }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {duplicateReviewCluster.members.map((member) => {
+                  const checked = selectedDuplicateMemberIds.includes(member.id);
+                  return (
+                    <label
+                      key={member.id}
+                      className={`cursor-pointer rounded-3xl border p-4 transition ${
+                        checked
+                          ? 'border-amber-200 bg-amber-200/10'
+                          : 'border-white/10 bg-black/10 hover:bg-white/5'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h4 className="font-semibold text-white">
+                            {member.fullName}
+                          </h4>
+                          <p className="mt-1 text-xs text-stone-400">
+                            {member.isManual
+                              ? 'Manual record'
+                              : 'Transaction-created record'}
+                          </p>
+                        </div>
+                        <input
+                          checked={checked}
+                          type="checkbox"
+                          onChange={() =>
+                            setSelectedDuplicateMemberIds((current) =>
+                              checked
+                                ? current.filter((id) => id !== member.id)
+                                : [...current, member.id],
+                            )
+                          }
+                        />
+                      </div>
+                      <div className="mt-4 space-y-2 text-sm text-stone-300">
+                        <p>Phone: {member.phone || 'Not set'}</p>
+                        <p>
+                          Groups:{' '}
+                          {(member.groups || [])
+                            .map((group) => group.name)
+                            .join(', ') || 'No group assigned'}
+                        </p>
+                        <p>
+                          Attendance marks: {Number(member.attendanceCount || 0)}
+                        </p>
+                        <p>
+                          Contributions:{' '}
+                          {Number(
+                            member.contributionSummary?.contributionCount || 0,
+                          )}
+                        </p>
+                        {(member.aliases || []).filter(
+                          (alias) => alias.source !== 'manual',
+                        ).length > 0 ? (
+                          <p className="text-xs text-amber-100/80">
+                            Also known as{' '}
+                            {(member.aliases || [])
+                              .filter((alias) => alias.source !== 'manual')
+                              .map((alias) => alias.alias)
+                              .join(', ')}
+                          </p>
+                        ) : null}
+                      </div>
+                      {duplicateCanonicalId === member.id && checked ? (
+                        <span className="mt-4 inline-flex rounded-full border border-amber-200/40 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-amber-100">
+                          Main profile
+                        </span>
+                      ) : null}
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                <button
+                  className="btn-secondary justify-center"
+                  disabled={duplicateReviewMutation.isPending}
+                  type="button"
+                  onClick={() =>
+                    duplicateReviewMutation.mutate({
+                      action: 'skip',
+                      memberIds: duplicateReviewCluster.members.map(
+                        (member) => member.id,
+                      ),
+                    })
+                  }
+                >
+                  Skip this group
+                </button>
+                <button
+                  className="btn-secondary justify-center"
+                  type="button"
+                  onClick={() => {
+                    setDuplicateReviewClusterId('');
+                    setSelectedDuplicateMemberIds([]);
+                  }}
+                >
+                  Close
+                </button>
+                <button
+                  className="btn-primary justify-center"
+                  disabled={
+                    selectedDuplicateMemberIds.length < 2 ||
+                    duplicateReviewMutation.isPending
+                  }
+                  type="button"
+                  onClick={() =>
+                    duplicateReviewMutation.mutate({
+                      action: 'merge',
+                      memberIds: selectedDuplicateMemberIds,
+                      canonicalMemberId: duplicateCanonicalId,
+                    })
+                  }
+                >
+                  <GitMerge size={17} />
+                  Merge selected
+                </button>
+              </div>
             </section>
           </div>
         </div>

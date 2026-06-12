@@ -776,6 +776,29 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
         this.logger.log('Created discipleship match candidates table.');
       }
 
+      const duplicateReviews = await queryRunner.getTable(
+        'discipleship_duplicate_reviews',
+      );
+      if (!duplicateReviews) {
+        await queryRunner.query(`
+          CREATE TABLE \`discipleship_duplicate_reviews\` (
+            \`id\` varchar(36) NOT NULL,
+            \`churchId\` varchar(36) NOT NULL,
+            \`clusterKey\` varchar(500) NOT NULL,
+            \`memberIdsSnapshot\` text NOT NULL,
+            \`status\` varchar(20) NOT NULL,
+            \`reviewedByUserId\` varchar(36) NULL,
+            \`reviewedAt\` datetime NULL,
+            \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            \`updatedAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+            PRIMARY KEY (\`id\`),
+            UNIQUE KEY \`UQ_discipleship_duplicate_cluster\` (\`churchId\`, \`clusterKey\`),
+            INDEX \`IDX_discipleship_duplicate_status\` (\`churchId\`, \`status\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        this.logger.log('Created discipleship duplicate review table.');
+      }
+
       await queryRunner.query(`
         INSERT IGNORE INTO \`discipleship_member_aliases\`
           (\`id\`, \`churchId\`, \`memberId\`, \`contributorId\`, \`alias\`, \`normalizedAlias\`, \`source\`, \`createdAt\`)
