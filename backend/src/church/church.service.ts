@@ -92,6 +92,17 @@ const DEFAULT_CONGREGATION_GALLERY_IMAGES: CongregationGalleryImage[] = [
 ];
 const DEFAULT_DISCIPLESHIP_SERVICE_GROUP = 'Church Service';
 
+type TransactionDiscipleshipIdentity = {
+  key: string;
+  contributorIds: string[];
+  names: string[];
+  fullName: string;
+  phone: string | null;
+  gender: string | null;
+  firstContributionAt: unknown;
+  nameKey: string;
+};
+
 function getDefaultGalleryImageName(imageUrl?: string | null) {
   const filename = imageUrl?.split('/').pop() || '';
   const name = filename.replace(/\.(avif|jpe?g|png|webp)$/i, '');
@@ -101,6 +112,7 @@ function getDefaultGalleryImageName(imageUrl?: string | null) {
 @Injectable()
 export class ChurchService {
   private readonly receiptTemplateLimit = 306;
+  private readonly discipleshipTransactionSyncs = new Map<string, Promise<any>>();
 
   constructor(
     @InjectRepository(Church)
@@ -215,7 +227,7 @@ export class ChurchService {
   }
 
   async getDiscipleshipSummary(churchId: string) {
-    await this.syncTransactionalDiscipleshipMembers(churchId);
+    await this.runDiscipleshipTransactionSync(churchId);
     const today = this.getNairobiDateParts();
     const monthStart = `${today.date.slice(0, 8)}01`;
     const [totalMembers, activeMembers, newThisMonth, groups, presentToday] =
@@ -259,7 +271,7 @@ export class ChurchService {
   }
 
   async listDiscipleshipGroups(churchId: string) {
-    await this.syncTransactionalDiscipleshipMembers(churchId);
+    await this.runDiscipleshipTransactionSync(churchId);
     const groups = await this.discipleshipGroupRepo.find({
       where: { churchId },
       order: { isActive: 'DESC', name: 'ASC' },
@@ -355,7 +367,7 @@ export class ChurchService {
   }
 
   async listDiscipleshipMembers(churchId: string, query: any = {}) {
-    await this.syncTransactionalDiscipleshipMembers(churchId);
+    await this.runDiscipleshipTransactionSync(churchId);
     const qb = this.discipleshipMemberRepo
       .createQueryBuilder('member')
       .where('member.churchId = :churchId', { churchId })
@@ -654,7 +666,7 @@ export class ChurchService {
   }
 
   async listDiscipleshipAttendance(churchId: string, query: any = {}) {
-    await this.syncTransactionalDiscipleshipMembers(churchId);
+    await this.runDiscipleshipTransactionSync(churchId);
     const qb = this.discipleshipAttendanceRepo
       .createQueryBuilder('attendance')
       .leftJoinAndSelect('attendance.member', 'member')
@@ -1656,9 +1668,29 @@ export class ChurchService {
     );
   }
 
-  private async syncTransactionalDiscipleshipMembers(churchId: string) {
+  private async runDiscipleshipTransactionSync(churchId: string) {
+    const existing = this.discipleshipTransactionSyncs.get(churchId);
+    if (existing) {
+      return existing;
+    }
+
+    const sync = this.syncTransactionalDiscipleshipMembersUnsafe(
+      churchId,
+    ).finally(() => {
+      if (this.discipleshipTransactionSyncs.get(churchId) === sync) {
+        this.discipleshipTransactionSyncs.delete(churchId);
+      }
+    });
+    this.discipleshipTransactionSyncs.set(churchId, sync);
+    return sync;
+  }
+
+  private async syncTransactionalDiscipleshipMembersUnsafe(churchId: string) {
     const serviceGroup =
       await this.ensureChurchServiceDiscipleshipGroup(churchId);
+    const preMerged = await this.consolidateDuplicateDiscipleshipMembers(
+      churchId,
+    );
     const rows = await this.contributionRepo
       .createQueryBuilder('contribution')
       .innerJoin('contribution.contributor', 'contributor')
@@ -1681,7 +1713,12 @@ export class ChurchService {
       .getRawMany();
 
     if (rows.length === 0) {
-      return { serviceGroup, created: 0, assigned: 0 };
+      return { serviceGroup, created: 0, assigned: 0, merged: preMerged };
+    }
+
+    const identities = this.buildTransactionDiscipleshipIdentities(rows);
+    if (identities.length === 0) {
+      return { serviceGroup, created: 0, assigned: 0, merged: preMerged };
     }
 
     const members = await this.discipleshipMemberRepo.find({
@@ -1691,7 +1728,10 @@ export class ChurchService {
     const membersByPhone = new Map<string, DiscipleshipMember>();
     const membersByName = new Map<string, DiscipleshipMember>();
     members.forEach((member) => {
-      if (member.contributorId && !membersByContributorId.has(member.contributorId)) {
+      if (
+        member.contributorId &&
+        !membersByContributorId.has(member.contributorId)
+      ) {
         membersByContributorId.set(member.contributorId, member);
       }
       const phone = this.normalizePlainPhone(member.phone);
@@ -1714,33 +1754,27 @@ export class ChurchService {
     const memberIdByContributorId = new Map<string, string>();
     let created = 0;
 
-    for (const row of rows) {
-      const contributorId = this.normalizeOptionalText(row.id, 36);
-      const fullName = this.normalizeOptionalText(row.name, 180);
-      if (
-        !contributorId ||
-        !fullName ||
-        fullName.toLowerCase() === 'anonymous contributor'
-      ) {
-        continue;
-      }
-
-      const phone = this.normalizePlainPhone(row.phone);
-      const nameKey = this.normalizeImportKey(fullName);
+    for (const identity of identities) {
       let member =
-        membersByContributorId.get(contributorId) ||
-        (phone ? membersByPhone.get(phone) : null) ||
-        membersByName.get(nameKey);
+        identity.contributorIds
+          .map((contributorId) => membersByContributorId.get(contributorId))
+          .find(Boolean) ||
+        (identity.phone ? membersByPhone.get(identity.phone) : null) ||
+        membersByName.get(identity.nameKey) ||
+        (await this.findDiscipleshipMemberForTransactionIdentity(
+          churchId,
+          identity,
+        ));
       if (!member) {
         member = await this.discipleshipMemberRepo.save(
           this.discipleshipMemberRepo.create({
             churchId,
-            contributorId,
-            fullName,
-            phone,
-            gender: this.normalizeGenderText(row.gender),
+            contributorId: identity.contributorIds[0],
+            fullName: identity.fullName,
+            phone: identity.phone,
+            gender: identity.gender,
             enrollmentDate:
-              this.normalizeDateFromImport(row.firstContributionAt) ||
+              this.normalizeDateFromImport(identity.firstContributionAt) ||
               this.getNairobiDateParts().date,
             status: DiscipleshipMemberStatus.ACTIVE,
             notes: null,
@@ -1748,32 +1782,48 @@ export class ChurchService {
           }),
         );
         created += 1;
-        if (phone) {
-          membersByPhone.set(phone, member);
+        if (identity.phone) {
+          membersByPhone.set(identity.phone, member);
         }
-        membersByName.set(nameKey, member);
-        membersByContributorId.set(contributorId, member);
+        membersByName.set(identity.nameKey, member);
       } else {
         let needsSave = false;
         if (!member.contributorId) {
-          member.contributorId = contributorId;
+          member.contributorId = identity.contributorIds[0];
           needsSave = true;
         }
-        if (!member.phone && phone) {
-          member.phone = phone;
+        if (!member.phone && identity.phone) {
+          member.phone = identity.phone;
           needsSave = true;
         }
-        if (!member.gender && row.gender) {
-          member.gender = this.normalizeGenderText(row.gender);
+        if (!member.gender && identity.gender) {
+          member.gender = identity.gender;
+          needsSave = true;
+        }
+        if (
+          member.enrollmentDate &&
+          this.normalizeDateFromImport(identity.firstContributionAt) &&
+          this.normalizeDateFromImport(identity.firstContributionAt)! <
+            member.enrollmentDate
+        ) {
+          member.enrollmentDate = this.normalizeDateFromImport(
+            identity.firstContributionAt,
+          )!;
           needsSave = true;
         }
         if (needsSave) {
           member = await this.discipleshipMemberRepo.save(member);
         }
-        membersByContributorId.set(contributorId, member);
+        if (identity.phone) {
+          membersByPhone.set(identity.phone, member);
+        }
+        membersByName.set(identity.nameKey, member);
       }
 
-      memberIdByContributorId.set(contributorId, member.id);
+      for (const contributorId of identity.contributorIds) {
+        membersByContributorId.set(contributorId, member);
+        memberIdByContributorId.set(contributorId, member.id);
+      }
       if (!serviceMemberIds.has(member.id)) {
         membershipsToAdd.push(
           this.discipleshipMembershipRepo.create({
@@ -1794,13 +1844,339 @@ export class ChurchService {
       serviceGroup.id,
       memberIdByContributorId,
     );
+    const postMerged = await this.consolidateDuplicateDiscipleshipMembers(
+      churchId,
+    );
 
     return {
       serviceGroup,
       created,
       assigned: membershipsToAdd.length,
       attendanceCreated,
+      merged: preMerged + postMerged,
     };
+  }
+
+  private buildTransactionDiscipleshipIdentities(rows: any[]) {
+    const identities = new Map<string, TransactionDiscipleshipIdentity>();
+
+    for (const row of rows) {
+      const contributorId = this.normalizeOptionalText(row.id, 36);
+      const fullName = this.normalizeOptionalText(row.name, 180);
+      if (
+        !contributorId ||
+        !fullName ||
+        fullName.toLowerCase() === 'anonymous contributor'
+      ) {
+        continue;
+      }
+
+      const phone = this.normalizePlainPhone(row.phone);
+      const nameKey = this.normalizeImportKey(fullName);
+      if (!nameKey) {
+        continue;
+      }
+      const key = phone ? `phone:${phone}` : `name:${nameKey}`;
+      const existing = identities.get(key);
+
+      if (!existing) {
+        identities.set(key, {
+          key,
+          contributorIds: [contributorId],
+          names: [fullName],
+          fullName,
+          phone,
+          gender: this.normalizeGenderText(row.gender),
+          firstContributionAt: row.firstContributionAt,
+          nameKey,
+        });
+        continue;
+      }
+
+      if (!existing.contributorIds.includes(contributorId)) {
+        existing.contributorIds.push(contributorId);
+      }
+      if (!existing.names.includes(fullName)) {
+        existing.names.push(fullName);
+        existing.fullName = this.chooseDiscipleshipTransactionName(
+          existing.names,
+        );
+        existing.nameKey = this.normalizeImportKey(existing.fullName);
+      }
+      if (!existing.phone && phone) {
+        existing.phone = phone;
+      }
+      if (!existing.gender && row.gender) {
+        existing.gender = this.normalizeGenderText(row.gender);
+      }
+      existing.firstContributionAt =
+        this.pickEarlierDiscipleshipDateValue(
+          existing.firstContributionAt,
+          row.firstContributionAt,
+        ) || existing.firstContributionAt;
+    }
+
+    return [...identities.values()];
+  }
+
+  private chooseDiscipleshipTransactionName(names: string[]) {
+    const uniqueNames = [...new Set(names.map((name) => name.trim()).filter(Boolean))];
+    if (uniqueNames.length === 0) {
+      return '';
+    }
+    return uniqueNames.sort(
+      (left, right) =>
+        right.length - left.length || left.localeCompare(right),
+    )[0];
+  }
+
+  private pickEarlierDiscipleshipDateValue(current: unknown, next: unknown) {
+    const currentDate = this.normalizeDateFromImport(current);
+    const nextDate = this.normalizeDateFromImport(next);
+    if (!currentDate) {
+      return next;
+    }
+    if (!nextDate) {
+      return current;
+    }
+    return nextDate < currentDate ? next : current;
+  }
+
+  private async findDiscipleshipMemberForTransactionIdentity(
+    churchId: string,
+    identity: TransactionDiscipleshipIdentity,
+  ) {
+    const conditions: string[] = [];
+    const params: Record<string, unknown> = {
+      churchId,
+      nameKey: identity.nameKey,
+    };
+
+    if (identity.contributorIds.length > 0) {
+      conditions.push('member.contributorId IN (:...contributorIds)');
+      params.contributorIds = identity.contributorIds;
+    }
+    if (identity.phone) {
+      conditions.push('member.phone = :phone');
+      params.phone = identity.phone;
+    }
+    if (identity.nameKey) {
+      conditions.push('LOWER(TRIM(member.fullName)) = :nameKey');
+    }
+    if (conditions.length === 0) {
+      return null;
+    }
+
+    return this.discipleshipMemberRepo
+      .createQueryBuilder('member')
+      .where('member.churchId = :churchId', { churchId })
+      .andWhere(`(${conditions.join(' OR ')})`, params)
+      .orderBy('member.createdAt', 'ASC')
+      .getOne();
+  }
+
+  private async consolidateDuplicateDiscipleshipMembers(churchId: string) {
+    const members = await this.discipleshipMemberRepo.find({
+      where: { churchId },
+      order: { createdAt: 'ASC' },
+    });
+    const membersByName = new Map<string, DiscipleshipMember[]>();
+
+    members.forEach((member) => {
+      const key = this.normalizeImportKey(member.fullName);
+      if (!key) {
+        return;
+      }
+      const items = membersByName.get(key) || [];
+      items.push(member);
+      membersByName.set(key, items);
+    });
+
+    let merged = 0;
+    for (const group of membersByName.values()) {
+      if (
+        group.length < 2 ||
+        !group.some((member) => Boolean(member.contributorId))
+      ) {
+        continue;
+      }
+      const [canonical, ...duplicates] = this.sortDiscipleshipMergeCandidates(
+        group,
+      );
+      await this.mergeDiscipleshipMemberRecords(
+        churchId,
+        canonical,
+        duplicates,
+      );
+      merged += duplicates.length;
+    }
+
+    return merged;
+  }
+
+  private sortDiscipleshipMergeCandidates(members: DiscipleshipMember[]) {
+    return [...members].sort((left, right) => {
+      if (!!left.contributorId !== !!right.contributorId) {
+        return left.contributorId ? -1 : 1;
+      }
+      const leftCreated = left.createdAt ? new Date(left.createdAt).getTime() : 0;
+      const rightCreated = right.createdAt
+        ? new Date(right.createdAt).getTime()
+        : 0;
+      return leftCreated - rightCreated;
+    });
+  }
+
+  private async mergeDiscipleshipMemberRecords(
+    churchId: string,
+    canonical: DiscipleshipMember,
+    duplicates: DiscipleshipMember[],
+  ) {
+    const duplicateIds = duplicates.map((member) => member.id);
+    if (duplicateIds.length === 0) {
+      return;
+    }
+
+    const memberIds = [canonical.id, ...duplicateIds];
+    const memberships = await this.discipleshipMembershipRepo.find({
+      where: { churchId, memberId: In(memberIds) },
+    });
+    const canonicalGroupIds = new Set(
+      memberships
+        .filter((membership) => membership.memberId === canonical.id)
+        .map((membership) => membership.groupId),
+    );
+    const membershipsToAdd: DiscipleshipMembership[] = [];
+
+    memberships
+      .filter((membership) => duplicateIds.includes(membership.memberId))
+      .forEach((membership) => {
+        if (canonicalGroupIds.has(membership.groupId)) {
+          return;
+        }
+        canonicalGroupIds.add(membership.groupId);
+        membershipsToAdd.push(
+          this.discipleshipMembershipRepo.create({
+            churchId,
+            memberId: canonical.id,
+            groupId: membership.groupId,
+          }),
+        );
+      });
+
+    if (membershipsToAdd.length > 0) {
+      await this.discipleshipMembershipRepo.save(membershipsToAdd);
+    }
+    await this.discipleshipMembershipRepo.delete({
+      churchId,
+      memberId: In(duplicateIds),
+    });
+
+    const attendance = await this.discipleshipAttendanceRepo.find({
+      where: { churchId, memberId: In(memberIds) },
+      order: { createdAt: 'ASC' },
+    });
+    const canonicalKeys = new Set(
+      attendance
+        .filter((item) => item.memberId === canonical.id)
+        .map((item) => this.getDiscipleshipAttendanceMergeKey(item)),
+    );
+    const attendanceToDelete: string[] = [];
+
+    for (const item of attendance.filter((row) =>
+      duplicateIds.includes(row.memberId),
+    )) {
+      const key = this.getDiscipleshipAttendanceMergeKey(item);
+      if (canonicalKeys.has(key)) {
+        attendanceToDelete.push(item.id);
+        continue;
+      }
+      canonicalKeys.add(key);
+      await this.discipleshipAttendanceRepo.update(
+        { id: item.id, churchId },
+        { memberId: canonical.id },
+      );
+    }
+
+    if (attendanceToDelete.length > 0) {
+      await this.discipleshipAttendanceRepo.delete({
+        id: In(attendanceToDelete),
+        churchId,
+      });
+    }
+
+    let needsSave = false;
+    const earliestEnrollmentDate = [canonical, ...duplicates]
+      .map((member) => member.enrollmentDate)
+      .filter(Boolean)
+      .sort()[0];
+    const contributorId = duplicates.find((member) => member.contributorId)
+      ?.contributorId;
+    const phone = duplicates.find((member) => member.phone)?.phone;
+    const email = duplicates.find((member) => member.email)?.email;
+    const gender = duplicates.find((member) => member.gender)?.gender;
+    const notes = duplicates.find((member) => member.notes)?.notes;
+
+    if (!canonical.contributorId && contributorId) {
+      canonical.contributorId = contributorId;
+      needsSave = true;
+    }
+    if (!canonical.phone && phone) {
+      canonical.phone = phone;
+      needsSave = true;
+    }
+    if (!canonical.email && email) {
+      canonical.email = email;
+      needsSave = true;
+    }
+    if (!canonical.gender && gender) {
+      canonical.gender = gender;
+      needsSave = true;
+    }
+    if (!canonical.notes && notes) {
+      canonical.notes = notes;
+      needsSave = true;
+    }
+    if (
+      earliestEnrollmentDate &&
+      (!canonical.enrollmentDate ||
+        earliestEnrollmentDate < canonical.enrollmentDate)
+    ) {
+      canonical.enrollmentDate = earliestEnrollmentDate;
+      needsSave = true;
+    }
+    if (
+      canonical.status !== DiscipleshipMemberStatus.ACTIVE &&
+      duplicates.some(
+        (member) => member.status === DiscipleshipMemberStatus.ACTIVE,
+      )
+    ) {
+      canonical.status = DiscipleshipMemberStatus.ACTIVE;
+      needsSave = true;
+    }
+
+    if (needsSave) {
+      await this.discipleshipMemberRepo.save(canonical);
+    }
+
+    await this.discipleshipMemberRepo.delete({
+      churchId,
+      id: In(duplicateIds),
+    });
+  }
+
+  private getDiscipleshipAttendanceMergeKey(
+    attendance: Pick<
+      DiscipleshipAttendance,
+      'attendanceDate' | 'attendanceType' | 'groupId' | 'eventName'
+    >,
+  ) {
+    return [
+      attendance.attendanceDate,
+      attendance.attendanceType,
+      attendance.groupId || '',
+      this.normalizeImportKey(attendance.eventName),
+    ].join('|');
   }
 
   private async syncContributionAttendanceForMembers(
@@ -2487,13 +2863,6 @@ export class ChurchService {
       relations: ['group'],
     });
     const groupsByMemberId = new Map<string, DiscipleshipGroup[]>();
-    const memberByContributorId = new Map<string, DiscipleshipMember>();
-
-    members.forEach((member) => {
-      if (member.contributorId) {
-        memberByContributorId.set(member.contributorId, member);
-      }
-    });
 
     memberships.forEach((membership) => {
       const groups = groupsByMemberId.get(membership.memberId) || [];
@@ -2503,7 +2872,7 @@ export class ChurchService {
       groupsByMemberId.set(membership.memberId, groups);
     });
     const contributionSummaryByMemberId =
-      await this.getDiscipleshipContributionSummaries(memberByContributorId);
+      await this.getDiscipleshipContributionSummaries(members);
 
     return members.map((member) => ({
       ...member,
@@ -2523,41 +2892,53 @@ export class ChurchService {
   }
 
   private async getDiscipleshipContributionSummaries(
-    memberByContributorId: Map<string, DiscipleshipMember>,
+    members: DiscipleshipMember[],
   ) {
-    const contributorIds = [...memberByContributorId.keys()];
     const summaryByMemberId = new Map<string, any>();
-    if (contributorIds.length === 0) {
+    if (members.length === 0) {
       return summaryByMemberId;
     }
-    const churchId = [...memberByContributorId.values()][0]?.churchId;
+    const churchId = members[0]?.churchId;
     if (!churchId) {
       return summaryByMemberId;
     }
 
+    const memberByContributorId = new Map<string, DiscipleshipMember>();
+    const memberByName = new Map<string, DiscipleshipMember>();
+    members.forEach((member) => {
+      if (member.contributorId && !memberByContributorId.has(member.contributorId)) {
+        memberByContributorId.set(member.contributorId, member);
+      }
+      const nameKey = this.normalizeImportKey(member.fullName);
+      if (nameKey && !memberByName.has(nameKey)) {
+        memberByName.set(nameKey, member);
+      }
+    });
+
     const contributions = await this.contributionRepo.find({
       where: {
         churchId,
-        contributorId: In(contributorIds),
         status: ContributionStatus.CONFIRMED,
       },
+      relations: ['contributor'],
       order: { receivedAt: 'DESC', createdAt: 'DESC' },
     });
-    const grouped = new Map<string, Contribution[]>();
+    const grouped = new Map<string, { member: DiscipleshipMember; items: Contribution[] }>();
     contributions.forEach((contribution) => {
-      if (!contribution.contributorId) {
-        return;
-      }
-      const items = grouped.get(contribution.contributorId) || [];
-      items.push(contribution);
-      grouped.set(contribution.contributorId, items);
-    });
-
-    grouped.forEach((items, contributorId) => {
-      const member = memberByContributorId.get(contributorId);
+      const member =
+        (contribution.contributorId
+          ? memberByContributorId.get(contribution.contributorId)
+          : null) ||
+        memberByName.get(this.normalizeImportKey(contribution.contributor?.name));
       if (!member) {
         return;
       }
+      const group = grouped.get(member.id) || { member, items: [] };
+      group.items.push(contribution);
+      grouped.set(member.id, group);
+    });
+
+    grouped.forEach(({ member, items }) => {
       const byDate = new Map<string, { amount: number; count: number }>();
       const contributionRows = items.map((item) => {
         const date = this.getNairobiDateFromInstant(
