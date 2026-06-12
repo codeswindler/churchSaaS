@@ -319,6 +319,16 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
             'ADD COLUMN `commissionAmount` decimal(12,2) NULL AFTER `commissionRatePctApplied`',
           );
         }
+        if (!contributions.findColumnByName('payerName')) {
+          statements.push(
+            'ADD COLUMN `payerName` varchar(180) NULL AFTER `paymentReference`',
+          );
+        }
+        if (!contributions.findColumnByName('providerPayerId')) {
+          statements.push(
+            'ADD COLUMN `providerPayerId` varchar(180) NULL AFTER `payerName`',
+          );
+        }
 
         if (statements.length > 0) {
           await queryRunner.query(
@@ -342,6 +352,21 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
           WHERE contribution.\`channel\` = 'mpesa'
             AND contribution.\`status\` = 'confirmed'
             AND contribution.\`notes\` LIKE 'M-Pesa C2B confirmation%'
+        `);
+        await queryRunner.query(`
+          UPDATE \`contributions\` contribution
+          JOIN \`contributors\` contributor ON contributor.\`id\` = contribution.\`contributorId\`
+          SET contribution.\`payerName\` = contributor.\`name\`
+          WHERE contribution.\`payerName\` IS NULL
+            AND contributor.\`name\` IS NOT NULL
+            AND TRIM(contributor.\`name\`) <> ''
+        `);
+        await queryRunner.query(`
+          UPDATE \`contributions\`
+          SET \`providerPayerId\` = \`providerRequestId\`
+          WHERE \`providerPayerId\` IS NULL
+            AND \`providerRequestId\` IS NOT NULL
+            AND \`notes\` LIKE 'M-Pesa C2B confirmation%'
         `);
       }
     } finally {
@@ -618,6 +643,9 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
             \`email\` varchar(160) NULL,
             \`gender\` varchar(20) NULL,
             \`enrollmentDate\` date NULL,
+            \`isFirstTimeAtChurch\` tinyint NULL,
+            \`hasChurchRole\` tinyint NULL,
+            \`churchRoleNotes\` text NULL,
             \`status\` varchar(40) NOT NULL DEFAULT 'active',
             \`notes\` text NULL,
             \`contributorId\` varchar(36) NULL,
@@ -638,6 +666,28 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
           );
           this.logger.log('Added contributor link to discipleship members.');
         }
+        const biodataStatements: string[] = [];
+        if (!members.findColumnByName('isFirstTimeAtChurch')) {
+          biodataStatements.push(
+            'ADD COLUMN `isFirstTimeAtChurch` tinyint NULL AFTER `enrollmentDate`',
+          );
+        }
+        if (!members.findColumnByName('hasChurchRole')) {
+          biodataStatements.push(
+            'ADD COLUMN `hasChurchRole` tinyint NULL AFTER `isFirstTimeAtChurch`',
+          );
+        }
+        if (!members.findColumnByName('churchRoleNotes')) {
+          biodataStatements.push(
+            'ADD COLUMN `churchRoleNotes` text NULL AFTER `hasChurchRole`',
+          );
+        }
+        if (biodataStatements.length > 0) {
+          await queryRunner.query(
+            `ALTER TABLE \`discipleship_members\` ${biodataStatements.join(', ')}`,
+          );
+          this.logger.log('Added discipleship member biodata columns.');
+        }
         if (
           !members.indices.some(
             (index) =>
@@ -652,6 +702,99 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
           );
         }
       }
+      await queryRunner.query(
+        "UPDATE `discipleship_members` SET `status` = 'active' WHERE `status` <> 'active'",
+      );
+
+      const memberAliases = await queryRunner.getTable(
+        'discipleship_member_aliases',
+      );
+      if (!memberAliases) {
+        await queryRunner.query(`
+          CREATE TABLE \`discipleship_member_aliases\` (
+            \`id\` varchar(36) NOT NULL,
+            \`churchId\` varchar(36) NOT NULL,
+            \`memberId\` varchar(36) NOT NULL,
+            \`contributorId\` varchar(36) NULL,
+            \`alias\` varchar(180) NOT NULL,
+            \`normalizedAlias\` varchar(180) NOT NULL,
+            \`source\` varchar(30) NOT NULL,
+            \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            PRIMARY KEY (\`id\`),
+            UNIQUE KEY \`UQ_discipleship_member_alias\` (\`memberId\`, \`normalizedAlias\`),
+            INDEX \`IDX_discipleship_alias_church_name\` (\`churchId\`, \`normalizedAlias\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        this.logger.log('Created discipleship member aliases table.');
+      }
+
+      const memberContributors = await queryRunner.getTable(
+        'discipleship_member_contributors',
+      );
+      if (!memberContributors) {
+        await queryRunner.query(`
+          CREATE TABLE \`discipleship_member_contributors\` (
+            \`id\` varchar(36) NOT NULL,
+            \`churchId\` varchar(36) NOT NULL,
+            \`memberId\` varchar(36) NOT NULL,
+            \`contributorId\` varchar(36) NOT NULL,
+            \`matchMethod\` varchar(40) NOT NULL,
+            \`isConfirmed\` tinyint NOT NULL DEFAULT 1,
+            \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            PRIMARY KEY (\`id\`),
+            UNIQUE KEY \`UQ_discipleship_church_contributor\` (\`churchId\`, \`contributorId\`),
+            UNIQUE KEY \`UQ_discipleship_member_contributor\` (\`memberId\`, \`contributorId\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        this.logger.log('Created discipleship member contributor links table.');
+      }
+
+      const matchCandidates = await queryRunner.getTable(
+        'discipleship_match_candidates',
+      );
+      if (!matchCandidates) {
+        await queryRunner.query(`
+          CREATE TABLE \`discipleship_match_candidates\` (
+            \`id\` varchar(36) NOT NULL,
+            \`churchId\` varchar(36) NOT NULL,
+            \`contributorId\` varchar(36) NOT NULL,
+            \`candidateMemberId\` varchar(36) NOT NULL,
+            \`observedName\` varchar(180) NOT NULL,
+            \`normalizedName\` varchar(180) NOT NULL,
+            \`matchReason\` varchar(120) NOT NULL,
+            \`matchScore\` int NOT NULL DEFAULT 0,
+            \`status\` varchar(20) NOT NULL DEFAULT 'pending',
+            \`reviewedByUserId\` varchar(36) NULL,
+            \`reviewedAt\` datetime NULL,
+            \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            \`updatedAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+            PRIMARY KEY (\`id\`),
+            UNIQUE KEY \`UQ_discipleship_match_candidate\` (\`contributorId\`, \`candidateMemberId\`),
+            INDEX \`IDX_discipleship_match_status\` (\`churchId\`, \`status\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        this.logger.log('Created discipleship match candidates table.');
+      }
+
+      await queryRunner.query(`
+        INSERT IGNORE INTO \`discipleship_member_aliases\`
+          (\`id\`, \`churchId\`, \`memberId\`, \`contributorId\`, \`alias\`, \`normalizedAlias\`, \`source\`, \`createdAt\`)
+        SELECT
+          UUID(), member.\`churchId\`, member.\`id\`, NULL, member.\`fullName\`,
+          LOWER(TRIM(REGEXP_REPLACE(member.\`fullName\`, '[[:space:]]+', ' '))),
+          'manual', NOW(6)
+        FROM \`discipleship_members\` member
+        WHERE member.\`fullName\` IS NOT NULL AND TRIM(member.\`fullName\`) <> ''
+      `);
+      await queryRunner.query(`
+        INSERT IGNORE INTO \`discipleship_member_contributors\`
+          (\`id\`, \`churchId\`, \`memberId\`, \`contributorId\`, \`matchMethod\`, \`isConfirmed\`, \`createdAt\`)
+        SELECT
+          UUID(), member.\`churchId\`, member.\`id\`, member.\`contributorId\`,
+          'legacy_link', 1, NOW(6)
+        FROM \`discipleship_members\` member
+        WHERE member.\`contributorId\` IS NOT NULL
+      `);
 
       const groups = await queryRunner.getTable('discipleship_groups');
       if (!groups) {

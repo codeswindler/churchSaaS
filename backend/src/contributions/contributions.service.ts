@@ -85,6 +85,8 @@ export class ContributionsService {
       commissionRatePctApplied: null,
       commissionAmount: null,
       paymentReference,
+      payerName: contributor?.name || body.name || null,
+      providerPayerId: body.providerPayerId || null,
       notes: body.notes || null,
       receivedAt: body.receivedAt ? new Date(body.receivedAt) : new Date(),
     });
@@ -136,6 +138,8 @@ export class ContributionsService {
         commissionRatePctApplied: null,
         commissionAmount: null,
         paymentReference,
+        payerName: contributor?.name || body.name || null,
+        providerPayerId: body.providerPayerId || body.phone || null,
         notes: body.notes || null,
         receivedAt: new Date(),
       }),
@@ -207,6 +211,8 @@ export class ContributionsService {
         commissionAmount: null,
         providerRequestId: null,
         paymentReference: null,
+        payerName: contributor?.name || body.name || null,
+        providerPayerId: phone,
         notes: body.notes || 'Public STK push initiated',
         receivedAt: null,
       }),
@@ -426,6 +432,8 @@ export class ContributionsService {
         ...this.calculateCommissionFields(church, payload.amount),
         providerRequestId: payload.phoneForContributor ? null : payload.phone,
         paymentReference: payload.transId,
+        payerName: payload.customerName || contributor?.name || null,
+        providerPayerId: payload.phone,
         notes: this.buildMpesaC2BNote(
           payload,
           fundAccount,
@@ -929,7 +937,14 @@ export class ContributionsService {
         memberNumber: body.memberNumber || null,
       });
     } else {
-      contributor.name = body.name || contributor.name;
+      if (
+        (!contributor.name ||
+          contributor.name === 'Anonymous Contributor' ||
+          contributor.name === 'M-Pesa Contributor') &&
+        body.name
+      ) {
+        contributor.name = body.name;
+      }
       contributor.memberNumber = body.memberNumber || contributor.memberNumber;
     }
 

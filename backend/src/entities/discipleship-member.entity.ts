@@ -47,6 +47,15 @@ export class DiscipleshipMember {
   @Column({ type: 'date', nullable: true })
   enrollmentDate: string | null;
 
+  @Column({ type: 'boolean', nullable: true })
+  isFirstTimeAtChurch: boolean | null;
+
+  @Column({ type: 'boolean', nullable: true })
+  hasChurchRole: boolean | null;
+
+  @Column({ type: 'text', nullable: true })
+  churchRoleNotes: string | null;
+
   @Column({
     type: 'varchar',
     length: 40,

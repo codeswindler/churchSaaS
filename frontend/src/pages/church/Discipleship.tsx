@@ -34,10 +34,20 @@ interface DiscipleshipMember {
   email?: string | null;
   gender?: string | null;
   enrollmentDate?: string | null;
+  isFirstTimeAtChurch?: boolean | null;
+  hasChurchRole?: boolean | null;
+  churchRoleNotes?: string | null;
   status: 'active' | 'inactive';
   notes?: string | null;
   groups?: DiscipleshipGroup[];
   groupIds?: string[];
+  aliases?: {
+    id: string;
+    alias: string;
+    source: string;
+  }[];
+  linkedContributorCount?: number;
+  pendingMatchCount?: number;
   contributionSummary?: {
     totalAmount: number;
     contributionCount: number;
@@ -56,6 +66,19 @@ interface DiscipleshipMember {
       channel?: string | null;
     }[];
   };
+}
+
+interface DiscipleshipMatchCandidate {
+  id: string;
+  observedName: string;
+  matchReason: string;
+  matchScore: number;
+  contributor?: {
+    id: string;
+    name: string;
+    phone?: string | null;
+  };
+  candidateMember?: DiscipleshipMember;
 }
 
 interface DiscipleshipAttendance {
@@ -109,13 +132,26 @@ function formatKes(value: unknown) {
   return `KES ${Number(value || 0).toLocaleString()}`;
 }
 
+function formatYesNo(value: boolean | null | undefined) {
+  if (value === true) {
+    return 'Yes';
+  }
+  if (value === false) {
+    return 'No';
+  }
+  return 'Not set';
+}
+
 function createMemberForm() {
   return {
     fullName: '',
     phone: '',
     gender: '',
-    enrollmentDate: getNairobiToday(),
-    status: 'active',
+    enrollmentDate: '',
+    isFirstTimeAtChurch: null as boolean | null,
+    hasChurchGroups: null as boolean | null,
+    hasChurchRole: null as boolean | null,
+    churchRoleNotes: '',
     notes: '',
     groupIds: [] as string[],
   };
@@ -141,8 +177,8 @@ export default function ChurchDiscipleship() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<DiscipleshipTab>('attendance');
   const [memberSearch, setMemberSearch] = useState('');
-  const [memberStatus, setMemberStatus] = useState('');
   const [memberGroupFilter, setMemberGroupFilter] = useState('');
+  const [recentAttendanceSearch, setRecentAttendanceSearch] = useState('');
   const [selectedMemberId, setSelectedMemberId] = useState('');
   const [isAttendanceTypeOpen, setIsAttendanceTypeOpen] = useState(false);
   const [attendanceForm, setAttendanceForm] = useState<{
@@ -155,6 +191,7 @@ export default function ChurchDiscipleship() {
     eventName: '',
   });
   const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
+  const [memberRegistrationStep, setMemberRegistrationStep] = useState(1);
   const [detailMemberId, setDetailMemberId] = useState('');
   const [memberEditor, setMemberEditor] = useState<DiscipleshipMember | null>(
     null,
@@ -183,7 +220,6 @@ export default function ChurchDiscipleship() {
 
   const memberQuery = buildQuery({
     search: memberSearch.trim(),
-    status: memberStatus,
     groupId: memberGroupFilter,
   });
   const { data: members = [], isLoading: membersLoading } = useQuery<
@@ -192,12 +228,26 @@ export default function ChurchDiscipleship() {
     queryKey: [
       'discipleship-members',
       memberSearch.trim(),
-      memberStatus,
       memberGroupFilter,
     ],
     queryFn: () =>
       api
         .get(`/church/discipleship/members${memberQuery}`)
+        .then((response) => response.data),
+  });
+  const recentMemberSearch = recentAttendanceSearch.trim();
+  const { data: recentMemberSearchResults = [] } = useQuery<
+    DiscipleshipMember[]
+  >({
+    queryKey: ['discipleship-recent-member-search', recentMemberSearch],
+    enabled: recentMemberSearch.length > 0,
+    queryFn: () =>
+      api
+        .get(
+          `/church/discipleship/members${buildQuery({
+            search: recentMemberSearch,
+          })}`,
+        )
         .then((response) => response.data),
   });
 
@@ -206,6 +256,16 @@ export default function ChurchDiscipleship() {
     queryFn: () =>
       api
         .get('/church/discipleship/attendance')
+        .then((response) => response.data),
+  });
+
+  const { data: matchCandidates = [] } = useQuery<
+    DiscipleshipMatchCandidate[]
+  >({
+    queryKey: ['discipleship-matches'],
+    queryFn: () =>
+      api
+        .get('/church/discipleship/matches')
         .then((response) => response.data),
   });
 
@@ -219,13 +279,18 @@ export default function ChurchDiscipleship() {
           .then((response) => response.data),
     });
 
+  const { data: detailMember } = useQuery<DiscipleshipMember>({
+    queryKey: ['discipleship-member-detail', detailMemberId],
+    enabled: Boolean(detailMemberId),
+    queryFn: () =>
+      api
+        .get(`/church/discipleship/members/${detailMemberId}`)
+        .then((response) => response.data),
+  });
+
   const selectedMember = useMemo(
     () => members.find((member) => member.id === selectedMemberId),
     [members, selectedMemberId],
-  );
-  const detailMember = useMemo(
-    () => members.find((member) => member.id === detailMemberId),
-    [detailMemberId, members],
   );
 
   const refreshDiscipleship = () => {
@@ -233,12 +298,25 @@ export default function ChurchDiscipleship() {
     queryClient.invalidateQueries({ queryKey: ['discipleship-members'] });
     queryClient.invalidateQueries({ queryKey: ['discipleship-groups'] });
     queryClient.invalidateQueries({ queryKey: ['discipleship-attendance'] });
+    queryClient.invalidateQueries({ queryKey: ['discipleship-matches'] });
+    queryClient.invalidateQueries({ queryKey: ['discipleship-member-detail'] });
   };
 
   const memberMutation = useMutation({
     mutationFn: async () => {
       const payload = {
-        ...memberForm,
+        fullName: memberForm.fullName,
+        phone: memberForm.phone,
+        gender: memberForm.gender,
+        enrollmentDate: memberForm.isFirstTimeAtChurch
+          ? memberForm.enrollmentDate || getNairobiToday()
+          : memberEditor?.enrollmentDate || null,
+        isFirstTimeAtChurch: memberForm.isFirstTimeAtChurch,
+        hasChurchRole: memberForm.hasChurchRole,
+        churchRoleNotes: memberForm.hasChurchRole
+          ? memberForm.churchRoleNotes
+          : '',
+        notes: memberForm.notes,
         groupIds: memberForm.groupIds,
       };
       if (memberEditor) {
@@ -255,6 +333,7 @@ export default function ChurchDiscipleship() {
       setIsMemberModalOpen(false);
       setMemberEditor(null);
       setMemberForm(createMemberForm());
+      setMemberRegistrationStep(1);
       refreshDiscipleship();
     },
     onError: (error: any) => {
@@ -317,6 +396,53 @@ export default function ChurchDiscipleship() {
     },
   });
 
+  const statementImportMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return api
+        .post('/church/discipleship/reconciliation/mpesa-statement', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        .then((response) => response.data);
+    },
+    onSuccess: (data) => {
+      refreshDiscipleship();
+      toast.success(
+        `Matched ${Number(data.matched || 0)} statement row(s); updated ${Number(data.updated || 0)} name(s)`,
+      );
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message || 'Unable to reconcile statement',
+      );
+    },
+  });
+
+  const matchReviewMutation = useMutation({
+    mutationFn: ({
+      candidateId,
+      action,
+    }: {
+      candidateId: string;
+      action: 'confirm' | 'dismiss';
+    }) =>
+      api
+        .post(`/church/discipleship/matches/${candidateId}/review`, { action })
+        .then((response) => response.data),
+    onSuccess: (_data, variables) => {
+      refreshDiscipleship();
+      toast.success(
+        variables.action === 'confirm'
+          ? 'Member identities linked'
+          : 'Potential match dismissed',
+      );
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Unable to review match');
+    },
+  });
+
   const attendanceMutation = useMutation({
     mutationFn: async () =>
       api
@@ -343,6 +469,7 @@ export default function ChurchDiscipleship() {
 
   const openMemberEditor = (member?: DiscipleshipMember) => {
     setIsMemberModalOpen(true);
+    setMemberRegistrationStep(1);
     setMemberEditor(member || null);
     setMemberForm(
       member
@@ -350,8 +477,11 @@ export default function ChurchDiscipleship() {
             fullName: member.fullName || '',
             phone: member.phone || '',
             gender: member.gender || '',
-            enrollmentDate: member.enrollmentDate || getNairobiToday(),
-            status: member.status || 'active',
+            enrollmentDate: member.enrollmentDate || '',
+            isFirstTimeAtChurch: member.isFirstTimeAtChurch ?? null,
+            hasChurchGroups: (member.groupIds || member.groups || []).length > 0,
+            hasChurchRole: member.hasChurchRole ?? null,
+            churchRoleNotes: member.churchRoleNotes || '',
             notes: member.notes || '',
             groupIds:
               member.groupIds || member.groups?.map((group) => group.id) || [],
@@ -388,6 +518,10 @@ export default function ChurchDiscipleship() {
 
   const submitMember = (event: FormEvent) => {
     event.preventDefault();
+    if (memberRegistrationStep < 4) {
+      setMemberRegistrationStep((current) => current + 1);
+      return;
+    }
     memberMutation.mutate();
   };
 
@@ -458,6 +592,31 @@ export default function ChurchDiscipleship() {
       lastAttended: memberAttendance[0]?.attendanceDate || 'No attendance yet',
     };
   }, [memberAttendance]);
+  const recentAttendance = useMemo(() => {
+    const search = recentAttendanceSearch.trim().toLowerCase();
+    if (!search) {
+      return attendance;
+    }
+    return attendance.filter((item) =>
+      `${item.member?.fullName || ''} ${item.group?.name || ''} ${item.eventName || ''}`
+        .toLowerCase()
+        .includes(search),
+    );
+  }, [attendance, recentAttendanceSearch]);
+  const recentMemberMatches = useMemo(() => {
+    const search = recentAttendanceSearch.trim();
+    if (!search) {
+      return [];
+    }
+    const latestAttendanceMemberIds = new Set(
+      recentAttendance
+        .map((item) => item.member?.id)
+        .filter((id): id is string => Boolean(id)),
+    );
+    return recentMemberSearchResults
+      .filter((member) => !latestAttendanceMemberIds.has(member.id))
+      .slice(0, 6);
+  }, [recentAttendance, recentAttendanceSearch, recentMemberSearchResults]);
 
   return (
     <div className="space-y-6">
@@ -706,16 +865,65 @@ export default function ChurchDiscipleship() {
             <h3 className="mt-2 text-xl font-semibold text-white">
               Latest marks
             </h3>
+            <div className="relative mt-4">
+              <Search
+                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-stone-400"
+                size={17}
+              />
+              <input
+                className="input"
+                style={{ paddingLeft: '2.75rem' }}
+                placeholder="Search recent disciples"
+                value={recentAttendanceSearch}
+                onChange={(event) =>
+                  setRecentAttendanceSearch(event.target.value)
+                }
+              />
+            </div>
+            {recentMemberMatches.length > 0 ? (
+              <div className="mt-4 rounded-3xl border border-white/10 bg-black/10 p-3">
+                <p className="px-1 text-[11px] uppercase tracking-[0.18em] text-stone-400">
+                  Disciple matches
+                </p>
+                <div className="mt-2 space-y-2">
+                  {recentMemberMatches.map((member) => (
+                    <button
+                      key={member.id}
+                      className="w-full rounded-2xl border border-white/10 px-4 py-3 text-left transition hover:bg-white/5"
+                      type="button"
+                      onClick={() => setDetailMemberId(member.id)}
+                    >
+                      <span className="block font-semibold text-white">
+                        {member.fullName}
+                      </span>
+                      <span className="mt-1 block text-xs text-stone-400">
+                        {(member.groups || [])
+                          .map((group) => group.name)
+                          .join(', ') || 'No group assigned'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <div className="mt-5 space-y-3">
-              {attendance.length === 0 ? (
+              {recentAttendance.length === 0 ? (
                 <p className="rounded-2xl border border-white/10 p-4 text-sm text-stone-300">
-                  No attendance has been recorded yet.
+                  {recentAttendanceSearch
+                    ? 'No recent attendance matches that search.'
+                    : 'No attendance has been recorded yet.'}
                 </p>
               ) : (
-                attendance.slice(0, 12).map((item) => (
-                  <div
+                recentAttendance.slice(0, 12).map((item) => (
+                  <button
                     key={item.id}
-                    className="rounded-2xl border border-white/10 bg-black/10 p-4"
+                    className="w-full rounded-2xl border border-white/10 bg-black/10 p-4 text-left transition hover:bg-white/5"
+                    type="button"
+                    onClick={() => {
+                      if (item.member?.id) {
+                        setDetailMemberId(item.member.id);
+                      }
+                    }}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -737,7 +945,7 @@ export default function ChurchDiscipleship() {
                           .join(' - ')}
                       </p>
                     )}
-                  </div>
+                  </button>
                 ))
               )}
             </div>
@@ -757,6 +965,25 @@ export default function ChurchDiscipleship() {
               </h3>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
+              <label className="btn-secondary cursor-pointer justify-center">
+                <Upload size={17} />
+                {statementImportMutation.isPending
+                  ? 'Reconciling...'
+                  : 'Reconcile M-Pesa names'}
+                <input
+                  accept=".xlsx,.csv"
+                  className="hidden"
+                  disabled={statementImportMutation.isPending}
+                  type="file"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) {
+                      statementImportMutation.mutate(file);
+                    }
+                    event.target.value = '';
+                  }}
+                />
+              </label>
               <button
                 className="btn-secondary justify-center"
                 type="button"
@@ -780,7 +1007,91 @@ export default function ChurchDiscipleship() {
             </div>
           </div>
 
-          <div className="grid gap-3 border-b border-white/10 p-4 md:grid-cols-3">
+          {matchCandidates.length > 0 ? (
+            <div className="border-b border-white/10 bg-amber-200/5 p-4 sm:p-5">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.22em] text-amber-100">
+                    Potential matches
+                  </p>
+                  <h4 className="mt-1 font-semibold text-white">
+                    Confirm people whose transaction names look related
+                  </h4>
+                  <p className="mt-1 text-sm text-stone-300">
+                    These were not merged automatically because the match needs
+                    a person to confirm it.
+                  </p>
+                </div>
+                <span className="rounded-full border border-amber-200/30 px-3 py-1 text-sm font-semibold text-amber-100">
+                  {matchCandidates.length} pending
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                {matchCandidates.map((candidate) => (
+                  <div
+                    key={candidate.id}
+                    className="rounded-2xl border border-white/10 bg-black/10 p-4"
+                  >
+                    <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+                      <div>
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
+                          Transaction name
+                        </p>
+                        <p className="mt-1 font-semibold text-white">
+                          {candidate.observedName ||
+                            candidate.contributor?.name ||
+                            'Unknown payer'}
+                        </p>
+                      </div>
+                      <span className="text-center text-amber-100">→</span>
+                      <div>
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
+                          Existing disciple
+                        </p>
+                        <p className="mt-1 font-semibold text-white">
+                          {candidate.candidateMember?.fullName || 'Member'}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-xs text-stone-400">
+                      {candidate.matchReason}
+                    </p>
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                      <button
+                        className="btn-secondary justify-center"
+                        disabled={matchReviewMutation.isPending}
+                        type="button"
+                        onClick={() =>
+                          matchReviewMutation.mutate({
+                            candidateId: candidate.id,
+                            action: 'dismiss',
+                          })
+                        }
+                      >
+                        Keep separate
+                      </button>
+                      <button
+                        className="btn-primary justify-center"
+                        disabled={matchReviewMutation.isPending}
+                        type="button"
+                        onClick={() =>
+                          matchReviewMutation.mutate({
+                            candidateId: candidate.id,
+                            action: 'confirm',
+                          })
+                        }
+                      >
+                        <CheckCircle2 size={17} />
+                        Confirm match
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="grid gap-3 border-b border-white/10 p-4 md:grid-cols-2">
             <input
               className="input-compact"
               placeholder="Search members"
@@ -798,15 +1109,6 @@ export default function ChurchDiscipleship() {
                   {group.name}
                 </option>
               ))}
-            </select>
-            <select
-              className="input-compact"
-              value={memberStatus}
-              onChange={(event) => setMemberStatus(event.target.value)}
-            >
-              <option value="">Any status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
             </select>
           </div>
 
@@ -832,9 +1134,27 @@ export default function ChurchDiscipleship() {
                       {member.fullName}
                     </h4>
                     <p className="mt-1 text-xs text-stone-400">
-                      Enrolled {member.enrollmentDate || 'not set'} ·{' '}
-                      {member.status}
+                      Enrolled {member.enrollmentDate || 'not set'}
                     </p>
+                    {(member.aliases || []).filter(
+                      (alias) =>
+                        alias.source !== 'manual' &&
+                        alias.alias.toLowerCase() !==
+                          member.fullName.toLowerCase(),
+                    ).length > 0 ? (
+                      <p className="mt-1 text-xs text-amber-100/80">
+                        Also known as{' '}
+                        {(member.aliases || [])
+                          .filter(
+                            (alias) =>
+                              alias.source !== 'manual' &&
+                              alias.alias.toLowerCase() !==
+                                member.fullName.toLowerCase(),
+                          )
+                          .map((alias) => alias.alias)
+                          .join(', ')}
+                      </p>
+                    ) : null}
                   </div>
                   <p className="text-sm text-stone-300">
                     {(member.groups || [])
@@ -925,6 +1245,7 @@ export default function ChurchDiscipleship() {
             setIsMemberModalOpen(false);
             setMemberEditor(null);
             setMemberForm(createMemberForm());
+            setMemberRegistrationStep(1);
           }}
         >
           <div className="modal-shell">
@@ -940,8 +1261,11 @@ export default function ChurchDiscipleship() {
                   {memberEditor ? 'Edit member' : 'New member'}
                 </p>
                 <h3 className="mt-2 text-xl font-semibold text-white">
-                  Member details
+                  {memberEditor ? 'Update disciple biodata' : 'Register disciple'}
                 </h3>
+                <p className="mt-2 text-sm text-stone-300">
+                  Step {memberRegistrationStep} of 4
+                </p>
               </div>
               <button
                 className="rounded-full border border-white/10 p-2 text-stone-200 hover:bg-white/5"
@@ -950,6 +1274,7 @@ export default function ChurchDiscipleship() {
                   setIsMemberModalOpen(false);
                   setMemberEditor(null);
                   setMemberForm(createMemberForm());
+                  setMemberRegistrationStep(1);
                 }}
               >
                 <X size={18} />
@@ -957,139 +1282,244 @@ export default function ChurchDiscipleship() {
             </div>
 
             <form className="mt-6 space-y-5" onSubmit={submitMember}>
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="space-y-2">
-                  <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
-                    Full name
-                  </span>
-                  <input
-                    className="input"
-                    required
-                    value={memberForm.fullName}
-                    onChange={(event) =>
-                      setMemberForm((current) => ({
-                        ...current,
-                        fullName: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label className="space-y-2">
-                  <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
-                    Enrollment date
-                  </span>
-                  <input
-                    className="input"
-                    type="date"
-                    value={memberForm.enrollmentDate}
-                    onChange={(event) =>
-                      setMemberForm((current) => ({
-                        ...current,
-                        enrollmentDate: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label className="space-y-2">
-                  <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
-                    Phone
-                  </span>
-                  <input
-                    className="input"
-                    value={memberForm.phone}
-                    onChange={(event) =>
-                      setMemberForm((current) => ({
-                        ...current,
-                        phone: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label className="space-y-2">
-                  <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
-                    Gender
-                  </span>
-                  <input
-                    className="input"
-                    value={memberForm.gender}
-                    onChange={(event) =>
-                      setMemberForm((current) => ({
-                        ...current,
-                        gender: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label className="space-y-2">
-                  <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
-                    Status
-                  </span>
-                  <select
-                    className="input"
-                    value={memberForm.status}
-                    onChange={(event) =>
-                      setMemberForm((current) => ({
-                        ...current,
-                        status: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                  </select>
-                </label>
-              </div>
-
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
-                  Groups
-                </p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {groups.length === 0 ? (
-                    <p className="text-sm text-stone-300">
-                      Create groups first, then assign members here.
-                    </p>
-                  ) : (
-                    groups.map((group) => (
-                      <label
-                        key={group.id}
-                        className="flex items-center gap-3 rounded-2xl border border-white/10 px-4 py-3 text-sm text-stone-200"
-                      >
-                        <input
-                          checked={memberForm.groupIds.includes(group.id)}
-                          type="checkbox"
-                          onChange={() => toggleMemberGroup(group.id)}
-                        />
-                        {group.name}
-                      </label>
-                    ))
-                  )}
+              {memberRegistrationStep === 1 ? (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="space-y-2 md:col-span-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
+                      Full name
+                    </span>
+                    <input
+                      className="input"
+                      required
+                      value={memberForm.fullName}
+                      onChange={(event) =>
+                        setMemberForm((current) => ({
+                          ...current,
+                          fullName: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
+                      Phone number
+                    </span>
+                    <input
+                      className="input"
+                      required
+                      value={memberForm.phone}
+                      onChange={(event) =>
+                        setMemberForm((current) => ({
+                          ...current,
+                          phone: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
+                      Gender
+                    </span>
+                    <select
+                      className="input"
+                      required
+                      value={memberForm.gender}
+                      onChange={(event) =>
+                        setMemberForm((current) => ({
+                          ...current,
+                          gender: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">Select gender</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                    </select>
+                  </label>
                 </div>
-              </div>
+              ) : null}
 
-              <label className="space-y-2">
-                <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
-                  Notes
-                </span>
-                <textarea
-                  className="input min-h-28"
-                  value={memberForm.notes}
-                  onChange={(event) =>
-                    setMemberForm((current) => ({
-                      ...current,
-                      notes: event.target.value,
-                    }))
+              {memberRegistrationStep === 2 ? (
+                <div className="rounded-3xl border border-white/10 bg-black/10 p-5">
+                  <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                    Enrollment
+                  </p>
+                  <h4 className="mt-2 text-lg font-semibold text-white">
+                    Is this their first time in the church?
+                  </h4>
+                  <p className="mt-2 text-sm text-stone-300">
+                    A Yes answer records today as their enrollment date.
+                  </p>
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    {[true, false].map((value) => (
+                      <button
+                        key={String(value)}
+                        className={`rounded-2xl border px-5 py-4 text-left font-semibold transition ${
+                          memberForm.isFirstTimeAtChurch === value
+                            ? 'border-amber-200 bg-amber-200/15 text-white'
+                            : 'border-white/10 text-stone-200 hover:bg-white/5'
+                        }`}
+                        type="button"
+                        onClick={() =>
+                          setMemberForm((current) => ({
+                            ...current,
+                            isFirstTimeAtChurch: value,
+                            enrollmentDate: value
+                              ? getNairobiToday()
+                              : current.enrollmentDate,
+                          }))
+                        }
+                      >
+                        {value ? 'Yes, first time' : 'No, already attending'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {memberRegistrationStep === 3 ? (
+                <div className="rounded-3xl border border-white/10 bg-black/10 p-5">
+                  <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                    Church groups
+                  </p>
+                  <h4 className="mt-2 text-lg font-semibold text-white">
+                    Are they part of any church group?
+                  </h4>
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    {[true, false].map((value) => (
+                      <button
+                        key={String(value)}
+                        className={`rounded-2xl border px-5 py-4 text-left font-semibold transition ${
+                          memberForm.hasChurchGroups === value
+                            ? 'border-amber-200 bg-amber-200/15 text-white'
+                            : 'border-white/10 text-stone-200 hover:bg-white/5'
+                        }`}
+                        type="button"
+                        onClick={() =>
+                          setMemberForm((current) => ({
+                            ...current,
+                            hasChurchGroups: value,
+                            groupIds: value ? current.groupIds : [],
+                          }))
+                        }
+                      >
+                        {value ? 'Yes, select groups' : 'No church group'}
+                      </button>
+                    ))}
+                  </div>
+                  {memberForm.hasChurchGroups ? (
+                    <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {groups.length === 0 ? (
+                        <p className="text-sm text-stone-300">
+                          No groups have been created yet.
+                        </p>
+                      ) : (
+                        groups.map((group) => (
+                          <label
+                            key={group.id}
+                            className="flex items-center gap-3 rounded-2xl border border-white/10 px-4 py-3 text-sm text-stone-200"
+                          >
+                            <input
+                              checked={memberForm.groupIds.includes(group.id)}
+                              type="checkbox"
+                              onChange={() => toggleMemberGroup(group.id)}
+                            />
+                            {group.name}
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {memberRegistrationStep === 4 ? (
+                <div className="rounded-3xl border border-white/10 bg-black/10 p-5">
+                  <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                    Responsibility
+                  </p>
+                  <h4 className="mt-2 text-lg font-semibold text-white">
+                    Do they belong to a small Christian community or serve in a
+                    church role?
+                  </h4>
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    {[true, false].map((value) => (
+                      <button
+                        key={String(value)}
+                        className={`rounded-2xl border px-5 py-4 text-left font-semibold transition ${
+                          memberForm.hasChurchRole === value
+                            ? 'border-amber-200 bg-amber-200/15 text-white'
+                            : 'border-white/10 text-stone-200 hover:bg-white/5'
+                        }`}
+                        type="button"
+                        onClick={() =>
+                          setMemberForm((current) => ({
+                            ...current,
+                            hasChurchRole: value,
+                            churchRoleNotes: value
+                              ? current.churchRoleNotes
+                              : '',
+                          }))
+                        }
+                      >
+                        {value ? 'Yes, record details' : 'No role recorded'}
+                      </button>
+                    ))}
+                  </div>
+                  {memberForm.hasChurchRole ? (
+                    <label className="mt-5 block space-y-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
+                        Community or church role details
+                      </span>
+                      <textarea
+                        className="input min-h-28"
+                        placeholder="Example: Cell group leader, choir member, youth mentor..."
+                        value={memberForm.churchRoleNotes}
+                        onChange={(event) =>
+                          setMemberForm((current) => ({
+                            ...current,
+                            churchRoleNotes: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  className="btn-secondary justify-center"
+                  disabled={memberRegistrationStep === 1}
+                  type="button"
+                  onClick={() =>
+                    setMemberRegistrationStep((current) =>
+                      Math.max(1, current - 1),
+                    )
                   }
-                />
-              </label>
-
-              <button
-                className="btn-primary w-full justify-center"
-                disabled={memberMutation.isPending}
-                type="submit"
-              >
-                Save member
-              </button>
+                >
+                  Back
+                </button>
+                <button
+                  className="btn-primary justify-center"
+                  disabled={
+                    memberMutation.isPending ||
+                    (memberRegistrationStep === 2 &&
+                      memberForm.isFirstTimeAtChurch === null) ||
+                    (memberRegistrationStep === 3 &&
+                      memberForm.hasChurchGroups === null) ||
+                    (memberRegistrationStep === 4 &&
+                      memberForm.hasChurchRole === null)
+                  }
+                  type="submit"
+                >
+                  {memberRegistrationStep === 4
+                    ? memberMutation.isPending
+                      ? 'Saving...'
+                      : 'Complete registration'
+                    : 'Next'}
+                </button>
+              </div>
             </form>
             </section>
           </div>
@@ -1161,8 +1591,9 @@ export default function ChurchDiscipleship() {
                 </p>
                 <p className="mt-2 text-sm leading-6 text-stone-300">
                   <strong className="text-white">fullName</strong> is required.
-                  Optional fields are phone, gender, enrollmentDate, status,
-                  groups, and notes. Use YYYY-MM-DD for dates.
+                  Phone and gender are required. Optional fields are
+                  firstTimeAtChurch, enrollmentDate, groups, churchRoleNotes,
+                  and notes. Use YYYY-MM-DD for dates.
                 </p>
               </div>
 
@@ -1252,8 +1683,7 @@ export default function ChurchDiscipleship() {
                     {detailMember?.fullName || 'Member details'}
                   </h3>
                   <p className="mt-2 text-sm text-stone-300">
-                    Enrolled {detailMember?.enrollmentDate || 'not set'} ·{' '}
-                    {detailMember?.status || 'active'}
+                    Enrolled {detailMember?.enrollmentDate || 'not set'}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -1310,10 +1740,37 @@ export default function ChurchDiscipleship() {
                       ['Phone', detailMember?.phone || 'Not set'],
                       ['Gender', detailMember?.gender || 'Not set'],
                       [
+                        'First time in church',
+                        formatYesNo(detailMember?.isFirstTimeAtChurch),
+                      ],
+                      [
                         'Groups',
                         (detailMember?.groups || [])
                           .map((group) => group.name)
                           .join(', ') || 'No groups assigned',
+                      ],
+                      [
+                        'Small community or church role',
+                        formatYesNo(detailMember?.hasChurchRole),
+                      ],
+                      [
+                        'Role or community notes',
+                        detailMember?.churchRoleNotes || 'No role notes',
+                      ],
+                      [
+                        'Known transaction names',
+                        (detailMember?.aliases || [])
+                          .filter((alias) => alias.source !== 'manual')
+                          .map((alias) => alias.alias)
+                          .filter(
+                            (alias, index, items) =>
+                              items.indexOf(alias) === index,
+                          )
+                          .join(', ') || 'No transaction aliases',
+                      ],
+                      [
+                        'Linked transaction identities',
+                        String(detailMember?.linkedContributorCount || 0),
                       ],
                       ['Notes', detailMember?.notes || 'No notes'],
                     ].map(([label, value]) => (

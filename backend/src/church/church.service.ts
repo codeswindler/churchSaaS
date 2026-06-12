@@ -42,6 +42,12 @@ import {
 } from '../entities/discipleship-attendance.entity';
 import { DiscipleshipGroup } from '../entities/discipleship-group.entity';
 import {
+  DiscipleshipMatchCandidate,
+  DiscipleshipMatchCandidateStatus,
+} from '../entities/discipleship-match-candidate.entity';
+import { DiscipleshipMemberAlias } from '../entities/discipleship-member-alias.entity';
+import { DiscipleshipMemberContributor } from '../entities/discipleship-member-contributor.entity';
+import {
   DiscipleshipMember,
   DiscipleshipMemberStatus,
 } from '../entities/discipleship-member.entity';
@@ -98,6 +104,7 @@ type TransactionDiscipleshipIdentity = {
   names: string[];
   fullName: string;
   phone: string | null;
+  providerPayerIds: string[];
   gender: string | null;
   firstContributionAt: unknown;
   nameKey: string;
@@ -133,6 +140,12 @@ export class ChurchService {
     private readonly discipleshipGroupRepo: Repository<DiscipleshipGroup>,
     @InjectRepository(DiscipleshipMembership)
     private readonly discipleshipMembershipRepo: Repository<DiscipleshipMembership>,
+    @InjectRepository(DiscipleshipMemberAlias)
+    private readonly discipleshipMemberAliasRepo: Repository<DiscipleshipMemberAlias>,
+    @InjectRepository(DiscipleshipMemberContributor)
+    private readonly discipleshipMemberContributorRepo: Repository<DiscipleshipMemberContributor>,
+    @InjectRepository(DiscipleshipMatchCandidate)
+    private readonly discipleshipMatchCandidateRepo: Repository<DiscipleshipMatchCandidate>,
     @InjectRepository(DiscipleshipAttendance)
     private readonly discipleshipAttendanceRepo: Repository<DiscipleshipAttendance>,
     @InjectRepository(SmsAddressBook)
@@ -374,9 +387,19 @@ export class ChurchService {
       .orderBy('member.fullName', 'ASC');
 
     if (query.search) {
+      const search = `%${query.search}%`;
+      const matchingAliases = await this.discipleshipMemberAliasRepo
+        .createQueryBuilder('alias')
+        .select('alias.memberId', 'memberId')
+        .where('alias.churchId = :churchId', { churchId })
+        .andWhere('alias.alias LIKE :search', { search })
+        .getRawMany();
+      const aliasMemberIds = matchingAliases.map((item) => item.memberId);
       qb.andWhere(
-        '(member.fullName LIKE :search OR member.phone LIKE :search OR member.email LIKE :search)',
-        { search: `%${query.search}%` },
+        aliasMemberIds.length > 0
+          ? '(member.fullName LIKE :search OR member.phone LIKE :search OR member.email LIKE :search OR member.id IN (:...aliasMemberIds))'
+          : '(member.fullName LIKE :search OR member.phone LIKE :search OR member.email LIKE :search)',
+        { search, aliasMemberIds },
       );
     }
     if (query.status === 'active' || query.status === 'inactive') {
@@ -405,18 +428,36 @@ export class ChurchService {
     if (!fullName) {
       throw new BadRequestException('Member name is required');
     }
+    const phone = this.normalizeOptionalText(body.phone, 40);
+    if (!phone) {
+      throw new BadRequestException('Member phone is required');
+    }
+    const gender = this.normalizeGenderText(body.gender);
+    if (!gender || !['male', 'female'].includes(gender)) {
+      throw new BadRequestException('Member gender must be male or female');
+    }
 
     const member = await this.discipleshipMemberRepo.save(
       this.discipleshipMemberRepo.create({
         churchId,
         fullName,
-        phone: this.normalizeOptionalText(body.phone, 40),
+        phone,
         email: this.normalizeOptionalText(body.email, 160),
-        gender: this.normalizeGenderText(body.gender),
+        gender,
         enrollmentDate:
           this.normalizeDateOnly(body.enrollmentDate) ||
-          this.getNairobiDateParts().date,
-        status: this.normalizeDiscipleshipMemberStatus(body.status),
+          (this.normalizeBoolean(body.isFirstTimeAtChurch, false)
+            ? this.getNairobiDateParts().date
+            : null),
+        isFirstTimeAtChurch: this.normalizeNullableBoolean(
+          body.isFirstTimeAtChurch,
+        ),
+        hasChurchRole: this.normalizeNullableBoolean(body.hasChurchRole),
+        churchRoleNotes: this.normalizeOptionalText(
+          body.churchRoleNotes,
+          1200,
+        ),
+        status: DiscipleshipMemberStatus.ACTIVE,
         notes: this.normalizeOptionalText(body.notes, 1200),
         createdByUserId,
       }),
@@ -426,6 +467,12 @@ export class ChurchService {
       churchId,
       member.id,
       body.groupIds,
+    );
+    await this.ensureDiscipleshipMemberAlias(
+      churchId,
+      member.id,
+      member.fullName,
+      'manual',
     );
 
     return (
@@ -467,14 +514,35 @@ export class ChurchService {
     if (body.enrollmentDate !== undefined) {
       member.enrollmentDate = this.normalizeDateOnly(body.enrollmentDate);
     }
-    if (body.status !== undefined) {
-      member.status = this.normalizeDiscipleshipMemberStatus(body.status);
+    if (body.isFirstTimeAtChurch !== undefined) {
+      member.isFirstTimeAtChurch = this.normalizeNullableBoolean(
+        body.isFirstTimeAtChurch,
+      );
+      if (member.isFirstTimeAtChurch && !member.enrollmentDate) {
+        member.enrollmentDate = this.getNairobiDateParts().date;
+      }
     }
+    if (body.hasChurchRole !== undefined) {
+      member.hasChurchRole = this.normalizeNullableBoolean(body.hasChurchRole);
+    }
+    if (body.churchRoleNotes !== undefined) {
+      member.churchRoleNotes = this.normalizeOptionalText(
+        body.churchRoleNotes,
+        1200,
+      );
+    }
+    member.status = DiscipleshipMemberStatus.ACTIVE;
     if (body.notes !== undefined) {
       member.notes = this.normalizeOptionalText(body.notes, 1200);
     }
 
     const saved = await this.discipleshipMemberRepo.save(member);
+    await this.ensureDiscipleshipMemberAlias(
+      churchId,
+      saved.id,
+      saved.fullName,
+      'manual',
+    );
     if (body.groupIds !== undefined) {
       await this.syncDiscipleshipMemberGroups(churchId, memberId, body.groupIds);
     }
@@ -489,18 +557,20 @@ export class ChurchService {
       'fullName',
       'phone',
       'gender',
+      'firstTimeAtChurch',
       'enrollmentDate',
-      'status',
       'groups',
+      'churchRoleNotes',
       'notes',
     ];
     const example = [
       'Geoffrey Mwangi',
       '254724000000',
       'male',
+      'yes',
       this.getNairobiDateParts().date,
-      'active',
       'Youth, Choir',
+      'Choir member',
       'Optional notes',
     ];
     const workbook = new ExcelJS.Workbook();
@@ -510,18 +580,20 @@ export class ChurchService {
       { header: headers[1], key: headers[1], width: 18 },
       { header: headers[2], key: headers[2], width: 14 },
       { header: headers[3], key: headers[3], width: 18 },
-      { header: headers[4], key: headers[4], width: 14 },
+      { header: headers[4], key: headers[4], width: 18 },
       { header: headers[5], key: headers[5], width: 30 },
       { header: headers[6], key: headers[6], width: 36 },
+      { header: headers[7], key: headers[7], width: 36 },
     ];
     sheet.addRow(example);
     sheet.addRow([
       'Required',
-      'Optional',
-      'Optional',
+      'Required',
+      'Required: male or female',
+      'Optional: yes or no',
       'Optional: YYYY-MM-DD',
-      'Optional: active or inactive',
       'Optional: existing group names, comma separated',
+      'Optional: role or small Christian community notes',
       'Optional',
     ]);
     sheet.getRow(1).font = { bold: true };
@@ -573,12 +645,37 @@ export class ChurchService {
         });
         continue;
       }
+      const phone = this.normalizeOptionalText(row.phone, 40);
+      if (!phone) {
+        skipped += 1;
+        issues.push({
+          row: row.rowNumber,
+          member: fullName,
+          severity: 'error',
+          message: 'Phone number is required',
+        });
+        continue;
+      }
+      const gender = this.normalizeGenderText(row.gender);
+      if (!gender || !['male', 'female'].includes(gender)) {
+        skipped += 1;
+        issues.push({
+          row: row.rowNumber,
+          member: fullName,
+          severity: 'error',
+          message: 'Gender must be male or female',
+        });
+        continue;
+      }
 
       let enrollmentDate: string | null = null;
+      const isFirstTimeAtChurch = this.normalizeNullableBoolean(
+        row.firstTimeAtChurch,
+      );
       try {
         enrollmentDate =
           this.normalizeDateOnly(row.enrollmentDate) ||
-          this.getNairobiDateParts().date;
+          (isFirstTimeAtChurch ? this.getNairobiDateParts().date : null);
       } catch (error: any) {
         skipped += 1;
         issues.push({
@@ -586,20 +683,6 @@ export class ChurchService {
           member: fullName,
           severity: 'error',
           message: error?.message || 'Enrollment date is invalid',
-        });
-        continue;
-      }
-
-      let status: DiscipleshipMemberStatus;
-      try {
-        status = this.normalizeDiscipleshipMemberStatus(row.status);
-      } catch (error: any) {
-        skipped += 1;
-        issues.push({
-          row: row.rowNumber,
-          member: fullName,
-          severity: 'error',
-          message: error?.message || 'Member status is invalid',
         });
         continue;
       }
@@ -625,16 +708,30 @@ export class ChurchService {
           this.discipleshipMemberRepo.create({
             churchId,
             fullName,
-            phone: this.normalizeOptionalText(row.phone, 40),
-            gender: this.normalizeGenderText(row.gender),
+            phone,
+            gender,
             enrollmentDate,
-            status,
+            isFirstTimeAtChurch,
+            hasChurchRole: Boolean(
+              this.normalizeOptionalText(row.churchRoleNotes, 1200),
+            ),
+            churchRoleNotes: this.normalizeOptionalText(
+              row.churchRoleNotes,
+              1200,
+            ),
+            status: DiscipleshipMemberStatus.ACTIVE,
             notes: this.normalizeOptionalText(row.notes, 1200),
             createdByUserId,
           }),
         );
 
         const uniqueGroupIds = [...new Set(groupIds)];
+        await this.ensureDiscipleshipMemberAlias(
+          churchId,
+          member.id,
+          member.fullName,
+          'manual',
+        );
         await this.syncDiscipleshipMemberGroups(
           churchId,
           member.id,
@@ -662,6 +759,202 @@ export class ChurchService {
       errors: issues.filter((issue) => issue.severity === 'error').length,
       issues,
       members: await this.withDiscipleshipMemberGroups(createdMembers),
+    };
+  }
+
+  async listDiscipleshipMatchCandidates(churchId: string) {
+    await this.runDiscipleshipTransactionSync(churchId);
+    return this.discipleshipMatchCandidateRepo.find({
+      where: {
+        churchId,
+        status: DiscipleshipMatchCandidateStatus.PENDING,
+      },
+      relations: ['contributor', 'candidateMember'],
+      order: { matchScore: 'DESC', createdAt: 'ASC' },
+    });
+  }
+
+  async reviewDiscipleshipMatchCandidate(
+    churchId: string,
+    reviewedByUserId: string,
+    candidateId: string,
+    action: unknown,
+  ) {
+    if (action !== 'confirm' && action !== 'dismiss') {
+      throw new BadRequestException('Match action must be confirm or dismiss');
+    }
+    const candidate = await this.discipleshipMatchCandidateRepo.findOne({
+      where: { id: candidateId, churchId },
+      relations: ['contributor', 'candidateMember'],
+    });
+    if (!candidate) {
+      throw new NotFoundException('Potential match not found');
+    }
+
+    candidate.reviewedByUserId = reviewedByUserId;
+    candidate.reviewedAt = new Date();
+    candidate.status =
+      action === 'confirm'
+        ? DiscipleshipMatchCandidateStatus.CONFIRMED
+        : DiscipleshipMatchCandidateStatus.DISMISSED;
+    await this.discipleshipMatchCandidateRepo.save(candidate);
+
+    if (action === 'dismiss') {
+      return candidate;
+    }
+
+    const existingLink = await this.discipleshipMemberContributorRepo.findOne({
+      where: { churchId, contributorId: candidate.contributorId },
+    });
+    if (
+      existingLink &&
+      existingLink.memberId !== candidate.candidateMemberId
+    ) {
+      const linkedMember = await this.discipleshipMemberRepo.findOne({
+        where: { id: existingLink.memberId, churchId },
+      });
+      if (linkedMember) {
+        await this.mergeDiscipleshipMemberRecords(
+          churchId,
+          candidate.candidateMember,
+          [linkedMember],
+        );
+      }
+    } else if (!existingLink) {
+      await this.linkDiscipleshipContributor(
+        churchId,
+        candidate.candidateMember,
+        candidate.contributorId,
+        'staff_confirmed',
+      );
+    }
+
+    await this.ensureDiscipleshipMemberAlias(
+      churchId,
+      candidate.candidateMemberId,
+      candidate.observedName,
+      'transaction',
+      candidate.contributorId,
+    );
+    await this.discipleshipMatchCandidateRepo.update(
+      {
+        churchId,
+        contributorId: candidate.contributorId,
+        status: DiscipleshipMatchCandidateStatus.PENDING,
+      },
+      {
+        status: DiscipleshipMatchCandidateStatus.DISMISSED,
+        reviewedByUserId,
+        reviewedAt: new Date(),
+      },
+    );
+    candidate.status = DiscipleshipMatchCandidateStatus.CONFIRMED;
+    await this.discipleshipMatchCandidateRepo.save(candidate);
+    await this.runDiscipleshipTransactionSync(churchId);
+    return candidate;
+  }
+
+  async importMpesaStatementForDiscipleship(churchId: string, file: any) {
+    if (!file?.buffer) {
+      throw new BadRequestException('Upload an M-Pesa statement XLSX or CSV');
+    }
+    const extension = extname(file.originalname || '').toLowerCase();
+    if (!['.xlsx', '.csv'].includes(extension)) {
+      throw new BadRequestException('Upload an XLSX or CSV statement');
+    }
+    const matrix =
+      extension === '.csv'
+        ? this.parseCsvImportMatrix(file.buffer.toString('utf8'))
+        : await this.parseExcelImportMatrix(file.buffer);
+    if (matrix.length < 2) {
+      throw new BadRequestException('The statement has no transaction rows');
+    }
+
+    const headers = matrix[0].values.map((value) =>
+      this.normalizeImportKey(value).replace(/[^a-z0-9]/g, ''),
+    );
+    const findHeader = (candidates: string[]) =>
+      headers.findIndex((header) => candidates.includes(header));
+    const receiptIndex = findHeader([
+      'transid',
+      'transactionid',
+      'mpesareceiptnumber',
+      'receiptnumber',
+      'receiptno',
+      'receipt',
+      'reference',
+    ]);
+    const fullNameIndex = findHeader([
+      'customername',
+      'payername',
+      'fullname',
+      'name',
+    ]);
+    const firstNameIndex = findHeader(['firstname', 'first']);
+    const middleNameIndex = findHeader(['middlename', 'middle']);
+    const lastNameIndex = findHeader(['lastname', 'surname', 'last']);
+    if (receiptIndex < 0) {
+      throw new BadRequestException(
+        'Statement must include a transaction ID or receipt number column',
+      );
+    }
+    if (
+      fullNameIndex < 0 &&
+      firstNameIndex < 0 &&
+      middleNameIndex < 0 &&
+      lastNameIndex < 0
+    ) {
+      throw new BadRequestException(
+        'Statement must include payer name or first/middle/last name columns',
+      );
+    }
+
+    let matched = 0;
+    let updated = 0;
+    let skipped = 0;
+    const issues: { row: number; message: string }[] = [];
+    for (const row of matrix.slice(1)) {
+      const receipt = this.normalizeOptionalText(
+        row.values[receiptIndex],
+        120,
+      );
+      const fullName =
+        this.normalizeOptionalText(row.values[fullNameIndex], 180) ||
+        [firstNameIndex, middleNameIndex, lastNameIndex]
+          .filter((index) => index >= 0)
+          .map((index) => this.normalizeOptionalText(row.values[index], 80))
+          .filter(Boolean)
+          .join(' ');
+      if (!receipt || !fullName) {
+        skipped += 1;
+        continue;
+      }
+      const contribution = await this.contributionRepo.findOne({
+        where: { churchId, paymentReference: receipt },
+      });
+      if (!contribution) {
+        skipped += 1;
+        issues.push({
+          row: row.rowNumber,
+          message: `No contribution matched receipt ${receipt}`,
+        });
+        continue;
+      }
+      matched += 1;
+      if (this.normalizeImportKey(contribution.payerName) !== this.normalizeImportKey(fullName)) {
+        contribution.payerName = fullName;
+        await this.contributionRepo.save(contribution);
+        updated += 1;
+      }
+    }
+
+    await this.runDiscipleshipTransactionSync(churchId);
+    return {
+      totalRows: matrix.length - 1,
+      matched,
+      updated,
+      skipped,
+      issues: issues.slice(0, 100),
     };
   }
 
@@ -699,6 +992,17 @@ export class ChurchService {
     }
 
     return qb.take(250).getMany();
+  }
+
+  async getDiscipleshipMember(churchId: string, memberId: string) {
+    await this.runDiscipleshipTransactionSync(churchId);
+    const member = await this.discipleshipMemberRepo.findOne({
+      where: { id: memberId, churchId },
+    });
+    if (!member) {
+      throw new NotFoundException('Discipleship member not found');
+    }
+    return (await this.withDiscipleshipMemberGroups([member]))[0];
   }
 
   async markDiscipleshipAttendance(
@@ -1699,6 +2003,14 @@ export class ChurchService {
       .addSelect('contributor.phone', 'phone')
       .addSelect('contributor.gender', 'gender')
       .addSelect(
+        "GROUP_CONCAT(DISTINCT contribution.payerName SEPARATOR '|||')",
+        'observedNames',
+      )
+      .addSelect(
+        "GROUP_CONCAT(DISTINCT contribution.providerPayerId SEPARATOR '|||')",
+        'providerPayerIds',
+      )
+      .addSelect(
         'MIN(COALESCE(contribution.receivedAt, contribution.createdAt))',
         'firstContributionAt',
       )
@@ -1723,6 +2035,19 @@ export class ChurchService {
 
     const members = await this.discipleshipMemberRepo.find({
       where: { churchId },
+      order: { createdAt: 'ASC' },
+    });
+    members.sort((left, right) => {
+      if (!!left.createdByUserId !== !!right.createdByUserId) {
+        return left.createdByUserId ? -1 : 1;
+      }
+      return 0;
+    });
+    const aliases = await this.discipleshipMemberAliasRepo.find({
+      where: { churchId },
+    });
+    const contributorLinks = await this.discipleshipMemberContributorRepo.find({
+      where: { churchId },
     });
     const membersByContributorId = new Map<string, DiscipleshipMember>();
     const membersByPhone = new Map<string, DiscipleshipMember>();
@@ -1743,6 +2068,18 @@ export class ChurchService {
         membersByName.set(name, member);
       }
     });
+    contributorLinks.forEach((link) => {
+      const member = members.find((item) => item.id === link.memberId);
+      if (member) {
+        membersByContributorId.set(link.contributorId, member);
+      }
+    });
+    aliases.forEach((alias) => {
+      const member = members.find((item) => item.id === alias.memberId);
+      if (member && !membersByName.has(alias.normalizedAlias)) {
+        membersByName.set(alias.normalizedAlias, member);
+      }
+    });
 
     const existingMemberships = await this.discipleshipMembershipRepo.find({
       where: { churchId, groupId: serviceGroup.id },
@@ -1755,12 +2092,60 @@ export class ChurchService {
     let created = 0;
 
     for (const identity of identities) {
+      const linkedMember = identity.contributorIds
+        .map((contributorId) => membersByContributorId.get(contributorId))
+        .find(Boolean);
+      const phoneMatchedMember = identity.phone
+        ? membersByPhone.get(identity.phone)
+        : null;
+      let preferredManualMatch: DiscipleshipMember | null = null;
+      if (linkedMember && !linkedMember.createdByUserId) {
+        if (
+          phoneMatchedMember &&
+          phoneMatchedMember.id !== linkedMember.id &&
+          phoneMatchedMember.createdByUserId
+        ) {
+          preferredManualMatch = phoneMatchedMember;
+        } else {
+          preferredManualMatch =
+            (await this.findSafeDiscipleshipNameMatch(
+              churchId,
+              identity,
+              members.filter((member) => member.id !== linkedMember.id),
+              aliases.filter((alias) => alias.memberId !== linkedMember.id),
+            )) || null;
+        }
+        if (preferredManualMatch?.createdByUserId) {
+          await this.mergeDiscipleshipMemberRecords(
+            churchId,
+            preferredManualMatch,
+            [linkedMember],
+          );
+        } else {
+          preferredManualMatch = null;
+        }
+      }
+      const mappedExactMember = membersByName.get(identity.nameKey);
+      const compatibleExactMember =
+        mappedExactMember &&
+        !this.hasDiscipleshipPhoneConflict(
+          identity.phone,
+          mappedExactMember.phone,
+        )
+          ? mappedExactMember
+          : null;
+
       let member =
-        identity.contributorIds
-          .map((contributorId) => membersByContributorId.get(contributorId))
-          .find(Boolean) ||
-        (identity.phone ? membersByPhone.get(identity.phone) : null) ||
-        membersByName.get(identity.nameKey) ||
+        preferredManualMatch ||
+        linkedMember ||
+        phoneMatchedMember ||
+        compatibleExactMember ||
+        (await this.findSafeDiscipleshipNameMatch(
+          churchId,
+          identity,
+          members,
+          aliases,
+        )) ||
         (await this.findDiscipleshipMemberForTransactionIdentity(
           churchId,
           identity,
@@ -1823,6 +2208,23 @@ export class ChurchService {
       for (const contributorId of identity.contributorIds) {
         membersByContributorId.set(contributorId, member);
         memberIdByContributorId.set(contributorId, member.id);
+        await this.linkDiscipleshipContributor(
+          churchId,
+          member,
+          contributorId,
+          membersByName.get(identity.nameKey)?.id === member.id
+            ? 'exact_name'
+            : 'transaction_sync',
+        );
+        for (const name of identity.names) {
+          await this.ensureDiscipleshipMemberAlias(
+            churchId,
+            member.id,
+            name,
+            'transaction',
+            contributorId,
+          );
+        }
       }
       if (!serviceMemberIds.has(member.id)) {
         membershipsToAdd.push(
@@ -1873,19 +2275,33 @@ export class ChurchService {
 
       const phone = this.normalizePlainPhone(row.phone);
       const nameKey = this.normalizeImportKey(fullName);
+      const observedNames = `${row.observedNames || ''}`
+        .split('|||')
+        .map((name) => this.normalizeOptionalText(name, 180))
+        .filter((name): name is string => Boolean(name));
+      const names = [...new Set([fullName, ...observedNames])];
+      const providerPayerIds = `${row.providerPayerIds || ''}`
+        .split('|||')
+        .map((value) => this.normalizeOptionalText(value, 180))
+        .filter((value): value is string => Boolean(value));
       if (!nameKey) {
         continue;
       }
-      const key = phone ? `phone:${phone}` : `name:${nameKey}`;
+      const key = phone
+        ? `phone:${phone}`
+        : providerPayerIds[0]
+          ? `provider:${providerPayerIds[0]}`
+          : `name:${nameKey}`;
       const existing = identities.get(key);
 
       if (!existing) {
         identities.set(key, {
           key,
           contributorIds: [contributorId],
-          names: [fullName],
-          fullName,
+          names,
+          fullName: this.chooseDiscipleshipTransactionName(names),
           phone,
+          providerPayerIds,
           gender: this.normalizeGenderText(row.gender),
           firstContributionAt: row.firstContributionAt,
           nameKey,
@@ -1896,8 +2312,12 @@ export class ChurchService {
       if (!existing.contributorIds.includes(contributorId)) {
         existing.contributorIds.push(contributorId);
       }
-      if (!existing.names.includes(fullName)) {
-        existing.names.push(fullName);
+      for (const name of names) {
+        if (!existing.names.includes(name)) {
+          existing.names.push(name);
+        }
+      }
+      if (existing.names.length > 1) {
         existing.fullName = this.chooseDiscipleshipTransactionName(
           existing.names,
         );
@@ -1906,6 +2326,9 @@ export class ChurchService {
       if (!existing.phone && phone) {
         existing.phone = phone;
       }
+      existing.providerPayerIds = [
+        ...new Set([...existing.providerPayerIds, ...providerPayerIds]),
+      ];
       if (!existing.gender && row.gender) {
         existing.gender = this.normalizeGenderText(row.gender);
       }
@@ -1942,6 +2365,230 @@ export class ChurchService {
     return nextDate < currentDate ? next : current;
   }
 
+  private async findSafeDiscipleshipNameMatch(
+    churchId: string,
+    identity: TransactionDiscipleshipIdentity,
+    members: DiscipleshipMember[],
+    aliases: DiscipleshipMemberAlias[],
+  ) {
+    const observedNameKeys = new Set(
+      identity.names.map((name) => this.normalizeImportKey(name)).filter(Boolean),
+    );
+    const exactMatches = members.filter((member) => {
+      if (observedNameKeys.has(this.normalizeImportKey(member.fullName))) {
+        return true;
+      }
+      return aliases.some(
+        (alias) =>
+          alias.memberId === member.id &&
+          observedNameKeys.has(alias.normalizedAlias),
+      );
+    });
+    const exactCompatible = exactMatches.filter(
+      (member) => !this.hasDiscipleshipPhoneConflict(identity.phone, member.phone),
+    );
+    if (exactCompatible.length === 1) {
+      return exactCompatible[0];
+    }
+
+    const scored = members
+      .map((member) => {
+        const names = [
+          member.fullName,
+          ...aliases
+            .filter((alias) => alias.memberId === member.id)
+            .map((alias) => alias.alias),
+        ];
+        const score = Math.max(
+          ...identity.names.flatMap((observedName) =>
+            names.map((candidateName) =>
+              this.scoreDiscipleshipNameMatch(observedName, candidateName),
+            ),
+          ),
+        );
+        return {
+          member,
+          score,
+          phoneConflict: this.hasDiscipleshipPhoneConflict(
+            identity.phone,
+            member.phone,
+          ),
+        };
+      })
+      .filter((item) => item.score >= 180)
+      .sort((left, right) => right.score - left.score);
+
+    const compatible = scored.filter((item) => !item.phoneConflict);
+    if (
+      exactCompatible.length === 0 &&
+      compatible.length === 1 &&
+      (scored.length === 1 || compatible[0].score > scored[1].score)
+    ) {
+      return compatible[0].member;
+    }
+
+    const candidates =
+      exactMatches.length > 0
+        ? exactMatches.map((member) => ({
+            member,
+            score: 300,
+            phoneConflict: this.hasDiscipleshipPhoneConflict(
+              identity.phone,
+              member.phone,
+            ),
+          }))
+        : scored;
+    if (candidates.length > 0) {
+      await this.saveDiscipleshipMatchCandidates(
+        churchId,
+        identity,
+        candidates,
+      );
+    }
+
+    return null;
+  }
+
+  private scoreDiscipleshipNameMatch(left: string, right: string) {
+    const leftParts = this.getDiscipleshipNameParts(left);
+    const rightParts = this.getDiscipleshipNameParts(right);
+    if (leftParts.length < 2 || rightParts.length < 2) {
+      return 0;
+    }
+
+    const leftSet = new Set(leftParts);
+    const rightSet = new Set(rightParts);
+    const shared = [...leftSet].filter((part) => rightSet.has(part));
+    const shorter = leftSet.size <= rightSet.size ? leftSet : rightSet;
+    const shorterContained = [...shorter].every((part) =>
+      (leftSet.size <= rightSet.size ? rightSet : leftSet).has(part),
+    );
+    if (shared.length < 2 || !shorterContained) {
+      return 0;
+    }
+    return shared.length * 100 - Math.abs(leftSet.size - rightSet.size) * 10;
+  }
+
+  private getDiscipleshipNameParts(value: unknown) {
+    return this.normalizeImportKey(value)
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((part) => part.length > 1);
+  }
+
+  private hasDiscipleshipPhoneConflict(
+    transactionPhone: string | null,
+    memberPhone: string | null,
+  ) {
+    const normalizedMemberPhone = this.normalizePlainPhone(memberPhone);
+    return Boolean(
+      transactionPhone &&
+        normalizedMemberPhone &&
+        transactionPhone !== normalizedMemberPhone,
+    );
+  }
+
+  private async saveDiscipleshipMatchCandidates(
+    churchId: string,
+    identity: TransactionDiscipleshipIdentity,
+    candidates: {
+      member: DiscipleshipMember;
+      score: number;
+      phoneConflict: boolean;
+    }[],
+  ) {
+    for (const contributorId of identity.contributorIds) {
+      for (const candidate of candidates.slice(0, 5)) {
+        let record = await this.discipleshipMatchCandidateRepo.findOne({
+          where: {
+            contributorId,
+            candidateMemberId: candidate.member.id,
+          },
+        });
+        if (record?.status === DiscipleshipMatchCandidateStatus.DISMISSED) {
+          continue;
+        }
+        record =
+          record ||
+          this.discipleshipMatchCandidateRepo.create({
+            churchId,
+            contributorId,
+            candidateMemberId: candidate.member.id,
+            status: DiscipleshipMatchCandidateStatus.PENDING,
+            reviewedByUserId: null,
+            reviewedAt: null,
+          });
+        record.observedName = identity.fullName;
+        record.normalizedName = identity.nameKey;
+        record.matchReason = candidate.phoneConflict
+          ? 'matching name parts, but phone numbers conflict'
+          : 'matching name parts require confirmation';
+        record.matchScore = candidate.score;
+        if (record.status !== DiscipleshipMatchCandidateStatus.CONFIRMED) {
+          record.status = DiscipleshipMatchCandidateStatus.PENDING;
+        }
+        await this.discipleshipMatchCandidateRepo.save(record);
+      }
+    }
+  }
+
+  private async ensureDiscipleshipMemberAlias(
+    churchId: string,
+    memberId: string,
+    aliasValue: unknown,
+    source: string,
+    contributorId: string | null = null,
+  ) {
+    const alias = this.normalizeOptionalText(aliasValue, 180);
+    const normalizedAlias = this.normalizeImportKey(alias);
+    if (!alias || !normalizedAlias) {
+      return null;
+    }
+    const existing = await this.discipleshipMemberAliasRepo.findOne({
+      where: { memberId, normalizedAlias },
+    });
+    if (existing) {
+      if (!existing.contributorId && contributorId) {
+        existing.contributorId = contributorId;
+        return this.discipleshipMemberAliasRepo.save(existing);
+      }
+      return existing;
+    }
+    return this.discipleshipMemberAliasRepo.save(
+      this.discipleshipMemberAliasRepo.create({
+        churchId,
+        memberId,
+        contributorId,
+        alias,
+        normalizedAlias,
+        source,
+      }),
+    );
+  }
+
+  private async linkDiscipleshipContributor(
+    churchId: string,
+    member: DiscipleshipMember,
+    contributorId: string,
+    matchMethod: string,
+  ) {
+    const existing = await this.discipleshipMemberContributorRepo.findOne({
+      where: { churchId, contributorId },
+    });
+    if (existing) {
+      return existing;
+    }
+    return this.discipleshipMemberContributorRepo.save(
+      this.discipleshipMemberContributorRepo.create({
+        churchId,
+        memberId: member.id,
+        contributorId,
+        matchMethod,
+        isConfirmed: true,
+      }),
+    );
+  }
+
   private async findDiscipleshipMemberForTransactionIdentity(
     churchId: string,
     identity: TransactionDiscipleshipIdentity,
@@ -1949,7 +2596,6 @@ export class ChurchService {
     const conditions: string[] = [];
     const params: Record<string, unknown> = {
       churchId,
-      nameKey: identity.nameKey,
     };
 
     if (identity.contributorIds.length > 0) {
@@ -1959,9 +2605,6 @@ export class ChurchService {
     if (identity.phone) {
       conditions.push('member.phone = :phone');
       params.phone = identity.phone;
-    }
-    if (identity.nameKey) {
-      conditions.push('LOWER(TRIM(member.fullName)) = :nameKey');
     }
     if (conditions.length === 0) {
       return null;
@@ -2016,6 +2659,9 @@ export class ChurchService {
 
   private sortDiscipleshipMergeCandidates(members: DiscipleshipMember[]) {
     return [...members].sort((left, right) => {
+      if (!!left.createdByUserId !== !!right.createdByUserId) {
+        return left.createdByUserId ? -1 : 1;
+      }
       if (!!left.contributorId !== !!right.contributorId) {
         return left.contributorId ? -1 : 1;
       }
@@ -2104,6 +2750,38 @@ export class ChurchService {
         churchId,
       });
     }
+
+    const duplicateAliases = await this.discipleshipMemberAliasRepo.find({
+      where: { churchId, memberId: In(duplicateIds) },
+    });
+    for (const alias of duplicateAliases) {
+      await this.ensureDiscipleshipMemberAlias(
+        churchId,
+        canonical.id,
+        alias.alias,
+        alias.source,
+        alias.contributorId,
+      );
+    }
+    await this.discipleshipMemberAliasRepo.delete({
+      churchId,
+      memberId: In(duplicateIds),
+    });
+
+    const duplicateLinks =
+      await this.discipleshipMemberContributorRepo.find({
+        where: { churchId, memberId: In(duplicateIds) },
+      });
+    for (const link of duplicateLinks) {
+      await this.discipleshipMemberContributorRepo.update(
+        { id: link.id },
+        { memberId: canonical.id },
+      );
+    }
+    await this.discipleshipMatchCandidateRepo.delete({
+      churchId,
+      candidateMemberId: In(duplicateIds),
+    });
 
     let needsSave = false;
     const earliestEnrollmentDate = [canonical, ...duplicates]
@@ -2276,6 +2954,12 @@ export class ChurchService {
     ) {
       return null;
     }
+    if (/^0[17]\d{8}$/.test(digits)) {
+      return `254${digits.slice(1)}`;
+    }
+    if (/^[17]\d{8}$/.test(digits)) {
+      return `254${digits}`;
+    }
     return digits;
   }
 
@@ -2340,13 +3024,22 @@ export class ChurchService {
         fullName: this.getImportCell(row.values, headerMap, 'fullName'),
         phone: this.getImportCell(row.values, headerMap, 'phone'),
         gender: this.getImportCell(row.values, headerMap, 'gender'),
+        firstTimeAtChurch: this.getImportCell(
+          row.values,
+          headerMap,
+          'firstTimeAtChurch',
+        ),
         enrollmentDate: this.getImportCell(
           row.values,
           headerMap,
           'enrollmentDate',
         ),
-        status: this.getImportCell(row.values, headerMap, 'status'),
         groups: this.getImportCell(row.values, headerMap, 'groups'),
+        churchRoleNotes: this.getImportCell(
+          row.values,
+          headerMap,
+          'churchRoleNotes',
+        ),
         notes: this.getImportCell(row.values, headerMap, 'notes'),
       }))
       .filter((row) =>
@@ -2354,9 +3047,10 @@ export class ChurchService {
           row.fullName,
           row.phone,
           row.gender,
+          row.firstTimeAtChurch,
           row.enrollmentDate,
-          row.status,
           row.groups,
+          row.churchRoleNotes,
           row.notes,
         ].some((value) => this.normalizeOptionalText(value, 1200)),
       );
@@ -2461,14 +3155,22 @@ export class ChurchService {
       ['mobile', 'phone'],
       ['gender', 'gender'],
       ['sex', 'gender'],
+      ['firsttimeatchurch', 'firstTimeAtChurch'],
+      ['first time at church', 'firstTimeAtChurch'],
+      ['firsttime', 'firstTimeAtChurch'],
+      ['first time', 'firstTimeAtChurch'],
       ['enrollmentdate', 'enrollmentDate'],
       ['enrollment date', 'enrollmentDate'],
       ['enrolment date', 'enrollmentDate'],
       ['date enrolled', 'enrollmentDate'],
-      ['status', 'status'],
       ['groups', 'groups'],
       ['group', 'groups'],
       ['church groups', 'groups'],
+      ['churchrolenotes', 'churchRoleNotes'],
+      ['church role notes', 'churchRoleNotes'],
+      ['role', 'churchRoleNotes'],
+      ['small christian community', 'churchRoleNotes'],
+      ['small christian community notes', 'churchRoleNotes'],
       ['notes', 'notes'],
       ['note', 'notes'],
     ]);
@@ -2725,6 +3427,13 @@ export class ChurchService {
     return fallback;
   }
 
+  private normalizeNullableBoolean(value: unknown) {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+    return this.normalizeBoolean(value, false);
+  }
+
   private normalizeGenderText(value: unknown) {
     const gender = this.normalizeOptionalText(value, 20);
     return gender ? gender.toLowerCase() : null;
@@ -2862,7 +3571,23 @@ export class ChurchService {
       where: { memberId: In(memberIds) },
       relations: ['group'],
     });
+    const aliases = await this.discipleshipMemberAliasRepo.find({
+      where: { memberId: In(memberIds) },
+      order: { createdAt: 'ASC' },
+    });
+    const contributorLinks =
+      await this.discipleshipMemberContributorRepo.find({
+        where: { memberId: In(memberIds) },
+      });
+    const pendingMatches = await this.discipleshipMatchCandidateRepo.find({
+      where: {
+        candidateMemberId: In(memberIds),
+        status: DiscipleshipMatchCandidateStatus.PENDING,
+      },
+    });
     const groupsByMemberId = new Map<string, DiscipleshipGroup[]>();
+    const aliasesByMemberId = new Map<string, DiscipleshipMemberAlias[]>();
+    const linksByMemberId = new Map<string, DiscipleshipMemberContributor[]>();
 
     memberships.forEach((membership) => {
       const groups = groupsByMemberId.get(membership.memberId) || [];
@@ -2870,6 +3595,16 @@ export class ChurchService {
         groups.push(membership.group);
       }
       groupsByMemberId.set(membership.memberId, groups);
+    });
+    aliases.forEach((alias) => {
+      const items = aliasesByMemberId.get(alias.memberId) || [];
+      items.push(alias);
+      aliasesByMemberId.set(alias.memberId, items);
+    });
+    contributorLinks.forEach((link) => {
+      const items = linksByMemberId.get(link.memberId) || [];
+      items.push(link);
+      linksByMemberId.set(link.memberId, items);
     });
     const contributionSummaryByMemberId =
       await this.getDiscipleshipContributionSummaries(members);
@@ -2880,6 +3615,11 @@ export class ChurchService {
       groupIds: (groupsByMemberId.get(member.id) || []).map(
         (group) => group.id,
       ),
+      aliases: aliasesByMemberId.get(member.id) || [],
+      linkedContributorCount: (linksByMemberId.get(member.id) || []).length,
+      pendingMatchCount: pendingMatches.filter(
+        (candidate) => candidate.candidateMemberId === member.id,
+      ).length,
       contributionSummary:
         contributionSummaryByMemberId.get(member.id) || {
           totalAmount: 0,
@@ -2912,6 +3652,16 @@ export class ChurchService {
       const nameKey = this.normalizeImportKey(member.fullName);
       if (nameKey && !memberByName.has(nameKey)) {
         memberByName.set(nameKey, member);
+      }
+    });
+    const contributorLinks =
+      await this.discipleshipMemberContributorRepo.find({
+        where: { memberId: In(members.map((member) => member.id)) },
+      });
+    contributorLinks.forEach((link) => {
+      const member = members.find((item) => item.id === link.memberId);
+      if (member) {
+        memberByContributorId.set(link.contributorId, member);
       }
     });
 

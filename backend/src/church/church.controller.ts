@@ -144,6 +144,82 @@ export class ChurchController {
     );
   }
 
+  @Get('discipleship/matches')
+  @Permissions(ChurchPermission.DISCIPLESHIP_MANAGE)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+    ChurchUserRole.MEDIA,
+  )
+  listDiscipleshipMatches(@Request() req: any) {
+    return this.churchService.listDiscipleshipMatchCandidates(
+      req.user.churchId,
+    );
+  }
+
+  @Post('discipleship/matches/:candidateId/review')
+  @Permissions(ChurchPermission.DISCIPLESHIP_MANAGE)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+    ChurchUserRole.MEDIA,
+  )
+  reviewDiscipleshipMatch(
+    @Request() req: any,
+    @Param('candidateId') candidateId: string,
+    @Body() body: any,
+  ) {
+    return this.churchService.reviewDiscipleshipMatchCandidate(
+      req.user.churchId,
+      req.user.id,
+      candidateId,
+      body.action,
+    );
+  }
+
+  @Post('discipleship/reconciliation/mpesa-statement')
+  @Permissions(ChurchPermission.DISCIPLESHIP_MANAGE)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+    ChurchUserRole.MEDIA,
+  )
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  importMpesaStatement(
+    @Request() req: any,
+    @UploadedFile() file: any,
+  ) {
+    return this.churchService.importMpesaStatementForDiscipleship(
+      req.user.churchId,
+      file,
+    );
+  }
+
+  @Get('discipleship/members/:memberId')
+  @Permissions(ChurchPermission.DISCIPLESHIP_VIEW)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+    ChurchUserRole.MEDIA,
+  )
+  getDiscipleshipMember(
+    @Request() req: any,
+    @Param('memberId') memberId: string,
+  ) {
+    return this.churchService.getDiscipleshipMember(
+      req.user.churchId,
+      memberId,
+    );
+  }
+
   @Patch('discipleship/members/:memberId')
   @Permissions(ChurchPermission.DISCIPLESHIP_MANAGE)
   @Roles(

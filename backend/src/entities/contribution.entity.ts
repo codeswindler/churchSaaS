@@ -109,6 +109,12 @@ export class Contribution {
   @Column({ type: 'varchar', length: 120, nullable: true })
   paymentReference: string | null;
 
+  @Column({ type: 'varchar', length: 180, nullable: true })
+  payerName: string | null;
+
+  @Column({ type: 'varchar', length: 180, nullable: true })
+  providerPayerId: string | null;
+
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 

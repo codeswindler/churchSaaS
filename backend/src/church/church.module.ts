@@ -9,6 +9,9 @@ import { Contribution } from '../entities/contribution.entity';
 import { Contributor } from '../entities/contributor.entity';
 import { DiscipleshipAttendance } from '../entities/discipleship-attendance.entity';
 import { DiscipleshipGroup } from '../entities/discipleship-group.entity';
+import { DiscipleshipMatchCandidate } from '../entities/discipleship-match-candidate.entity';
+import { DiscipleshipMemberAlias } from '../entities/discipleship-member-alias.entity';
+import { DiscipleshipMemberContributor } from '../entities/discipleship-member-contributor.entity';
 import { DiscipleshipMember } from '../entities/discipleship-member.entity';
 import { DiscipleshipMembership } from '../entities/discipleship-membership.entity';
 import { FundAccount } from '../entities/fund-account.entity';
@@ -30,6 +33,9 @@ import { ChurchService } from './church.service';
       Contributor,
       DiscipleshipAttendance,
       DiscipleshipGroup,
+      DiscipleshipMatchCandidate,
+      DiscipleshipMemberAlias,
+      DiscipleshipMemberContributor,
       DiscipleshipMember,
       DiscipleshipMembership,
       SmsAddressBook,
