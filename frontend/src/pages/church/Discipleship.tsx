@@ -337,7 +337,12 @@ export default function ChurchDiscipleship() {
       refreshDiscipleship();
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Unable to save member');
+      const message = error?.response?.data?.message || 'Unable to save member';
+      if (error?.response?.status === 409) {
+        toast(message, { icon: '!' });
+        return;
+      }
+      toast.error(message);
     },
   });
 

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -436,6 +437,16 @@ export class ChurchService {
     if (!gender || !['male', 'female'].includes(gender)) {
       throw new BadRequestException('Member gender must be male or female');
     }
+    const duplicate = await this.findDiscipleshipCreateConflict(
+      churchId,
+      fullName,
+      phone,
+    );
+    if (duplicate) {
+      throw new ConflictException(
+        `${duplicate.reason}: ${duplicate.member.fullName}. Open the existing disciple record instead of creating another one.`,
+      );
+    }
 
     const member = await this.discipleshipMemberRepo.save(
       this.discipleshipMemberRepo.create({
@@ -664,6 +675,21 @@ export class ChurchService {
           member: fullName,
           severity: 'error',
           message: 'Gender must be male or female',
+        });
+        continue;
+      }
+      const duplicate = await this.findDiscipleshipCreateConflict(
+        churchId,
+        fullName,
+        phone,
+      );
+      if (duplicate) {
+        skipped += 1;
+        issues.push({
+          row: row.rowNumber,
+          member: fullName,
+          severity: 'warning',
+          message: `${duplicate.reason}: ${duplicate.member.fullName}`,
         });
         continue;
       }
@@ -2444,6 +2470,85 @@ export class ChurchService {
         identity,
         candidates,
       );
+    }
+
+    return null;
+  }
+
+  private async findDiscipleshipCreateConflict(
+    churchId: string,
+    fullName: string,
+    phone: string,
+  ) {
+    const normalizedPhone = this.normalizePlainPhone(phone);
+    const normalizedName = this.normalizeImportKey(fullName);
+    const members = await this.discipleshipMemberRepo.find({
+      where: { churchId },
+      order: { createdAt: 'ASC' },
+    });
+    const aliases = await this.discipleshipMemberAliasRepo.find({
+      where: { churchId },
+    });
+
+    if (normalizedPhone) {
+      const phoneMatch = members.find(
+        (member) => this.normalizePlainPhone(member.phone) === normalizedPhone,
+      );
+      if (phoneMatch) {
+        return {
+          member: phoneMatch,
+          reason: 'A disciple with this phone number already exists',
+        };
+      }
+    }
+
+    const exactNameMatch = members.find((member) => {
+      if (this.normalizeImportKey(member.fullName) === normalizedName) {
+        return true;
+      }
+      return aliases.some(
+        (alias) =>
+          alias.memberId === member.id &&
+          alias.normalizedAlias === normalizedName,
+      );
+    });
+    if (exactNameMatch) {
+      return {
+        member: exactNameMatch,
+        reason: 'A disciple with this name already exists',
+      };
+    }
+
+    const scored = members
+      .map((member) => {
+        const candidateNames = [
+          member.fullName,
+          ...aliases
+            .filter((alias) => alias.memberId === member.id)
+            .map((alias) => alias.alias),
+        ];
+        const score = Math.max(
+          ...candidateNames.map((candidateName) =>
+            this.scoreDiscipleshipNameMatch(fullName, candidateName),
+          ),
+        );
+        return {
+          member,
+          score,
+          phoneConflict: this.hasDiscipleshipPhoneConflict(
+            normalizedPhone,
+            member.phone,
+          ),
+        };
+      })
+      .filter((item) => item.score >= 180 && !item.phoneConflict)
+      .sort((left, right) => right.score - left.score);
+
+    if (scored.length === 1) {
+      return {
+        member: scored[0].member,
+        reason: 'This looks like an existing disciple',
+      };
     }
 
     return null;

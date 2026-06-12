@@ -433,7 +433,7 @@ export class ContributionsService {
         providerRequestId: payload.phoneForContributor ? null : payload.phone,
         paymentReference: payload.transId,
         payerName: payload.customerName || contributor?.name || null,
-        providerPayerId: payload.phone,
+        providerPayerId: payload.phoneForContributor || payload.phone,
         notes: this.buildMpesaC2BNote(
           payload,
           fundAccount,
@@ -822,10 +822,7 @@ export class ContributionsService {
     const rawPhone = this.normalizeOptionalText(
       body?.MSISDN || body?.PhoneNumber || body?.phone,
     );
-    const customerName = [body?.FirstName, body?.MiddleName, body?.LastName]
-      .map((item) => this.normalizeOptionalText(item))
-      .filter(Boolean)
-      .join(' ');
+    const customerName = this.buildMpesaC2BCustomerName(body);
 
     return {
       transId: this.normalizeOptionalText(
@@ -841,13 +838,85 @@ export class ContributionsService {
       ),
       phone: rawPhone,
       phoneForContributor: this.extractKenyanPhone(rawPhone),
-      customerName: customerName || null,
+      customerName,
       invoiceNumber: this.normalizeOptionalText(body?.InvoiceNumber),
       orgAccountBalance: this.normalizeOptionalText(body?.OrgAccountBalance),
       thirdPartyTransId: this.normalizeOptionalText(body?.ThirdPartyTransID),
       receivedAt: this.parseMpesaTimestamp(transTime),
       raw: body,
     };
+  }
+
+  private buildMpesaC2BCustomerName(body: any) {
+    const directName = [
+      body?.CustomerName,
+      body?.customerName,
+      body?.FullName,
+      body?.fullName,
+      body?.PayerName,
+      body?.payerName,
+      body?.Name,
+      body?.name,
+    ]
+      .map((item) => this.normalizeOptionalText(item))
+      .find(Boolean);
+    if (directName) {
+      return directName;
+    }
+
+    const kycParts = this.extractMpesaKycNameParts(body?.KYCInfo);
+    const bodyParts = {
+      firstName: this.normalizeOptionalText(body?.FirstName || body?.firstName),
+      middleName: this.normalizeOptionalText(
+        body?.MiddleName || body?.middleName,
+      ),
+      lastName: this.normalizeOptionalText(body?.LastName || body?.lastName),
+    };
+    const parts = [
+      bodyParts.firstName || kycParts.firstName,
+      bodyParts.middleName || kycParts.middleName,
+      bodyParts.lastName || kycParts.lastName,
+    ].filter(Boolean);
+
+    return parts.length > 0 ? [...new Set(parts)].join(' ') : null;
+  }
+
+  private extractMpesaKycNameParts(kycInfo: any) {
+    const parts: {
+      firstName: string | null;
+      middleName: string | null;
+      lastName: string | null;
+    } = {
+      firstName: null,
+      middleName: null,
+      lastName: null,
+    };
+    if (!Array.isArray(kycInfo)) {
+      return parts;
+    }
+
+    kycInfo.forEach((item) => {
+      const key = this.normalizeOptionalText(
+        item?.KYCName || item?.key || item?.name,
+      )
+        ?.toLowerCase()
+        .replace(/[^a-z]/g, '');
+      const value = this.normalizeOptionalText(
+        item?.KYCValue || item?.value || item?.Value,
+      );
+      if (!key || !value) {
+        return;
+      }
+      if (key.includes('firstname')) {
+        parts.firstName = value;
+      } else if (key.includes('middlename')) {
+        parts.middleName = value;
+      } else if (key.includes('lastname') || key.includes('surname')) {
+        parts.lastName = value;
+      }
+    });
+
+    return parts;
   }
 
   private parseMpesaTimestamp(value?: string | null) {
