@@ -5,6 +5,7 @@ import { ContributionsModule } from '../contributions/contributions.module';
 import { ChurchCongregationPage } from '../entities/church-congregation-page.entity';
 import { Church } from '../entities/church.entity';
 import { ChurchUser } from '../entities/church-user.entity';
+import { Contribution } from '../entities/contribution.entity';
 import { Contributor } from '../entities/contributor.entity';
 import { DiscipleshipAttendance } from '../entities/discipleship-attendance.entity';
 import { DiscipleshipGroup } from '../entities/discipleship-group.entity';
@@ -24,6 +25,7 @@ import { ChurchService } from './church.service';
       Church,
       ChurchCongregationPage,
       ChurchUser,
+      Contribution,
       FundAccount,
       Contributor,
       DiscipleshipAttendance,

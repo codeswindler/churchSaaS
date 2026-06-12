@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { Church } from './church.entity';
 import { ChurchUser } from './church-user.entity';
+import { Contributor } from './contributor.entity';
 
 export enum DiscipleshipMemberStatus {
   ACTIVE = 'active',
@@ -19,6 +20,7 @@ export enum DiscipleshipMemberStatus {
 @Entity('discipleship_members')
 @Index(['churchId', 'fullName'])
 @Index(['churchId', 'phone'])
+@Index(['churchId', 'contributorId'])
 export class DiscipleshipMember {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -54,6 +56,13 @@ export class DiscipleshipMember {
 
   @Column({ type: 'text', nullable: true })
   notes: string | null;
+
+  @ManyToOne(() => Contributor, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'contributorId' })
+  contributor: Contributor | null;
+
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  contributorId: string | null;
 
   @ManyToOne(() => ChurchUser, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'createdByUserId' })

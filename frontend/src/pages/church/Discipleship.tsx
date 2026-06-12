@@ -3,9 +3,12 @@ import {
   CalendarCheck2,
   CheckCircle2,
   ChevronDown,
+  Download,
+  FileSpreadsheet,
   PencilLine,
   Plus,
   Search,
+  Upload,
   UserCheck,
   UsersRound,
   X,
@@ -35,6 +38,24 @@ interface DiscipleshipMember {
   notes?: string | null;
   groups?: DiscipleshipGroup[];
   groupIds?: string[];
+  contributionSummary?: {
+    totalAmount: number;
+    contributionCount: number;
+    latestContributionAt?: string | null;
+    dates: {
+      date: string;
+      amount: number;
+      count: number;
+    }[];
+    contributions: {
+      id: string;
+      date: string;
+      amount: number;
+      fundAccountName?: string | null;
+      paymentReference?: string | null;
+      channel?: string | null;
+    }[];
+  };
 }
 
 interface DiscipleshipAttendance {
@@ -45,6 +66,21 @@ interface DiscipleshipAttendance {
   eventName?: string | null;
   member?: DiscipleshipMember;
   group?: DiscipleshipGroup | null;
+}
+
+interface BatchImportSummary {
+  totalRows: number;
+  created: number;
+  skipped: number;
+  assignedGroups: number;
+  warnings: number;
+  errors: number;
+  issues?: {
+    row: number;
+    member?: string;
+    severity: 'warning' | 'error';
+    message: string;
+  }[];
 }
 
 function getNairobiToday() {
@@ -67,6 +103,10 @@ function buildQuery(params: Record<string, string | undefined>) {
   });
   const query = searchParams.toString();
   return query ? `?${query}` : '';
+}
+
+function formatKes(value: unknown) {
+  return `KES ${Number(value || 0).toLocaleString()}`;
 }
 
 function createMemberForm() {
@@ -123,6 +163,11 @@ export default function ChurchDiscipleship() {
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
   const [groupEditor, setGroupEditor] = useState<DiscipleshipGroup | null>(null);
   const [groupForm, setGroupForm] = useState(createGroupForm);
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+  const [batchFile, setBatchFile] = useState<File | null>(null);
+  const [batchSummary, setBatchSummary] = useState<BatchImportSummary | null>(
+    null,
+  );
 
   const { data: summary } = useQuery({
     queryKey: ['discipleship-summary'],
@@ -240,6 +285,38 @@ export default function ChurchDiscipleship() {
     },
   });
 
+  const batchImportMutation = useMutation({
+    mutationFn: async () => {
+      if (!batchFile) {
+        throw new Error('Choose a completed template file');
+      }
+      const formData = new FormData();
+      formData.append('file', batchFile);
+      const response = await api.post(
+        '/church/discipleship/members/import',
+        formData,
+        {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        },
+      );
+      return response.data as BatchImportSummary;
+    },
+    onSuccess: (data) => {
+      setBatchSummary(data);
+      setBatchFile(null);
+      setActiveTab('members');
+      refreshDiscipleship();
+      toast.success(`Registered ${Number(data.created || 0)} member(s)`);
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message ||
+          error?.message ||
+          'Unable to import members',
+      );
+    },
+  });
+
   const attendanceMutation = useMutation({
     mutationFn: async () =>
       api
@@ -317,6 +394,33 @@ export default function ChurchDiscipleship() {
   const submitGroup = (event: FormEvent) => {
     event.preventDefault();
     groupMutation.mutate();
+  };
+
+  const closeBatchModal = () => {
+    setIsBatchModalOpen(false);
+    setBatchFile(null);
+    setBatchSummary(null);
+  };
+
+  const downloadMemberTemplate = async () => {
+    try {
+      const response = await api.get(
+        '/church/discipleship/members/import-template',
+        {
+          responseType: 'blob',
+        },
+      );
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'discipleship-member-template.xlsx';
+      link.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error: any) {
+      toast.error(
+        error?.response?.data?.message || 'Unable to download template',
+      );
+    }
   };
 
   const statCards = [
@@ -652,14 +756,28 @@ export default function ChurchDiscipleship() {
                 Discipleship members
               </h3>
             </div>
-            <button
-              className="btn-primary justify-center"
-              type="button"
-              onClick={() => openMemberEditor()}
-            >
-              <Plus size={17} />
-              Add member
-            </button>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                className="btn-secondary justify-center"
+                type="button"
+                onClick={() => {
+                  setBatchSummary(null);
+                  setBatchFile(null);
+                  setIsBatchModalOpen(true);
+                }}
+              >
+                <FileSpreadsheet size={17} />
+                Batch register
+              </button>
+              <button
+                className="btn-primary justify-center"
+                type="button"
+                onClick={() => openMemberEditor()}
+              >
+                <Plus size={17} />
+                Add member
+              </button>
+            </div>
           </div>
 
           <div className="grid gap-3 border-b border-white/10 p-4 md:grid-cols-3">
@@ -978,6 +1096,140 @@ export default function ChurchDiscipleship() {
         </div>
       ) : null}
 
+      {isBatchModalOpen ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={closeBatchModal}
+        >
+          <div className="modal-shell">
+            <section
+              className="panel modal-card max-w-3xl p-5 sm:p-6"
+              role="dialog"
+              aria-modal="true"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+                    Batch register
+                  </p>
+                  <h3 className="mt-2 text-xl font-semibold text-white">
+                    Upload discipleship members
+                  </h3>
+                  <p className="mt-2 max-w-2xl text-sm text-stone-300">
+                    Use the template columns. Group names are optional and must
+                    match groups already created in Discipleship.
+                  </p>
+                </div>
+                <button
+                  className="rounded-full border border-white/10 p-2 text-stone-200 hover:bg-white/5"
+                  type="button"
+                  onClick={closeBatchModal}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                <button
+                  className="btn-secondary justify-center"
+                  type="button"
+                  onClick={downloadMemberTemplate}
+                >
+                  <Download size={17} />
+                  Download template
+                </button>
+                <label className="btn-secondary cursor-pointer justify-center">
+                  <Upload size={17} />
+                  {batchFile ? batchFile.name : 'Choose XLSX or CSV'}
+                  <input
+                    accept=".xlsx,.csv"
+                    className="hidden"
+                    type="file"
+                    onChange={(event) => {
+                      setBatchSummary(null);
+                      setBatchFile(event.target.files?.[0] || null);
+                    }}
+                  />
+                </label>
+              </div>
+
+              <div className="mt-5 rounded-3xl border border-white/10 bg-black/10 p-4">
+                <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                  Template fields
+                </p>
+                <p className="mt-2 text-sm leading-6 text-stone-300">
+                  <strong className="text-white">fullName</strong> is required.
+                  Optional fields are phone, gender, enrollmentDate, status,
+                  groups, and notes. Use YYYY-MM-DD for dates.
+                </p>
+              </div>
+
+              {batchSummary ? (
+                <div className="mt-5 space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-4">
+                    {[
+                      ['Rows', batchSummary.totalRows],
+                      ['Created', batchSummary.created],
+                      ['Skipped', batchSummary.skipped],
+                      ['Groups assigned', batchSummary.assignedGroups],
+                    ].map(([label, value]) => (
+                      <div
+                        key={label}
+                        className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                      >
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
+                          {label}
+                        </p>
+                        <p className="mt-2 text-xl font-semibold text-white">
+                          {value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  {(batchSummary.issues || []).length > 0 ? (
+                    <div className="max-h-56 space-y-2 overflow-y-auto rounded-3xl border border-white/10 bg-black/10 p-3">
+                      {(batchSummary.issues || []).slice(0, 20).map((issue) => (
+                        <div
+                          key={`${issue.row}-${issue.message}`}
+                          className="rounded-2xl border border-white/10 p-3 text-sm text-stone-200"
+                        >
+                          <span className="font-semibold text-white">
+                            Row {issue.row}
+                          </span>
+                          {issue.member ? ` - ${issue.member}` : ''}:{' '}
+                          {issue.message}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <button
+                    className="btn-primary w-full justify-center"
+                    type="button"
+                    onClick={closeBatchModal}
+                  >
+                    View members
+                  </button>
+                </div>
+              ) : (
+                <button
+                  className="btn-primary mt-5 w-full justify-center"
+                  disabled={!batchFile || batchImportMutation.isPending}
+                  type="button"
+                  onClick={() => batchImportMutation.mutate()}
+                >
+                  <Upload size={17} />
+                  {batchImportMutation.isPending
+                    ? 'Uploading members...'
+                    : 'Upload and review summary'}
+                </button>
+              )}
+            </section>
+          </div>
+        </div>
+      ) : null}
+
       {detailMemberId ? (
         <div
           className="modal-backdrop"
@@ -1119,6 +1371,76 @@ export default function ChurchDiscipleship() {
                   </div>
                 </div>
               </div>
+
+              {Number(
+                detailMember?.contributionSummary?.contributionCount || 0,
+              ) > 0 ? (
+                <div className="mt-4 rounded-3xl border border-white/10 bg-black/10 p-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                        Contribution record
+                      </p>
+                      <h4 className="mt-2 text-lg font-semibold text-white">
+                        Transaction-linked discipleship
+                      </h4>
+                      <p className="mt-1 text-sm text-stone-300">
+                        Church Service attendance is inferred from confirmed
+                        contribution dates.
+                      </p>
+                    </div>
+                    <div className="grid gap-2 text-right sm:grid-cols-2">
+                      <div className="rounded-2xl border border-white/10 px-4 py-3">
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
+                          Total
+                        </p>
+                        <p className="mt-1 font-semibold text-white">
+                          {formatKes(
+                            detailMember?.contributionSummary?.totalAmount,
+                          )}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 px-4 py-3">
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
+                          Entries
+                        </p>
+                        <p className="mt-1 font-semibold text-white">
+                          {
+                            detailMember?.contributionSummary
+                              ?.contributionCount
+                          }
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    {(detailMember?.contributionSummary?.dates || [])
+                      .slice(0, 12)
+                      .map((item) => (
+                        <div
+                          key={item.date}
+                          className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="font-semibold text-white">
+                                {item.date}
+                              </p>
+                              <p className="mt-1 text-xs text-stone-400">
+                                {item.count} contribution
+                                {item.count === 1 ? '' : 's'}
+                              </p>
+                            </div>
+                            <p className="font-semibold text-amber-100">
+                              {formatKes(item.amount)}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              ) : null}
             </section>
           </div>
         </div>

@@ -98,6 +98,52 @@ export class ChurchController {
     );
   }
 
+  @Get('discipleship/members/import-template')
+  @Permissions(ChurchPermission.DISCIPLESHIP_MANAGE)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+    ChurchUserRole.MEDIA,
+  )
+  async downloadDiscipleshipMemberTemplate(@Res() response: Response) {
+    const workbook =
+      await this.churchService.generateDiscipleshipMemberImportTemplate();
+    response.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    response.setHeader(
+      'Content-Disposition',
+      'attachment; filename="discipleship-member-template.xlsx"',
+    );
+    response.send(workbook);
+  }
+
+  @Post('discipleship/members/import')
+  @Permissions(ChurchPermission.DISCIPLESHIP_MANAGE)
+  @Roles(
+    ChurchUserRole.PRIEST,
+    ChurchUserRole.TREASURER,
+    ChurchUserRole.SECRETARY,
+    ChurchUserRole.MEDIA,
+  )
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 2 * 1024 * 1024 },
+    }),
+  )
+  importDiscipleshipMembers(
+    @Request() req: any,
+    @UploadedFile() file: any,
+  ) {
+    return this.churchService.importDiscipleshipMembers(
+      req.user.churchId,
+      req.user.id,
+      file,
+    );
+  }
+
   @Patch('discipleship/members/:memberId')
   @Permissions(ChurchPermission.DISCIPLESHIP_MANAGE)
   @Roles(

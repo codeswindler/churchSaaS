@@ -620,15 +620,37 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
             \`enrollmentDate\` date NULL,
             \`status\` varchar(40) NOT NULL DEFAULT 'active',
             \`notes\` text NULL,
+            \`contributorId\` varchar(36) NULL,
             \`createdByUserId\` varchar(36) NULL,
             \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
             \`updatedAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
             PRIMARY KEY (\`id\`),
             INDEX \`IDX_discipleship_members_church_name\` (\`churchId\`, \`fullName\`),
-            INDEX \`IDX_discipleship_members_church_phone\` (\`churchId\`, \`phone\`)
+            INDEX \`IDX_discipleship_members_church_phone\` (\`churchId\`, \`phone\`),
+            INDEX \`IDX_discipleship_members_church_contributor\` (\`churchId\`, \`contributorId\`)
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `);
         this.logger.log('Created discipleship members table.');
+      } else {
+        if (!members.findColumnByName('contributorId')) {
+          await queryRunner.query(
+            'ALTER TABLE `discipleship_members` ADD COLUMN `contributorId` varchar(36) NULL AFTER `notes`',
+          );
+          this.logger.log('Added contributor link to discipleship members.');
+        }
+        if (
+          !members.indices.some(
+            (index) =>
+              index.name === 'IDX_discipleship_members_church_contributor',
+          )
+        ) {
+          await queryRunner.query(
+            'CREATE INDEX `IDX_discipleship_members_church_contributor` ON `discipleship_members` (`churchId`, `contributorId`)',
+          );
+          this.logger.log(
+            'Indexed contributor link on discipleship members.',
+          );
+        }
       }
 
       const groups = await queryRunner.getTable('discipleship_groups');

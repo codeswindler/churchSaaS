@@ -9,6 +9,7 @@ import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { extname, join } from 'path';
 import { In, Repository } from 'typeorm';
+import ExcelJS from 'exceljs';
 import {
   ChurchFeature,
   ChurchPermission,
@@ -30,6 +31,10 @@ import {
 } from '../entities/church-congregation-page.entity';
 import { Church } from '../entities/church.entity';
 import { ChurchUser, ChurchUserRole } from '../entities/church-user.entity';
+import {
+  Contribution,
+  ContributionStatus,
+} from '../entities/contribution.entity';
 import { Contributor } from '../entities/contributor.entity';
 import {
   DiscipleshipAttendance,
@@ -85,6 +90,7 @@ const DEFAULT_CONGREGATION_GALLERY_IMAGES: CongregationGalleryImage[] = [
     isDefault: true,
   },
 ];
+const DEFAULT_DISCIPLESHIP_SERVICE_GROUP = 'Church Service';
 
 function getDefaultGalleryImageName(imageUrl?: string | null) {
   const filename = imageUrl?.split('/').pop() || '';
@@ -107,6 +113,8 @@ export class ChurchService {
     private readonly fundAccountRepo: Repository<FundAccount>,
     @InjectRepository(Contributor)
     private readonly contributorRepo: Repository<Contributor>,
+    @InjectRepository(Contribution)
+    private readonly contributionRepo: Repository<Contribution>,
     @InjectRepository(DiscipleshipMember)
     private readonly discipleshipMemberRepo: Repository<DiscipleshipMember>,
     @InjectRepository(DiscipleshipGroup)
@@ -207,6 +215,7 @@ export class ChurchService {
   }
 
   async getDiscipleshipSummary(churchId: string) {
+    await this.syncTransactionalDiscipleshipMembers(churchId);
     const today = this.getNairobiDateParts();
     const monthStart = `${today.date.slice(0, 8)}01`;
     const [totalMembers, activeMembers, newThisMonth, groups, presentToday] =
@@ -250,6 +259,7 @@ export class ChurchService {
   }
 
   async listDiscipleshipGroups(churchId: string) {
+    await this.syncTransactionalDiscipleshipMembers(churchId);
     const groups = await this.discipleshipGroupRepo.find({
       where: { churchId },
       order: { isActive: 'DESC', name: 'ASC' },
@@ -345,6 +355,7 @@ export class ChurchService {
   }
 
   async listDiscipleshipMembers(churchId: string, query: any = {}) {
+    await this.syncTransactionalDiscipleshipMembers(churchId);
     const qb = this.discipleshipMemberRepo
       .createQueryBuilder('member')
       .where('member.churchId = :churchId', { churchId })
@@ -461,7 +472,189 @@ export class ChurchService {
     )[0];
   }
 
+  async generateDiscipleshipMemberImportTemplate() {
+    const headers = [
+      'fullName',
+      'phone',
+      'gender',
+      'enrollmentDate',
+      'status',
+      'groups',
+      'notes',
+    ];
+    const example = [
+      'Geoffrey Mwangi',
+      '254724000000',
+      'male',
+      this.getNairobiDateParts().date,
+      'active',
+      'Youth, Choir',
+      'Optional notes',
+    ];
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Members');
+    sheet.columns = [
+      { header: headers[0], key: headers[0], width: 24 },
+      { header: headers[1], key: headers[1], width: 18 },
+      { header: headers[2], key: headers[2], width: 14 },
+      { header: headers[3], key: headers[3], width: 18 },
+      { header: headers[4], key: headers[4], width: 14 },
+      { header: headers[5], key: headers[5], width: 30 },
+      { header: headers[6], key: headers[6], width: 36 },
+    ];
+    sheet.addRow(example);
+    sheet.addRow([
+      'Required',
+      'Optional',
+      'Optional',
+      'Optional: YYYY-MM-DD',
+      'Optional: active or inactive',
+      'Optional: existing group names, comma separated',
+      'Optional',
+    ]);
+    sheet.getRow(1).font = { bold: true };
+    const output = await workbook.xlsx.writeBuffer();
+    return Buffer.from(output);
+  }
+
+  async importDiscipleshipMembers(
+    churchId: string,
+    createdByUserId: string,
+    file: any,
+  ) {
+    if (!file?.buffer) {
+      throw new BadRequestException('Upload a completed member template');
+    }
+    const rows = await this.parseDiscipleshipMemberImportRows(file);
+    if (rows.length === 0) {
+      throw new BadRequestException('The uploaded file has no member rows');
+    }
+
+    await this.ensureChurchServiceDiscipleshipGroup(churchId);
+    const activeGroups = await this.discipleshipGroupRepo.find({
+      where: { churchId, isActive: true },
+    });
+    const groupIdByName = new Map(
+      activeGroups.map((group) => [
+        this.normalizeImportKey(group.name),
+        group.id,
+      ]),
+    );
+    const issues: {
+      row: number;
+      member?: string;
+      severity: 'warning' | 'error';
+      message: string;
+    }[] = [];
+    const createdMembers: DiscipleshipMember[] = [];
+    let skipped = 0;
+    let assignedGroups = 0;
+
+    for (const row of rows) {
+      const fullName = this.normalizeOptionalText(row.fullName, 180);
+      if (!fullName) {
+        skipped += 1;
+        issues.push({
+          row: row.rowNumber,
+          severity: 'error',
+          message: 'Full name is required',
+        });
+        continue;
+      }
+
+      let enrollmentDate: string | null = null;
+      try {
+        enrollmentDate =
+          this.normalizeDateOnly(row.enrollmentDate) ||
+          this.getNairobiDateParts().date;
+      } catch (error: any) {
+        skipped += 1;
+        issues.push({
+          row: row.rowNumber,
+          member: fullName,
+          severity: 'error',
+          message: error?.message || 'Enrollment date is invalid',
+        });
+        continue;
+      }
+
+      let status: DiscipleshipMemberStatus;
+      try {
+        status = this.normalizeDiscipleshipMemberStatus(row.status);
+      } catch (error: any) {
+        skipped += 1;
+        issues.push({
+          row: row.rowNumber,
+          member: fullName,
+          severity: 'error',
+          message: error?.message || 'Member status is invalid',
+        });
+        continue;
+      }
+
+      const groupNames = this.splitImportGroups(row.groups);
+      const groupIds: string[] = [];
+      groupNames.forEach((groupName) => {
+        const groupId = groupIdByName.get(this.normalizeImportKey(groupName));
+        if (groupId) {
+          groupIds.push(groupId);
+          return;
+        }
+        issues.push({
+          row: row.rowNumber,
+          member: fullName,
+          severity: 'warning',
+          message: `Group "${groupName}" was not found and was skipped`,
+        });
+      });
+
+      try {
+        const member = await this.discipleshipMemberRepo.save(
+          this.discipleshipMemberRepo.create({
+            churchId,
+            fullName,
+            phone: this.normalizeOptionalText(row.phone, 40),
+            gender: this.normalizeGenderText(row.gender),
+            enrollmentDate,
+            status,
+            notes: this.normalizeOptionalText(row.notes, 1200),
+            createdByUserId,
+          }),
+        );
+
+        const uniqueGroupIds = [...new Set(groupIds)];
+        await this.syncDiscipleshipMemberGroups(
+          churchId,
+          member.id,
+          uniqueGroupIds,
+        );
+        assignedGroups += uniqueGroupIds.length;
+        createdMembers.push(member);
+      } catch (error: any) {
+        skipped += 1;
+        issues.push({
+          row: row.rowNumber,
+          member: fullName,
+          severity: 'error',
+          message: error?.message || 'Unable to save member',
+        });
+      }
+    }
+
+    return {
+      totalRows: rows.length,
+      created: createdMembers.length,
+      skipped,
+      assignedGroups,
+      warnings: issues.filter((issue) => issue.severity === 'warning').length,
+      errors: issues.filter((issue) => issue.severity === 'error').length,
+      issues,
+      members: await this.withDiscipleshipMemberGroups(createdMembers),
+    };
+  }
+
   async listDiscipleshipAttendance(churchId: string, query: any = {}) {
+    await this.syncTransactionalDiscipleshipMembers(churchId);
     const qb = this.discipleshipAttendanceRepo
       .createQueryBuilder('attendance')
       .leftJoinAndSelect('attendance.member', 'member')
@@ -1439,6 +1632,514 @@ export class ChurchService {
     return normalized;
   }
 
+  private async ensureChurchServiceDiscipleshipGroup(churchId: string) {
+    let group = await this.discipleshipGroupRepo.findOne({
+      where: { churchId, name: DEFAULT_DISCIPLESHIP_SERVICE_GROUP },
+    });
+
+    if (group) {
+      if (!group.isActive) {
+        group.isActive = true;
+        group = await this.discipleshipGroupRepo.save(group);
+      }
+      return group;
+    }
+
+    return this.discipleshipGroupRepo.save(
+      this.discipleshipGroupRepo.create({
+        churchId,
+        name: DEFAULT_DISCIPLESHIP_SERVICE_GROUP,
+        description:
+          'Default group for members discovered from confirmed contributions and normal church service attendance.',
+        isActive: true,
+      }),
+    );
+  }
+
+  private async syncTransactionalDiscipleshipMembers(churchId: string) {
+    const serviceGroup =
+      await this.ensureChurchServiceDiscipleshipGroup(churchId);
+    const rows = await this.contributionRepo
+      .createQueryBuilder('contribution')
+      .innerJoin('contribution.contributor', 'contributor')
+      .select('contributor.id', 'id')
+      .addSelect('contributor.name', 'name')
+      .addSelect('contributor.phone', 'phone')
+      .addSelect('contributor.gender', 'gender')
+      .addSelect(
+        'MIN(COALESCE(contribution.receivedAt, contribution.createdAt))',
+        'firstContributionAt',
+      )
+      .where('contribution.churchId = :churchId', { churchId })
+      .andWhere('contribution.status = :status', {
+        status: ContributionStatus.CONFIRMED,
+      })
+      .groupBy('contributor.id')
+      .addGroupBy('contributor.name')
+      .addGroupBy('contributor.phone')
+      .addGroupBy('contributor.gender')
+      .getRawMany();
+
+    if (rows.length === 0) {
+      return { serviceGroup, created: 0, assigned: 0 };
+    }
+
+    const members = await this.discipleshipMemberRepo.find({
+      where: { churchId },
+    });
+    const membersByContributorId = new Map<string, DiscipleshipMember>();
+    const membersByPhone = new Map<string, DiscipleshipMember>();
+    const membersByName = new Map<string, DiscipleshipMember>();
+    members.forEach((member) => {
+      if (member.contributorId && !membersByContributorId.has(member.contributorId)) {
+        membersByContributorId.set(member.contributorId, member);
+      }
+      const phone = this.normalizePlainPhone(member.phone);
+      if (phone && !membersByPhone.has(phone)) {
+        membersByPhone.set(phone, member);
+      }
+      const name = this.normalizeImportKey(member.fullName);
+      if (name && !membersByName.has(name)) {
+        membersByName.set(name, member);
+      }
+    });
+
+    const existingMemberships = await this.discipleshipMembershipRepo.find({
+      where: { churchId, groupId: serviceGroup.id },
+    });
+    const serviceMemberIds = new Set(
+      existingMemberships.map((membership) => membership.memberId),
+    );
+    const membershipsToAdd: DiscipleshipMembership[] = [];
+    const memberIdByContributorId = new Map<string, string>();
+    let created = 0;
+
+    for (const row of rows) {
+      const contributorId = this.normalizeOptionalText(row.id, 36);
+      const fullName = this.normalizeOptionalText(row.name, 180);
+      if (
+        !contributorId ||
+        !fullName ||
+        fullName.toLowerCase() === 'anonymous contributor'
+      ) {
+        continue;
+      }
+
+      const phone = this.normalizePlainPhone(row.phone);
+      const nameKey = this.normalizeImportKey(fullName);
+      let member =
+        membersByContributorId.get(contributorId) ||
+        (phone ? membersByPhone.get(phone) : null) ||
+        membersByName.get(nameKey);
+      if (!member) {
+        member = await this.discipleshipMemberRepo.save(
+          this.discipleshipMemberRepo.create({
+            churchId,
+            contributorId,
+            fullName,
+            phone,
+            gender: this.normalizeGenderText(row.gender),
+            enrollmentDate:
+              this.normalizeDateFromImport(row.firstContributionAt) ||
+              this.getNairobiDateParts().date,
+            status: DiscipleshipMemberStatus.ACTIVE,
+            notes: null,
+            createdByUserId: null,
+          }),
+        );
+        created += 1;
+        if (phone) {
+          membersByPhone.set(phone, member);
+        }
+        membersByName.set(nameKey, member);
+        membersByContributorId.set(contributorId, member);
+      } else {
+        let needsSave = false;
+        if (!member.contributorId) {
+          member.contributorId = contributorId;
+          needsSave = true;
+        }
+        if (!member.phone && phone) {
+          member.phone = phone;
+          needsSave = true;
+        }
+        if (!member.gender && row.gender) {
+          member.gender = this.normalizeGenderText(row.gender);
+          needsSave = true;
+        }
+        if (needsSave) {
+          member = await this.discipleshipMemberRepo.save(member);
+        }
+        membersByContributorId.set(contributorId, member);
+      }
+
+      memberIdByContributorId.set(contributorId, member.id);
+      if (!serviceMemberIds.has(member.id)) {
+        membershipsToAdd.push(
+          this.discipleshipMembershipRepo.create({
+            churchId,
+            memberId: member.id,
+            groupId: serviceGroup.id,
+          }),
+        );
+        serviceMemberIds.add(member.id);
+      }
+    }
+
+    if (membershipsToAdd.length > 0) {
+      await this.discipleshipMembershipRepo.save(membershipsToAdd);
+    }
+    const attendanceCreated = await this.syncContributionAttendanceForMembers(
+      churchId,
+      serviceGroup.id,
+      memberIdByContributorId,
+    );
+
+    return {
+      serviceGroup,
+      created,
+      assigned: membershipsToAdd.length,
+      attendanceCreated,
+    };
+  }
+
+  private async syncContributionAttendanceForMembers(
+    churchId: string,
+    groupId: string,
+    memberIdByContributorId: Map<string, string>,
+  ) {
+    const contributorIds = [...memberIdByContributorId.keys()];
+    if (contributorIds.length === 0) {
+      return 0;
+    }
+
+    const contributions = await this.contributionRepo.find({
+      where: {
+        churchId,
+        status: ContributionStatus.CONFIRMED,
+        contributorId: In(contributorIds),
+      },
+      order: { receivedAt: 'ASC', createdAt: 'ASC' },
+    });
+    if (contributions.length === 0) {
+      return 0;
+    }
+
+    const memberIds = [...new Set(memberIdByContributorId.values())];
+    const existingAttendance = await this.discipleshipAttendanceRepo.find({
+      where: {
+        churchId,
+        groupId,
+        attendanceType: DiscipleshipAttendanceType.GROUP,
+        memberId: In(memberIds),
+      },
+    });
+    const existingKeys = new Set(
+      existingAttendance.map(
+        (item) => `${item.memberId}|${item.attendanceDate}`,
+      ),
+    );
+    const attendanceToCreate: DiscipleshipAttendance[] = [];
+
+    for (const contribution of contributions) {
+      if (!contribution.contributorId) {
+        continue;
+      }
+      const memberId = memberIdByContributorId.get(contribution.contributorId);
+      if (!memberId) {
+        continue;
+      }
+      const attendanceDate = this.getNairobiDateFromInstant(
+        contribution.receivedAt || contribution.createdAt,
+      );
+      const key = `${memberId}|${attendanceDate}`;
+      if (existingKeys.has(key)) {
+        continue;
+      }
+      existingKeys.add(key);
+      const dateParts = this.getNairobiDateParts(attendanceDate);
+      attendanceToCreate.push(
+        this.discipleshipAttendanceRepo.create({
+          churchId,
+          memberId,
+          attendanceDate,
+          weekday: dateParts.weekday,
+          attendanceType: DiscipleshipAttendanceType.GROUP,
+          groupId,
+          eventName: null,
+          markedByUserId: null,
+          markedAt: contribution.receivedAt || contribution.createdAt,
+        }),
+      );
+    }
+
+    if (attendanceToCreate.length > 0) {
+      await this.discipleshipAttendanceRepo.save(attendanceToCreate);
+    }
+
+    return attendanceToCreate.length;
+  }
+
+  private normalizePlainPhone(value: unknown) {
+    const normalized = this.normalizeOptionalText(value, 30);
+    if (!normalized) {
+      return null;
+    }
+    const digits = normalized.replace(/[^\d]/g, '');
+    if (!/^\d{9,15}$/.test(digits)) {
+      return null;
+    }
+    if (
+      !(
+        digits.startsWith('254') ||
+        digits.startsWith('07') ||
+        digits.startsWith('01') ||
+        digits.startsWith('7') ||
+        digits.startsWith('1')
+      )
+    ) {
+      return null;
+    }
+    return digits;
+  }
+
+  private normalizeDateFromImport(value: unknown) {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return value.toISOString().slice(0, 10);
+    }
+    const text = this.normalizeOptionalText(value, 40);
+    if (!text) {
+      return null;
+    }
+    if (/^\d{4}-\d{2}-\d{2}/.test(text)) {
+      return this.normalizeDateOnly(text.slice(0, 10));
+    }
+    const parsed = new Date(text);
+    if (Number.isNaN(parsed.getTime())) {
+      return null;
+    }
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  private getNairobiDateFromInstant(value: unknown) {
+    const instant = value instanceof Date ? value : new Date(`${value}`);
+    if (Number.isNaN(instant.getTime())) {
+      return this.getNairobiDateParts().date;
+    }
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Africa/Nairobi',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(instant);
+    const byType = new Map(parts.map((part) => [part.type, part.value]));
+    return `${byType.get('year')}-${byType.get('month')}-${byType.get('day')}`;
+  }
+
+  private async parseDiscipleshipMemberImportRows(file: any) {
+    const extension = extname(file.originalname || '').toLowerCase();
+    if (!['.xlsx', '.csv'].includes(extension)) {
+      throw new BadRequestException('Upload an XLSX or CSV file');
+    }
+
+    const matrix =
+      extension === '.csv'
+        ? this.parseCsvImportMatrix(file.buffer.toString('utf8'))
+        : await this.parseExcelImportMatrix(file.buffer);
+    if (matrix.length === 0) {
+      return [];
+    }
+
+    const [header, ...dataRows] = matrix;
+    const headerMap = this.buildImportHeaderMap(header.values || []);
+    if (!headerMap.has('fullName')) {
+      throw new BadRequestException(
+        'Template must include a fullName or Full Name column',
+      );
+    }
+
+    return dataRows
+      .map((row) => ({
+        rowNumber: row.rowNumber,
+        fullName: this.getImportCell(row.values, headerMap, 'fullName'),
+        phone: this.getImportCell(row.values, headerMap, 'phone'),
+        gender: this.getImportCell(row.values, headerMap, 'gender'),
+        enrollmentDate: this.getImportCell(
+          row.values,
+          headerMap,
+          'enrollmentDate',
+        ),
+        status: this.getImportCell(row.values, headerMap, 'status'),
+        groups: this.getImportCell(row.values, headerMap, 'groups'),
+        notes: this.getImportCell(row.values, headerMap, 'notes'),
+      }))
+      .filter((row) =>
+        [
+          row.fullName,
+          row.phone,
+          row.gender,
+          row.enrollmentDate,
+          row.status,
+          row.groups,
+          row.notes,
+        ].some((value) => this.normalizeOptionalText(value, 1200)),
+      );
+  }
+
+  private async parseExcelImportMatrix(buffer: Buffer) {
+    const workbook = new ExcelJS.Workbook();
+    try {
+      await workbook.xlsx.load(buffer as any);
+    } catch {
+      throw new BadRequestException('Unable to read the uploaded workbook');
+    }
+    const sheet = workbook.worksheets[0];
+    if (!sheet) {
+      return [];
+    }
+    const matrix: { rowNumber: number; values: unknown[] }[] = [];
+    sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      const values: unknown[] = [];
+      const cellCount = Math.max(row.cellCount, 1);
+      for (let index = 1; index <= cellCount; index += 1) {
+        values.push(this.getExcelCellValue(row.getCell(index).value));
+      }
+      matrix.push({ rowNumber, values });
+    });
+    return matrix;
+  }
+
+  private parseCsvImportMatrix(csvText: string) {
+    const rows: { rowNumber: number; values: unknown[] }[] = [];
+    let row: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    let rowNumber = 1;
+
+    for (let index = 0; index < csvText.length; index += 1) {
+      const char = csvText[index];
+      const next = csvText[index + 1];
+      if (char === '"' && inQuotes && next === '"') {
+        current += '"';
+        index += 1;
+        continue;
+      }
+      if (char === '"') {
+        inQuotes = !inQuotes;
+        continue;
+      }
+      if (char === ',' && !inQuotes) {
+        row.push(current);
+        current = '';
+        continue;
+      }
+      if ((char === '\n' || char === '\r') && !inQuotes) {
+        if (char === '\r' && next === '\n') {
+          index += 1;
+        }
+        row.push(current);
+        if (row.some((cell) => cell.trim())) {
+          rows.push({ rowNumber, values: row });
+        }
+        row = [];
+        current = '';
+        rowNumber += 1;
+        continue;
+      }
+      current += char;
+    }
+
+    row.push(current);
+    if (row.some((cell) => cell.trim())) {
+      rows.push({ rowNumber, values: row });
+    }
+    return rows;
+  }
+
+  private getExcelCellValue(value: ExcelJS.CellValue) {
+    if (value instanceof Date) {
+      return value.toISOString().slice(0, 10);
+    }
+    if (value && typeof value === 'object') {
+      if ('text' in value) {
+        return value.text;
+      }
+      if ('result' in value) {
+        return this.getExcelCellValue(value.result as ExcelJS.CellValue);
+      }
+      if ('richText' in value && Array.isArray(value.richText)) {
+        return value.richText.map((item) => item.text || '').join('');
+      }
+    }
+    return value ?? '';
+  }
+
+  private buildImportHeaderMap(headerRow: unknown[]) {
+    const aliases = new Map<string, string>([
+      ['fullname', 'fullName'],
+      ['full name', 'fullName'],
+      ['name', 'fullName'],
+      ['member name', 'fullName'],
+      ['phone', 'phone'],
+      ['phone number', 'phone'],
+      ['mobile', 'phone'],
+      ['gender', 'gender'],
+      ['sex', 'gender'],
+      ['enrollmentdate', 'enrollmentDate'],
+      ['enrollment date', 'enrollmentDate'],
+      ['enrolment date', 'enrollmentDate'],
+      ['date enrolled', 'enrollmentDate'],
+      ['status', 'status'],
+      ['groups', 'groups'],
+      ['group', 'groups'],
+      ['church groups', 'groups'],
+      ['notes', 'notes'],
+      ['note', 'notes'],
+    ]);
+    const headerMap = new Map<string, number>();
+
+    headerRow.forEach((cell, index) => {
+      const key = this.normalizeImportKey(cell);
+      const field = aliases.get(key);
+      if (field && !headerMap.has(field)) {
+        headerMap.set(field, index);
+      }
+    });
+
+    return headerMap;
+  }
+
+  private getImportCell(
+    row: unknown[],
+    headerMap: Map<string, number>,
+    field: string,
+  ) {
+    const index = headerMap.get(field);
+    if (index === undefined) {
+      return '';
+    }
+    return row[index] ?? '';
+  }
+
+  private normalizeImportKey(value: unknown) {
+    return `${value || ''}`.trim().replace(/\s+/g, ' ').toLowerCase();
+  }
+
+  private splitImportGroups(value: unknown) {
+    const raw = this.normalizeOptionalText(value, 500);
+    if (!raw) {
+      return [];
+    }
+    return [
+      ...new Set(
+        raw
+          .split(/[;,]/)
+          .map((item) => item.trim())
+          .filter(Boolean),
+      ),
+    ];
+  }
+
   private normalizeServiceTimes(value: unknown): CongregationServiceTime[] {
     return this.normalizeJsonList(value, 8)
       .map((item) => ({
@@ -1786,6 +2487,13 @@ export class ChurchService {
       relations: ['group'],
     });
     const groupsByMemberId = new Map<string, DiscipleshipGroup[]>();
+    const memberByContributorId = new Map<string, DiscipleshipMember>();
+
+    members.forEach((member) => {
+      if (member.contributorId) {
+        memberByContributorId.set(member.contributorId, member);
+      }
+    });
 
     memberships.forEach((membership) => {
       const groups = groupsByMemberId.get(membership.memberId) || [];
@@ -1794,6 +2502,8 @@ export class ChurchService {
       }
       groupsByMemberId.set(membership.memberId, groups);
     });
+    const contributionSummaryByMemberId =
+      await this.getDiscipleshipContributionSummaries(memberByContributorId);
 
     return members.map((member) => ({
       ...member,
@@ -1801,7 +2511,92 @@ export class ChurchService {
       groupIds: (groupsByMemberId.get(member.id) || []).map(
         (group) => group.id,
       ),
+      contributionSummary:
+        contributionSummaryByMemberId.get(member.id) || {
+          totalAmount: 0,
+          contributionCount: 0,
+          latestContributionAt: null,
+          dates: [],
+          contributions: [],
+        },
     }));
+  }
+
+  private async getDiscipleshipContributionSummaries(
+    memberByContributorId: Map<string, DiscipleshipMember>,
+  ) {
+    const contributorIds = [...memberByContributorId.keys()];
+    const summaryByMemberId = new Map<string, any>();
+    if (contributorIds.length === 0) {
+      return summaryByMemberId;
+    }
+    const churchId = [...memberByContributorId.values()][0]?.churchId;
+    if (!churchId) {
+      return summaryByMemberId;
+    }
+
+    const contributions = await this.contributionRepo.find({
+      where: {
+        churchId,
+        contributorId: In(contributorIds),
+        status: ContributionStatus.CONFIRMED,
+      },
+      order: { receivedAt: 'DESC', createdAt: 'DESC' },
+    });
+    const grouped = new Map<string, Contribution[]>();
+    contributions.forEach((contribution) => {
+      if (!contribution.contributorId) {
+        return;
+      }
+      const items = grouped.get(contribution.contributorId) || [];
+      items.push(contribution);
+      grouped.set(contribution.contributorId, items);
+    });
+
+    grouped.forEach((items, contributorId) => {
+      const member = memberByContributorId.get(contributorId);
+      if (!member) {
+        return;
+      }
+      const byDate = new Map<string, { amount: number; count: number }>();
+      const contributionRows = items.map((item) => {
+        const date = this.getNairobiDateFromInstant(
+          item.receivedAt || item.createdAt,
+        );
+        const current = byDate.get(date) || { amount: 0, count: 0 };
+        current.amount += Number(item.amount || 0);
+        current.count += 1;
+        byDate.set(date, current);
+        return {
+          id: item.id,
+          date,
+          amount: Number(item.amount || 0),
+          fundAccountName: item.fundAccountName,
+          paymentReference: item.paymentReference,
+          channel: item.channel,
+        };
+      });
+
+      summaryByMemberId.set(member.id, {
+        totalAmount: Number(
+          items
+            .reduce((sum, item) => sum + Number(item.amount || 0), 0)
+            .toFixed(2),
+        ),
+        contributionCount: items.length,
+        latestContributionAt: contributionRows[0]?.date || null,
+        dates: [...byDate.entries()]
+          .map(([date, summary]) => ({
+            date,
+            amount: Number(summary.amount.toFixed(2)),
+            count: summary.count,
+          }))
+          .sort((a, b) => b.date.localeCompare(a.date)),
+        contributions: contributionRows,
+      });
+    });
+
+    return summaryByMemberId;
   }
 
   private sanitizeChurchUser(user: ChurchUser) {
