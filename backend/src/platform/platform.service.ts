@@ -1362,9 +1362,11 @@ export class PlatformService {
         sum +
         Number(
           item.commissionAmount ??
-            (Number(item.amount || 0) *
-              Number(item.church?.commissionRatePct || 0)) /
-              100,
+            Math.ceil(
+              (Number(item.amount || 0) *
+                Number(item.church?.commissionRatePct || 0)) /
+                100,
+            ),
         ),
       0,
     );
@@ -1697,7 +1699,9 @@ export class PlatformService {
     const fallbackRevenue =
       billingModel === ChurchBillingModel.COMMISSION
         ? base.revenue ||
-          (base.total * Number(church.commissionRatePct || 0)) / 100
+          Math.ceil(
+            (base.total * Number(church.commissionRatePct || 0)) / 100,
+          )
         : 0;
 
     return {

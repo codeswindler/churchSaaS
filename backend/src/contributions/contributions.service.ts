@@ -1113,7 +1113,7 @@ export class ContributionsService {
 
     return {
       commissionRatePctApplied: rate,
-      commissionAmount: Number(((Number(amount || 0) * rate) / 100).toFixed(2)),
+      commissionAmount: Math.ceil((Number(amount || 0) * rate) / 100),
     };
   }
 

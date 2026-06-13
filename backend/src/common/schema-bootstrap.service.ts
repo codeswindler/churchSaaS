@@ -341,11 +341,18 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
             contribution.\`commissionRatePctApplied\` = COALESCE(contribution.\`commissionRatePctApplied\`, church.\`commissionRatePct\`, 0),
             contribution.\`commissionAmount\` = COALESCE(
               contribution.\`commissionAmount\`,
-              ROUND((contribution.\`amount\` * COALESCE(church.\`commissionRatePct\`, 0)) / 100, 2)
+              CEILING((contribution.\`amount\` * COALESCE(church.\`commissionRatePct\`, 0)) / 100)
             )
           WHERE contribution.\`channel\` = 'mpesa'
             AND contribution.\`status\` = 'confirmed'
             AND contribution.\`notes\` LIKE 'M-Pesa C2B confirmation%'
+        `);
+        await queryRunner.query(`
+          UPDATE \`contributions\`
+          SET \`commissionAmount\` = CEILING(\`commissionAmount\`)
+          WHERE \`commissionAmount\` IS NOT NULL
+            AND \`commissionAmount\` > 0
+            AND \`commissionAmount\` <> CEILING(\`commissionAmount\`)
         `);
         await queryRunner.query(`
           UPDATE \`contributions\` contribution
