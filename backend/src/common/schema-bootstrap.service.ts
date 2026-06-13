@@ -273,7 +273,7 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
       const churchUsers = await queryRunner.getTable('church_users');
       if (churchUsers) {
         const statements: string[] = [
-          "MODIFY COLUMN `role` varchar(40) NOT NULL DEFAULT 'treasurer'",
+          "MODIFY COLUMN `role` varchar(40) NOT NULL DEFAULT 'admin'",
         ];
 
         if (!churchUsers.findColumnByName('permissionOverrides')) {
@@ -284,12 +284,6 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
 
         await queryRunner.query(
           `ALTER TABLE \`church_users\` ${statements.join(', ')}`,
-        );
-        await queryRunner.query(
-          "UPDATE `church_users` SET `role` = 'priest' WHERE `role` = 'church_admin'",
-        );
-        await queryRunner.query(
-          "UPDATE `church_users` SET `role` = 'treasurer' WHERE `role` = 'cashier'",
         );
       }
 

@@ -43,18 +43,7 @@ const rolePermissionPresets: Record<string, string[]> = {
     'discipleship.manage',
     'discipleship.attendanceRecord',
   ],
-  treasurer: [
-    'dashboard.view',
-    'contributions.view',
-    'contributions.record',
-    'reports.view',
-    'reports.export',
-    'contributors.view',
-    'contributors.tag',
-    'outbox.view',
-  ],
-  secretary: [
-    'dashboard.view',
+  admin: [
     'fundAccounts.view',
     'fundAccounts.manage',
     'contributors.view',
@@ -63,9 +52,22 @@ const rolePermissionPresets: Record<string, string[]> = {
     'messaging.send',
     'outbox.view',
     'congregation.manage',
+    'presentation.manage',
+    'users.view',
+    'users.manage',
+    'discipleship.view',
+    'discipleship.manage',
+    'discipleship.attendanceRecord',
   ],
-  media: ['presentation.manage'],
 };
+
+const financialPermissions = new Set([
+  'dashboard.view',
+  'contributions.view',
+  'contributions.record',
+  'reports.view',
+  'reports.export',
+]);
 
 const permissionFeatureMap: Record<string, string | null> = {
   'dashboard.view': 'finance',
@@ -91,16 +93,17 @@ const permissionFeatureMap: Record<string, string | null> = {
 
 function normalizeChurchRole(role?: string | null) {
   if (role === 'church_admin') return 'priest';
-  if (role === 'cashier') return 'treasurer';
+  if (role === 'priest') return 'priest';
   if (
-    role === 'priest' ||
+    role === 'admin' ||
     role === 'treasurer' ||
     role === 'secretary' ||
-    role === 'media'
+    role === 'media' ||
+    role === 'cashier'
   ) {
-    return role;
+    return 'admin';
   }
-  return 'treasurer';
+  return 'admin';
 }
 
 export function getChurchUserPermissions(
@@ -113,13 +116,19 @@ export function getChurchUserPermissions(
   const providedPermissions = Array.isArray(user.permissions)
     ? user.permissions
     : [];
-  const permissions =
-    providedPermissions.length > 0
-      ? providedPermissions
-      : rolePermissionPresets[normalizeChurchRole(user.role)] || [];
+  const normalizedRole = normalizeChurchRole(user.role);
+  const permissions = Array.from(
+    new Set([
+      ...(rolePermissionPresets[normalizedRole] || []),
+      ...providedPermissions,
+    ]),
+  );
   const enabledFeatures = new Set(user.enabledFeatures || []);
 
   return permissions.filter((permission) => {
+    if (normalizedRole !== 'priest' && financialPermissions.has(permission)) {
+      return false;
+    }
     const requiredFeature = permissionFeatureMap[permission];
     return (
       !requiredFeature ||
@@ -191,6 +200,12 @@ export function getPortalPath(
   if (permissions.has('dashboard.view')) {
     return '/church/dashboard';
   }
+  if (permissions.has('discipleship.view')) {
+    return '/church/discipleship';
+  }
+  if (permissions.has('messaging.view')) {
+    return '/church/messaging';
+  }
   if (permissions.has('presentation.manage')) {
     return '/church/presentation';
   }
@@ -199,9 +214,6 @@ export function getPortalPath(
   }
   if (permissions.has('contributions.view')) {
     return '/church/contributions';
-  }
-  if (permissions.has('messaging.view')) {
-    return '/church/messaging';
   }
   if (permissions.has('users.view')) {
     return '/church/users';

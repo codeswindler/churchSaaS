@@ -31,22 +31,14 @@ const roleOptions = [
   {
     value: 'priest',
     label: 'Priest',
-    description: 'Full administrative access across enabled church modules.',
+    description:
+      'Church super admin with financial dashboards, reports, and all enabled modules.',
   },
   {
-    value: 'treasurer',
-    label: 'Treasurer',
-    description: 'Receiving and managing contributions, reports, and ledger.',
-  },
-  {
-    value: 'secretary',
-    label: 'Secretary',
-    description: 'Bulk messaging, contributors, and fund account setup.',
-  },
-  {
-    value: 'media',
-    label: 'Media',
-    description: 'Presentation control for screens and worship slides.',
+    value: 'admin',
+    label: 'Admin',
+    description:
+      'Non-financial operations, messaging, discipleship, presentation, and staff permissions.',
   },
 ];
 
@@ -74,18 +66,7 @@ const permissionOptions = [
 
 const rolePermissionPresets: Record<string, string[]> = {
   priest: permissionOptions.map(([value]) => value),
-  treasurer: [
-    'dashboard.view',
-    'contributions.view',
-    'contributions.record',
-    'reports.view',
-    'reports.export',
-    'contributors.view',
-    'contributors.tag',
-    'outbox.view',
-  ],
-  secretary: [
-    'dashboard.view',
+  admin: [
     'fundAccounts.view',
     'fundAccounts.manage',
     'contributors.view',
@@ -94,9 +75,35 @@ const rolePermissionPresets: Record<string, string[]> = {
     'messaging.send',
     'outbox.view',
     'congregation.manage',
+    'presentation.manage',
+    'users.view',
+    'users.manage',
+    'discipleship.view',
+    'discipleship.manage',
+    'discipleship.attendanceRecord',
   ],
-  media: ['presentation.manage'],
 };
+
+const financialPermissionValues = new Set([
+  'dashboard.view',
+  'contributions.view',
+  'contributions.record',
+  'reports.view',
+  'reports.export',
+]);
+
+function normalizeStaffRole(role?: string | null) {
+  return role === 'priest' || role === 'church_admin' ? 'priest' : 'admin';
+}
+
+function isLegacyNormalRole(role?: string | null) {
+  return Boolean(
+    role &&
+      role !== 'priest' &&
+      role !== 'church_admin' &&
+      role !== 'admin',
+  );
+}
 
 function createInitialStaffForm() {
   return {
@@ -105,7 +112,7 @@ function createInitialStaffForm() {
     username: '',
     phone: '',
     password: '',
-    role: 'treasurer',
+    role: 'admin',
     permissionOverrides: [] as string[],
     isActive: true,
   };
@@ -161,9 +168,16 @@ export default function ChurchDetailsModal({
       }
 
       if (editingUserId) {
+        const currentUser = Array.isArray(staffUsers)
+          ? staffUsers.find((user: any) => user.id === editingUserId)
+          : null;
+        const payload: Partial<StaffFormState> = { ...staffForm };
+        if (isLegacyNormalRole(currentUser?.role) && payload.role === 'admin') {
+          delete payload.role;
+        }
         const response = await api.patch(
           `/platform/churches/${churchId}/users/${editingUserId}`,
-          staffForm,
+          payload,
         );
         return response.data;
       }
@@ -315,7 +329,7 @@ export default function ChurchDetailsModal({
       username: user.username || '',
       phone: user.phone || '',
       password: '',
-      role: user.role || 'treasurer',
+      role: normalizeStaffRole(user.role),
       permissionOverrides: user.permissionOverrides || [],
       isActive: user.isActive ?? true,
     });
@@ -329,13 +343,22 @@ export default function ChurchDetailsModal({
       ...current,
       role,
       permissionOverrides: current.permissionOverrides.filter(
-        (permission) => !roleDefaults.includes(permission),
+        (permission) =>
+          !roleDefaults.includes(permission) &&
+          (role === 'priest' || !financialPermissionValues.has(permission)),
       ),
     }));
   };
 
   const togglePermission = (permission: string) => {
     setStaffForm((current) => {
+      if (
+        normalizeStaffRole(current.role) !== 'priest' &&
+        financialPermissionValues.has(permission)
+      ) {
+        return current;
+      }
+
       if (rolePermissionPresets[current.role]?.includes(permission)) {
         return current;
       }
@@ -680,7 +703,7 @@ export default function ChurchDetailsModal({
                             </td>
                             <td>{user.email}</td>
                             <td className="capitalize">
-                              {`${user.role || ''}`.replace(/_/g, ' ')}
+                              {normalizeStaffRole(user.role)}
                             </td>
                             <td>
                               <span
@@ -831,6 +854,9 @@ export default function ChurchDetailsModal({
                               );
                             const isOverride =
                               staffForm.permissionOverrides.includes(value);
+                            const isPriestOnly =
+                              staffForm.role !== 'priest' &&
+                              financialPermissionValues.has(value);
 
                             return (
                               <label
@@ -838,12 +864,18 @@ export default function ChurchDetailsModal({
                                 className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm transition ${
                                   isRolePermission
                                     ? 'border-emerald-300/30 bg-emerald-300/10 text-stone-100'
+                                    : isPriestOnly
+                                      ? 'border-white/10 bg-white/5 text-stone-500'
                                     : 'border-white/10 bg-white/5 text-stone-100'
                                 }`}
                               >
                                 <input
-                                  checked={isRolePermission || isOverride}
-                                  disabled={isRolePermission}
+                                  checked={
+                                    isPriestOnly
+                                      ? false
+                                      : isRolePermission || isOverride
+                                  }
+                                  disabled={isRolePermission || isPriestOnly}
                                   type="checkbox"
                                   onChange={() => togglePermission(value)}
                                 />
@@ -851,6 +883,10 @@ export default function ChurchDetailsModal({
                                 {isRolePermission ? (
                                   <span className="rounded-full border border-emerald-300/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-100">
                                     Role
+                                  </span>
+                                ) : isPriestOnly ? (
+                                  <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500">
+                                    Priest only
                                   </span>
                                 ) : null}
                               </label>

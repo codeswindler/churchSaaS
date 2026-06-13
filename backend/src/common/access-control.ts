@@ -36,30 +36,21 @@ export const DEFAULT_CHURCH_FEATURES = [
   ChurchFeature.DISCIPLESHIP,
 ];
 
+export const FINANCIAL_CHURCH_PERMISSIONS = new Set<ChurchPermission>([
+  ChurchPermission.DASHBOARD_VIEW,
+  ChurchPermission.CONTRIBUTIONS_VIEW,
+  ChurchPermission.CONTRIBUTIONS_RECORD,
+  ChurchPermission.REPORTS_VIEW,
+  ChurchPermission.REPORTS_EXPORT,
+]);
+
+const adminPermissions = Object.values(ChurchPermission).filter(
+  (permission) => !FINANCIAL_CHURCH_PERMISSIONS.has(permission),
+);
+
 export const ROLE_PERMISSION_PRESETS: Record<string, ChurchPermission[]> = {
   priest: Object.values(ChurchPermission),
-  treasurer: [
-    ChurchPermission.DASHBOARD_VIEW,
-    ChurchPermission.CONTRIBUTIONS_VIEW,
-    ChurchPermission.CONTRIBUTIONS_RECORD,
-    ChurchPermission.REPORTS_VIEW,
-    ChurchPermission.REPORTS_EXPORT,
-    ChurchPermission.CONTRIBUTORS_VIEW,
-    ChurchPermission.CONTRIBUTORS_TAG,
-    ChurchPermission.OUTBOX_VIEW,
-  ],
-  secretary: [
-    ChurchPermission.DASHBOARD_VIEW,
-    ChurchPermission.FUND_ACCOUNTS_VIEW,
-    ChurchPermission.FUND_ACCOUNTS_MANAGE,
-    ChurchPermission.CONTRIBUTORS_VIEW,
-    ChurchPermission.CONTRIBUTORS_TAG,
-    ChurchPermission.MESSAGING_VIEW,
-    ChurchPermission.MESSAGING_SEND,
-    ChurchPermission.OUTBOX_VIEW,
-    ChurchPermission.CONGREGATION_PAGE_MANAGE,
-  ],
-  media: [ChurchPermission.PRESENTATION_MANAGE],
+  admin: adminPermissions,
 };
 
 export const PERMISSION_FEATURE_MAP: Record<
@@ -90,16 +81,17 @@ export const PERMISSION_FEATURE_MAP: Record<
 
 export function normalizeChurchRole(role?: string | null) {
   if (role === 'church_admin') return 'priest';
-  if (role === 'cashier') return 'treasurer';
+  if (role === 'priest') return 'priest';
   if (
-    role === 'priest' ||
+    role === 'admin' ||
     role === 'treasurer' ||
     role === 'secretary' ||
-    role === 'media'
+    role === 'media' ||
+    role === 'cashier'
   ) {
-    return role;
+    return 'admin';
   }
-  return 'treasurer';
+  return 'admin';
 }
 
 export function normalizeFeatureList(features?: string[] | null) {
@@ -115,7 +107,8 @@ export function resolveChurchPermissions(
   role?: string | null,
   overrides?: string[] | null,
 ) {
-  const preset = ROLE_PERMISSION_PRESETS[normalizeChurchRole(role)] || [];
+  const normalizedRole = normalizeChurchRole(role);
+  const preset = ROLE_PERMISSION_PRESETS[normalizedRole] || [];
   const valid = new Set(Object.values(ChurchPermission));
   const resolved = new Set<ChurchPermission>(preset);
 
@@ -124,6 +117,12 @@ export function resolveChurchPermissions(
       resolved.add(permission as ChurchPermission);
     }
   });
+
+  if (normalizedRole !== 'priest') {
+    FINANCIAL_CHURCH_PERMISSIONS.forEach((permission) =>
+      resolved.delete(permission),
+    );
+  }
 
   return [...resolved];
 }

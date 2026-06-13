@@ -11,6 +11,8 @@ import { Church } from './church.entity';
 
 export enum ChurchUserRole {
   PRIEST = 'priest',
+  ADMIN = 'admin',
+  // Legacy values are kept so old rows can load safely; access-control normalizes them to admin.
   TREASURER = 'treasurer',
   SECRETARY = 'secretary',
   MEDIA = 'media',
@@ -46,7 +48,7 @@ export class ChurchUser {
   @Column({
     type: 'varchar',
     length: 40,
-    default: ChurchUserRole.TREASURER,
+    default: ChurchUserRole.ADMIN,
   })
   role: ChurchUserRole;
 
