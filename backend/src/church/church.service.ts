@@ -123,7 +123,7 @@ function getDefaultGalleryImageName(imageUrl?: string | null) {
 
 @Injectable()
 export class ChurchService {
-  private readonly receiptTemplateLimit = 306;
+  private readonly receiptTemplateLimit = 459;
   private readonly discipleshipTransactionSyncs = new Map<string, Promise<any>>();
 
   constructor(

@@ -35,7 +35,7 @@ const initialForm = {
   receiptTemplate: FUND_RECEIPT_TEMPLATE_PREFIX,
 };
 
-const RECEIPT_TEMPLATE_LIMIT = 306;
+const RECEIPT_TEMPLATE_LIMIT = 459;
 
 function isGeneralFundAccount(account: any) {
   return `${account?.code || account?.name || ''}`.trim().toLowerCase() === 'general';
@@ -407,7 +407,7 @@ export default function ChurchFundAccounts() {
                     <div className="mt-3 flex flex-col gap-2 text-xs text-stone-400 sm:flex-row sm:items-center sm:justify-between">
                       <span>
                         GSM-7 receipt template limit: {RECEIPT_TEMPLATE_LIMIT}{' '}
-                        characters, up to 2 SMS parts.
+                        characters, up to 3 SMS parts.
                       </span>
                       <span
                         className={
