@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Param,
   Get,
   Patch,
@@ -570,6 +571,16 @@ export class ChurchController {
     );
   }
 
+  @Delete('messaging/address-books/:addressBookId')
+  @Permissions(ChurchPermission.MESSAGING_SEND)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
+  deleteAddressBook(
+    @Request() req: any,
+    @Param('addressBookId') addressBookId: string,
+  ) {
+    return this.churchService.deleteAddressBook(req.user.churchId, addressBookId);
+  }
+
   @Get('messaging/address-books/:addressBookId/contacts')
   @Permissions(ChurchPermission.MESSAGING_VIEW)
   @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
@@ -595,6 +606,41 @@ export class ChurchController {
       req.user.churchId,
       addressBookId,
       body,
+    );
+  }
+
+  @Post('messaging/address-books/:addressBookId/contacts/import-file')
+  @Permissions(ChurchPermission.MESSAGING_SEND)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 2 * 1024 * 1024 },
+    }),
+  )
+  importAddressBookContactsFile(
+    @Request() req: any,
+    @Param('addressBookId') addressBookId: string,
+    @UploadedFile() file: any,
+  ) {
+    return this.churchService.importAddressBookContactsFile(
+      req.user.churchId,
+      addressBookId,
+      file,
+    );
+  }
+
+  @Delete('messaging/address-books/:addressBookId/contacts/:contactId')
+  @Permissions(ChurchPermission.MESSAGING_SEND)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
+  deleteAddressBookContact(
+    @Request() req: any,
+    @Param('addressBookId') addressBookId: string,
+    @Param('contactId') contactId: string,
+  ) {
+    return this.churchService.deleteAddressBookContact(
+      req.user.churchId,
+      addressBookId,
+      contactId,
     );
   }
 

@@ -10,6 +10,7 @@ import {
   RotateCcw,
   Send,
   SlidersHorizontal,
+  Trash2,
   Upload,
   UserPlus,
   Users,
@@ -47,6 +48,7 @@ const initialContactForm = {
 const initialUploadForm = {
   addressBookId: '',
   contactsText: '',
+  file: null as File | null,
 };
 
 const initialOutboxFilters = {
@@ -353,14 +355,84 @@ export default function ChurchMessaging() {
     },
   });
 
+  const deleteAddressBookMutation = useMutation({
+    mutationFn: async (addressBookId: string) => {
+      await api.delete(`/church/messaging/address-books/${addressBookId}`);
+      return addressBookId;
+    },
+    onSuccess: (addressBookId) => {
+      toast.success('Contact group deleted');
+      const nextBook = books.find((book: any) => book.id !== addressBookId);
+      if (selectedAddressBookId === addressBookId) {
+        setSelectedAddressBookId(nextBook?.id || '');
+        setUploadForm((current) => ({
+          ...current,
+          addressBookId: nextBook?.id || '',
+        }));
+      }
+      setForm((current) => ({
+        ...current,
+        addressBookIds: current.addressBookIds.filter(
+          (bookId) => bookId !== addressBookId,
+        ),
+      }));
+      queryClient.invalidateQueries({ queryKey: ['church-address-books'] });
+      queryClient.removeQueries({
+        queryKey: ['church-address-book-contacts', addressBookId],
+      });
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message ||
+          error?.message ||
+          'Unable to delete contact group',
+      );
+    },
+  });
+
+  const deleteContactMutation = useMutation({
+    mutationFn: async (payload: { addressBookId: string; contactId: string }) => {
+      await api.delete(
+        `/church/messaging/address-books/${payload.addressBookId}/contacts/${payload.contactId}`,
+      );
+      return payload;
+    },
+    onSuccess: ({ addressBookId }) => {
+      toast.success('Contact deleted');
+      queryClient.invalidateQueries({ queryKey: ['church-address-books'] });
+      queryClient.invalidateQueries({
+        queryKey: ['church-address-book-contacts', addressBookId],
+      });
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message ||
+          error?.message ||
+          'Unable to delete contact',
+      );
+    },
+  });
+
   const importContactsMutation = useMutation({
     mutationFn: async () => {
       if (!uploadForm.addressBookId) {
         throw new Error('Select a contact group for this upload');
       }
-      if (!uploadForm.contactsText.trim()) {
+      if (!uploadForm.file && !uploadForm.contactsText.trim()) {
         throw new Error('Upload or paste contacts before importing');
       }
+
+      if (uploadForm.file) {
+        const payload = new FormData();
+        payload.append('file', uploadForm.file);
+        const response = await api.post(
+          `/church/messaging/address-books/${uploadForm.addressBookId}/contacts/import-file`,
+          payload,
+          { headers: { 'Content-Type': 'multipart/form-data' } },
+        );
+        return response.data;
+      }
+
       const response = await api.post(
         `/church/messaging/address-books/${uploadForm.addressBookId}/contacts/import`,
         { contactsText: uploadForm.contactsText },
@@ -405,7 +477,11 @@ export default function ChurchMessaging() {
         ),
         { duration: 7000 },
       );
-      setUploadForm((current) => ({ ...current, contactsText: '' }));
+      setUploadForm((current) => ({
+        ...current,
+        contactsText: '',
+        file: null,
+      }));
       queryClient.invalidateQueries({ queryKey: ['church-address-books'] });
       queryClient.invalidateQueries({
         queryKey: ['church-address-book-contacts', uploadForm.addressBookId],
@@ -584,15 +660,26 @@ export default function ChurchMessaging() {
 
   const loadUploadFile = (file?: File) => {
     if (!file) return;
-    if (!/\.(csv|txt)$/i.test(file.name)) {
-      toast.error('Please upload the CSV template file');
+    if (!/\.(xlsx|csv|txt)$/i.test(file.name)) {
+      toast.error('Please upload an XLSX, CSV, or TXT contact file');
       return;
     }
+
+    if (/\.xlsx$/i.test(file.name)) {
+      setUploadForm((current) => ({
+        ...current,
+        contactsText: `Excel file selected: ${file.name}\n\nThe first worksheet will be imported using columns like firstName, lastName, phone, and gender.`,
+        file,
+      }));
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = () => {
       setUploadForm((current) => ({
         ...current,
         contactsText: String(reader.result || ''),
+        file: null,
       }));
     };
     reader.readAsText(file);
@@ -1085,31 +1172,67 @@ export default function ChurchMessaging() {
               {books.map((book: any) => {
                 const isOpen = selectedAddressBookId === book.id;
                 return (
-                  <button
+                  <div
                     key={book.id}
                     className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition ${
                       isOpen ? selectedTileClass : idleTileClass
                     }`}
-                    type="button"
-                    onClick={() => {
-                      setSelectedAddressBookId(book.id);
-                      setUploadForm((current) => ({
-                        ...current,
-                        addressBookId: book.id,
-                      }));
-                    }}
                   >
-                    <span>
-                      <span className="block font-semibold">{book.name}</span>
-                      <span className="text-xs text-stone-400">
-                        {Number(book.contactCount || 0).toLocaleString()}{' '}
-                        contacts
+                    <button
+                      className="min-w-0 flex-1 text-left"
+                      type="button"
+                      onClick={() => {
+                        setSelectedAddressBookId(book.id);
+                        setUploadForm((current) => ({
+                          ...current,
+                          addressBookId: book.id,
+                        }));
+                      }}
+                    >
+                      <span>
+                        <span className="block truncate font-semibold">
+                          {book.name}
+                        </span>
+                        <span className="text-xs text-stone-400">
+                          {Number(book.contactCount || 0).toLocaleString()}{' '}
+                          contacts
+                        </span>
                       </span>
-                    </span>
-                    <span className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]">
-                      {isOpen ? 'Open' : 'View'}
-                    </span>
-                  </button>
+                    </button>
+                    <div className="ml-3 flex items-center gap-2">
+                      <button
+                        className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]"
+                        type="button"
+                        onClick={() => {
+                          setSelectedAddressBookId(book.id);
+                          setUploadForm((current) => ({
+                            ...current,
+                            addressBookId: book.id,
+                          }));
+                        }}
+                      >
+                        {isOpen ? 'Open' : 'View'}
+                      </button>
+                      <button
+                        aria-label={`Delete ${book.name}`}
+                        className="rounded-full border border-rose-300/25 bg-rose-300/10 p-2 text-rose-100 transition hover:border-rose-200/60 hover:bg-rose-300/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={deleteAddressBookMutation.isPending}
+                        title="Delete group"
+                        type="button"
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `Delete "${book.name}" and all contacts in this group?`,
+                            )
+                          ) {
+                            deleteAddressBookMutation.mutate(book.id);
+                          }
+                        }}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
                 );
               })}
               {books.length === 0 ? (
@@ -1219,7 +1342,7 @@ export default function ChurchMessaging() {
                 <div className="p-5 text-stone-300">Loading contacts...</div>
               ) : contacts.length > 0 ? (
                 <div className="table-scroll-region">
-                  <table className="mobile-card-table w-full min-w-[640px] divide-y divide-white/10 text-sm">
+                  <table className="mobile-card-table w-full min-w-[720px] divide-y divide-white/10 text-sm">
                     <thead className="bg-black/20 text-left text-xs uppercase tracking-[0.22em] text-stone-400">
                       <tr>
                         <th className="px-4 py-3">Name</th>
@@ -1227,6 +1350,7 @@ export default function ChurchMessaging() {
                         <th className="px-4 py-3">Gender</th>
                         <th className="px-4 py-3">Source</th>
                         <th className="px-4 py-3">Added</th>
+                        <th className="px-4 py-3">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1255,6 +1379,43 @@ export default function ChurchMessaging() {
                             data-label="Added"
                           >
                             {new Date(contact.createdAt).toLocaleDateString()}
+                          </td>
+                          <td className="px-4 py-3" data-label="Actions">
+                            <button
+                              aria-label={`Delete ${
+                                contact.displayName ||
+                                contact.firstName ||
+                                'contact'
+                              }`}
+                              className="btn-secondary px-3 py-2 text-rose-100 hover:border-rose-200/50 hover:bg-rose-300/10"
+                              disabled={deleteContactMutation.isPending}
+                              title="Delete contact"
+                              type="button"
+                              onClick={() => {
+                                const label =
+                                  contact.displayName ||
+                                  contact.firstName ||
+                                  contact.normalizedPhone ||
+                                  'this contact';
+                                if (
+                                  window.confirm(
+                                    `Delete ${label} from ${
+                                      selectedBook?.name || 'this group'
+                                    }?`,
+                                  )
+                                ) {
+                                  deleteContactMutation.mutate({
+                                    addressBookId:
+                                      contact.addressBookId ||
+                                      selectedAddressBookId,
+                                    contactId: contact.id,
+                                  });
+                                }
+                              }}
+                            >
+                              <Trash2 size={14} />
+                              Delete
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -1291,7 +1452,7 @@ export default function ChurchMessaging() {
               onClick={downloadAddressBookTemplate}
             >
               <Download size={16} />
-              Download Excel CSV template
+              Download CSV template
             </button>
           </div>
 
@@ -1321,7 +1482,7 @@ export default function ChurchMessaging() {
               <div>
                 <label className="label">Upload file</label>
                 <input
-                  accept=".csv,.txt"
+                  accept=".xlsx,.csv,.txt"
                   className="input"
                   type="file"
                   onChange={(event) => {
@@ -1340,7 +1501,9 @@ export default function ChurchMessaging() {
                 <Upload size={16} />
                 {importContactsMutation.isPending
                   ? 'Importing...'
-                  : 'Upload to group'}
+                  : uploadForm.file
+                    ? 'Upload Excel to group'
+                    : 'Upload to group'}
               </button>
             </div>
 
@@ -1349,11 +1512,13 @@ export default function ChurchMessaging() {
               <textarea
                 className="input min-h-[320px] resize-y font-mono text-sm"
                 placeholder="firstName,lastName,phone,gender&#10;Jane,Otieno,0712345678,female"
+                readOnly={Boolean(uploadForm.file)}
                 value={uploadForm.contactsText}
                 onChange={(event) =>
                   setUploadForm((current) => ({
                     ...current,
                     contactsText: event.target.value,
+                    file: null,
                   }))
                 }
               />

@@ -1824,6 +1824,13 @@ export class ChurchService {
     return this.addressBookRepo.save(book);
   }
 
+  async deleteAddressBook(churchId: string, addressBookId: string) {
+    const book = await this.ensureAddressBook(churchId, addressBookId);
+    await this.addressBookContactRepo.delete({ churchId, addressBookId });
+    await this.addressBookRepo.remove(book);
+    return { deleted: true, id: addressBookId };
+  }
+
   async listAddressBookContacts(churchId: string, addressBookId: string) {
     await this.ensureAddressBook(churchId, addressBookId);
     return this.addressBookContactRepo.find({
@@ -1881,6 +1888,50 @@ export class ChurchService {
     );
 
     return { contact, created: true };
+  }
+
+  async deleteAddressBookContact(
+    churchId: string,
+    addressBookId: string,
+    contactId: string,
+  ) {
+    await this.ensureAddressBook(churchId, addressBookId);
+    const contact = await this.addressBookContactRepo.findOne({
+      where: { id: contactId, churchId, addressBookId },
+    });
+    if (!contact) {
+      throw new NotFoundException('Address book contact not found');
+    }
+
+    await this.addressBookContactRepo.remove(contact);
+    return { deleted: true, id: contactId };
+  }
+
+  async importAddressBookContactsFile(
+    churchId: string,
+    addressBookId: string,
+    file: any,
+  ) {
+    await this.ensureAddressBook(churchId, addressBookId);
+    if (!file?.buffer) {
+      throw new BadRequestException('Upload a contact XLSX, CSV, or TXT file');
+    }
+
+    const extension = extname(file.originalname || '').toLowerCase();
+    if (!['.xlsx', '.csv', '.txt'].includes(extension)) {
+      throw new BadRequestException('Upload an XLSX, CSV, or TXT contact file');
+    }
+
+    const contactsText =
+      extension === '.xlsx'
+        ? this.importMatrixToContactText(
+            await this.parseExcelImportMatrix(file.buffer),
+          )
+        : file.buffer.toString('utf8');
+
+    return this.importAddressBookContacts(churchId, addressBookId, {
+      contactsText,
+    });
   }
 
   async importAddressBookContacts(
@@ -1973,6 +2024,20 @@ export class ChurchService {
       invalid,
       duplicatesDropped: Math.max(0, lines.length - invalid - unique.size),
     };
+  }
+
+  private importMatrixToContactText(
+    matrix: { rowNumber: number; values: unknown[] }[],
+  ) {
+    return matrix
+      .map((row) =>
+        row.values
+          .map((value) => `${value ?? ''}`.trim())
+          .filter(Boolean)
+          .join(','),
+      )
+      .filter(Boolean)
+      .join('\n');
   }
 
   async getCongregationPage(churchId: string) {
