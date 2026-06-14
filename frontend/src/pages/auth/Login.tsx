@@ -81,6 +81,28 @@ const initialEnquiryForm = {
   message: '',
 };
 
+function getLoginErrorMessage(error: any) {
+  const status = error?.response?.status;
+  if (status === 502 || status === 503 || status === 504) {
+    return 'Server is currently unavailable. Please try again shortly.';
+  }
+
+  if (!error?.response) {
+    return 'Unable to reach the server. Check your connection and try again.';
+  }
+
+  const message = error.response.data?.message;
+  if (Array.isArray(message)) {
+    return message.join(', ');
+  }
+
+  if (typeof message === 'string' && message.trim()) {
+    return message;
+  }
+
+  return 'Unable to sign in';
+}
+
 export default function Login() {
   const navigate = useNavigate();
   const [identifier, setIdentifier] = useState('');
@@ -108,7 +130,7 @@ export default function Login() {
       navigate(getPortalPath(session.user), { replace: true });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Unable to sign in');
+      toast.error(getLoginErrorMessage(error));
     },
   });
 
@@ -667,12 +689,14 @@ export default function Login() {
                 }}
               >
                 <div>
-                  <label className="label">Email, username, or phone</label>
+                  <label className="label">
+                    Email, username, phone, or full name
+                  </label>
                   <input
                     className="input"
                     value={identifier}
                     onChange={(event) => setIdentifier(event.target.value)}
-                    placeholder="admin@example.com"
+                    placeholder="admin@example.com or Bishop Mwangi"
                   />
                 </div>
 

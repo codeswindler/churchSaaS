@@ -63,7 +63,7 @@ export class AuthService {
   }
 
   async login(identifier: string, password: string) {
-    const [platformUser, churchUser] = await Promise.all([
+    const [platformUser, churchIdentity] = await Promise.all([
       this.findPlatformIdentity(identifier),
       this.findChurchIdentity(identifier),
     ]);
@@ -79,7 +79,7 @@ export class AuthService {
     }
 
     const churchResponse = await this.tryAuthenticateChurchUser(
-      churchUser,
+      churchIdentity.user,
       password,
     );
     if (churchResponse) {
@@ -93,6 +93,12 @@ export class AuthService {
     if (matches.length > 1) {
       throw new ConflictException(
         'Multiple accounts matched this sign-in. Use a unique email, username, or phone.',
+      );
+    }
+
+    if (churchIdentity.ambiguousName) {
+      throw new ConflictException(
+        'Multiple church users matched this name. Use a unique email, username, or phone.',
       );
     }
 
@@ -111,8 +117,15 @@ export class AuthService {
   }
 
   async churchLogin(identifier: string, password: string) {
+    const churchIdentity = await this.findChurchIdentity(identifier);
+    if (churchIdentity.ambiguousName) {
+      throw new ConflictException(
+        'Multiple church users matched this name. Use a unique email, username, or phone.',
+      );
+    }
+
     const response = await this.tryAuthenticateChurchUser(
-      await this.findChurchIdentity(identifier),
+      churchIdentity.user,
       password,
     );
     if (!response) {
@@ -284,29 +297,58 @@ export class AuthService {
       return null;
     }
 
-    return this.platformUserRepo.findOne({
-      where: [
-        { email: normalized.toLowerCase() },
-        { username: normalized },
-        { phone: normalized },
-      ],
-    });
+    const normalizedLower = normalized.toLowerCase();
+
+    return this.platformUserRepo
+      .createQueryBuilder('platformUser')
+      .where('LOWER(platformUser.email) = :normalizedLower', {
+        normalizedLower,
+      })
+      .orWhere('LOWER(platformUser.username) = :normalizedLower', {
+        normalizedLower,
+      })
+      .orWhere('platformUser.phone = :normalized', { normalized })
+      .getOne();
   }
 
   private async findChurchIdentity(identifier: string) {
     const normalized = this.normalizeIdentifier(identifier);
     if (!normalized) {
-      return null;
+      return { user: null, ambiguousName: false };
     }
 
-    return this.churchUserRepo.findOne({
-      where: [
-        { email: normalized.toLowerCase() },
-        { username: normalized },
-        { phone: normalized },
-      ],
-      relations: ['church'],
-    });
+    const normalizedLower = normalized.toLowerCase();
+    const directMatch = await this.churchUserRepo
+      .createQueryBuilder('churchUser')
+      .leftJoinAndSelect('churchUser.church', 'church')
+      .where('LOWER(churchUser.email) = :normalizedLower', {
+        normalizedLower,
+      })
+      .orWhere('LOWER(churchUser.username) = :normalizedLower', {
+        normalizedLower,
+      })
+      .orWhere('churchUser.phone = :normalized', { normalized })
+      .getOne();
+
+    if (directMatch) {
+      return { user: directMatch, ambiguousName: false };
+    }
+
+    const nameMatches = await this.churchUserRepo
+      .createQueryBuilder('churchUser')
+      .leftJoinAndSelect('churchUser.church', 'church')
+      .where('LOWER(TRIM(churchUser.name)) = :normalizedLower', {
+        normalizedLower,
+      })
+      .andWhere('churchUser.isActive = :isActive', { isActive: true })
+      .limit(2)
+      .getMany();
+
+    if (nameMatches.length === 1) {
+      return { user: nameMatches[0], ambiguousName: false };
+    }
+
+    return { user: null, ambiguousName: nameMatches.length > 1 };
   }
 
   private async tryAuthenticatePlatformUser(
