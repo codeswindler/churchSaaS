@@ -101,6 +101,21 @@ export default function PublicCongregation() {
         .then((response) => response.data),
     enabled: Boolean(slug),
   });
+  const hasOngoingFundDisplay = Boolean(
+    data?.page?.fundDisplays?.some(
+      (display: any) => display?.endMode !== 'static',
+    ),
+  );
+  const { data: liveFundDisplayData } = useQuery({
+    queryKey: ['public-congregation-fund-displays', slug],
+    queryFn: () =>
+      api
+        .get(`/public/churches/${slug}/congregation/fund-displays`)
+        .then((response) => response.data),
+    enabled: Boolean(slug) && hasOngoingFundDisplay,
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: true,
+  });
 
   useEffect(() => {
     localStorage.setItem(PUBLIC_THEME_STORAGE_KEY, publicTheme);
@@ -136,7 +151,8 @@ export default function PublicCongregation() {
   const events = page.events || [];
   const programs = page.massPrograms || [];
   const sermons = page.sermons || [];
-  const fundDisplays = page.fundDisplays || [];
+  const fundDisplays =
+    liveFundDisplayData?.fundDisplays || page.fundDisplays || [];
   const gallery = (page.galleryImages || []).filter(
     (image: any) => image?.imageUrl && image.isActive !== false,
   );

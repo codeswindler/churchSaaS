@@ -202,6 +202,26 @@ export class PublicController {
     };
   }
 
+  @Get('churches/:slug/congregation/fund-displays')
+  async getCongregationFundDisplays(@Param('slug') slug: string) {
+    const church = await this.churchRepo.findOne({ where: { slug } });
+    if (!church || church.status !== ChurchStatus.ACTIVE) {
+      throw new NotFoundException('Church not found');
+    }
+
+    const page = await this.congregationPageRepo.findOne({
+      where: { churchId: church.id },
+    });
+
+    return {
+      fundDisplays: await this.resolvePublicFundDisplays(
+        church.id,
+        page?.fundDisplays || [],
+      ),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
   @Post('churches/:slug/contributions/mpesa')
   createPublicContribution(@Param('slug') slug: string, @Body() body: any) {
     return this.contributionsService.createPublicMpesaContribution(slug, body);
@@ -608,7 +628,11 @@ export class PublicController {
   ) {
     const qb = this.contributionRepo
       .createQueryBuilder('contribution')
-      .select('COALESCE(SUM(contribution.amount), 0)', 'totalAmount')
+      .select('COALESCE(SUM(contribution.amount), 0)', 'grossAmount')
+      .addSelect(
+        'COALESCE(SUM(COALESCE(contribution.commissionAmount, 0)), 0)',
+        'commissionAmount',
+      )
       .addSelect('COUNT(contribution.id)', 'contributionCount')
       .addSelect(
         'MAX(COALESCE(contribution.receivedAt, contribution.createdAt))',
@@ -634,8 +658,12 @@ export class PublicController {
     }
 
     const raw = await qb.getRawOne();
+    const grossAmount = Number(raw?.grossAmount || 0);
+    const commissionAmount = Number(raw?.commissionAmount || 0);
     return {
-      totalAmount: Number(raw?.totalAmount || 0),
+      totalAmount: Number((grossAmount - commissionAmount).toFixed(2)),
+      grossAmount,
+      commissionAmount,
       contributionCount: Number(raw?.contributionCount || 0),
       lastContributionAt: raw?.lastContributionAt || null,
     };
