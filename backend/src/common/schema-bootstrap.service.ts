@@ -14,6 +14,7 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
     await this.ensureClientEnquiryTable();
     await this.ensureSmsMessagingTables();
     await this.ensureSmsSenderTables();
+    await this.ensureMobileDeviceTable();
     await this.ensureDiscipleshipTables();
     await this.ensureCongregationPageTable();
   }
@@ -55,6 +56,71 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `);
         this.logger.log('Created church SMS sender allocations table.');
+      }
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  private async ensureMobileDeviceTable() {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+
+    try {
+      const table = await queryRunner.getTable('mobile_devices');
+      if (!table) {
+        await queryRunner.query(`
+          CREATE TABLE \`mobile_devices\` (
+            \`id\` varchar(36) NOT NULL,
+            \`churchId\` varchar(36) NOT NULL,
+            \`churchUserId\` varchar(36) NOT NULL,
+            \`fcmToken\` varchar(512) NOT NULL,
+            \`platform\` varchar(40) NOT NULL DEFAULT 'android',
+            \`appVersion\` varchar(80) NULL,
+            \`deviceName\` varchar(160) NULL,
+            \`isActive\` tinyint NOT NULL DEFAULT 1,
+            \`lastSeenAt\` datetime NULL,
+            \`deactivatedAt\` datetime NULL,
+            \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            \`updatedAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+            PRIMARY KEY (\`id\`),
+            UNIQUE KEY \`UQ_mobile_devices_fcm_token\` (\`fcmToken\`),
+            INDEX \`IDX_mobile_devices_church_user_active\` (\`churchId\`, \`churchUserId\`, \`isActive\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        this.logger.log('Created mobile devices table.');
+        return;
+      }
+
+      const statements: string[] = [];
+      if (!table.findColumnByName('appVersion')) {
+        statements.push(
+          'ADD COLUMN `appVersion` varchar(80) NULL AFTER `platform`',
+        );
+      }
+      if (!table.findColumnByName('deviceName')) {
+        statements.push(
+          'ADD COLUMN `deviceName` varchar(160) NULL AFTER `appVersion`',
+        );
+      }
+      if (!table.findColumnByName('lastSeenAt')) {
+        statements.push(
+          'ADD COLUMN `lastSeenAt` datetime NULL AFTER `isActive`',
+        );
+      }
+      if (!table.findColumnByName('deactivatedAt')) {
+        statements.push(
+          'ADD COLUMN `deactivatedAt` datetime NULL AFTER `lastSeenAt`',
+        );
+      }
+
+      if (statements.length > 0) {
+        await queryRunner.query(
+          `ALTER TABLE \`mobile_devices\` ${statements.join(', ')}`,
+        );
+        this.logger.log(
+          `Applied mobile device schema bootstrap with ${statements.length} column updates.`,
+        );
       }
     } finally {
       await queryRunner.release();
@@ -698,9 +764,7 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
           await queryRunner.query(
             'CREATE INDEX `IDX_discipleship_members_church_contributor` ON `discipleship_members` (`churchId`, `contributorId`)',
           );
-          this.logger.log(
-            'Indexed contributor link on discipleship members.',
-          );
+          this.logger.log('Indexed contributor link on discipleship members.');
         }
       }
       await queryRunner.query(

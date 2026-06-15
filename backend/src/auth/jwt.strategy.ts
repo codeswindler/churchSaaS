@@ -19,6 +19,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       role: payload.role,
       userType: payload.userType,
       churchId: payload.churchId,
+      tokenUse: payload.tokenUse || 'web',
+      scope: payload.scope || [],
+      permissions: payload.permissions || [],
+      enabledFeatures: payload.enabledFeatures || [],
+      permissionOverrides: payload.permissionOverrides || [],
     };
   }
 }

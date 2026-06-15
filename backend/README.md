@@ -33,6 +33,37 @@ NestJS backend for the multi-tenant church management business system.
 - `GET /api/public/churches/:slug/config`
 - `POST /api/public/churches/:slug/contributions/mpesa`
 - `POST /api/payments/mpesa/webhook`
+- `POST /api/mobile/auth/login`
+- `GET /api/mobile/funds/dashboard`
+- `GET /api/mobile/funds/summary`
+- `GET /api/mobile/funds/transactions`
+- `GET /api/mobile/funds/fund-accounts`
+- `POST /api/mobile/devices`
+- `DELETE /api/mobile/devices/:deviceId`
+
+## Android Mobile Funds API
+
+The Android app must authenticate through the backend and never connect directly
+to the database. `POST /api/mobile/auth/login` accepts the same church
+identifier and password as church web login, but returns a scoped JWT with:
+
+- `tokenUse: "mobile_funds"`
+- `scope: ["mobile:funds:read"]`
+
+That token is accepted only by `/api/mobile/*` funds/device endpoints. Existing
+web controllers reject mobile-scoped tokens, so priest accounts keep full web
+access while Android app access stays read-only and funds-only.
+
+Firebase Cloud Messaging is optional. If these values are not set, confirmed
+contributions continue normally and the backend logs the notification it would
+have sent:
+
+- `FCM_PROJECT_ID`
+- `FCM_CLIENT_EMAIL`
+- `FCM_PRIVATE_KEY`
+
+Use the Firebase service-account private key with escaped newlines when storing
+it in `.env`, for example `-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----`.
 
 ## Local Setup
 

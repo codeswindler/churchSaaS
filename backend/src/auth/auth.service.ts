@@ -134,6 +134,58 @@ export class AuthService {
     return response;
   }
 
+  async mobileFundsLogin(identifier: string, password: string) {
+    const churchIdentity = await this.findChurchIdentity(identifier);
+    if (churchIdentity.ambiguousName) {
+      throw new ConflictException(
+        'Multiple church users matched this name. Use a unique email, username, or phone.',
+      );
+    }
+
+    const user = await this.validateChurchUserCredentials(
+      churchIdentity.user,
+      password,
+    );
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const access = this.buildChurchAccess(user);
+    const scope = ['mobile:funds:read'];
+    const payload = {
+      sub: user.id,
+      role: user.role,
+      userType: 'church',
+      churchId: user.churchId,
+      tokenUse: 'mobile_funds',
+      scope,
+      ...access,
+    };
+
+    return {
+      access_token: this.jwtService.sign(payload, { expiresIn: '30d' }),
+      tokenUse: 'mobile_funds',
+      scope,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        username: user.username,
+        phone: user.phone,
+        role: user.role,
+        userType: 'church',
+        churchId: user.churchId,
+        ...access,
+      },
+      church: {
+        id: user.church.id,
+        name: user.church.name,
+        slug: user.church.slug,
+        billingModel: user.church.billingModel,
+      },
+    };
+  }
+
   async getProfile(user: any) {
     if (user.userType === 'platform') {
       const platformUser = await this.platformUserRepo.findOne({
@@ -371,6 +423,34 @@ export class AuthService {
     user: ChurchUser | null,
     password: string,
   ) {
+    const authenticatedUser = await this.validateChurchUserCredentials(
+      user,
+      password,
+    );
+    if (!authenticatedUser) {
+      return null;
+    }
+
+    const subscription =
+      await this.churchSubscriptionsService.getChurchSubscriptionStatus(
+        authenticatedUser.churchId,
+      );
+
+    return this.buildAuthResponse(authenticatedUser, 'church', {
+      church: {
+        id: authenticatedUser.church.id,
+        name: authenticatedUser.church.name,
+        slug: authenticatedUser.church.slug,
+        billingModel: authenticatedUser.church.billingModel,
+      },
+      subscription,
+    });
+  }
+
+  private async validateChurchUserCredentials(
+    user: ChurchUser | null,
+    password: string,
+  ) {
     if (!user || !user.isActive || !password) {
       return null;
     }
@@ -395,15 +475,7 @@ export class AuthService {
       );
     }
 
-    return this.buildAuthResponse(user, 'church', {
-      church: {
-        id: user.church.id,
-        name: user.church.name,
-        slug: user.church.slug,
-        billingModel: user.church.billingModel,
-      },
-      subscription,
-    });
+    return user;
   }
 
   private async applyProfileChanges<T extends PlatformUser | ChurchUser>(

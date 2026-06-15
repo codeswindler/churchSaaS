@@ -33,6 +33,7 @@ import { MpesaService } from '../payments/mpesa.service';
 import { SmsMessageType } from '../entities/sms-outbox.entity';
 import { SmsService } from '../sms/sms.service';
 import { ChurchSubscriptionsService } from '../subscriptions/church-subscriptions.service';
+import { MobilePushService } from '../mobile/mobile-push.service';
 
 @Injectable()
 export class ContributionsService {
@@ -52,6 +53,7 @@ export class ContributionsService {
     private readonly smsService: SmsService,
     private readonly churchSubscriptionsService: ChurchSubscriptionsService,
     private readonly mpesaService: MpesaService,
+    private readonly mobilePushService: MobilePushService,
   ) {}
 
   async createManualContribution(
@@ -93,6 +95,7 @@ export class ContributionsService {
 
     const saved = await this.contributionRepo.save(contribution);
     await this.sendReceipt(saved.id);
+    this.notifyMobileContribution(saved.id);
     return this.getContributionById(saved.id, churchId);
   }
 
@@ -149,6 +152,7 @@ export class ContributionsService {
       `Recorded public M-Pesa contribution ${contribution.id} for church=${church.slug} fund=${fundAccount.code} amount=${amount} reference=${paymentReference}`,
     );
     await this.sendReceipt(contribution.id);
+    this.notifyMobileContribution(contribution.id);
 
     return {
       contributionId: contribution.id,
@@ -322,6 +326,7 @@ export class ContributionsService {
         `Contribution ${contribution.id} confirmed from webhook. receipt=${contribution.paymentReference || 'n/a'}`,
       );
       await this.sendReceipt(contribution.id);
+      this.notifyMobileContribution(contribution.id);
     } else {
       contribution.status = ContributionStatus.FAILED;
       contribution.notes = callback.ResultDesc || 'M-Pesa payment failed';
@@ -385,7 +390,9 @@ export class ContributionsService {
       return { ResultCode: 0, ResultDesc: 'Accepted - missing TransID' };
     }
 
-    let { church, fundAccount } = await this.resolveMpesaC2BTarget(payload);
+    const target = await this.resolveMpesaC2BTarget(payload);
+    const church = target.church;
+    let fundAccount = target.fundAccount;
     if (!church) {
       this.logger.warn(
         `Ignored M-Pesa C2B confirmation ${payload.transId}; no active church matches shortcode=${payload.shortcode || 'n/a'}`,
@@ -447,6 +454,7 @@ export class ContributionsService {
       `Recorded M-Pesa C2B contribution ${contribution.id} for church=${church.slug} fund=${fundAccount.code} amount=${payload.amount} reference=${payload.transId}`,
     );
     await this.sendReceipt(contribution.id);
+    this.notifyMobileContribution(contribution.id);
 
     return { ResultCode: 0, ResultDesc: 'Accepted - recorded' };
   }
@@ -1138,7 +1146,10 @@ export class ContributionsService {
     ).commissionAmount;
   }
 
-  private applyCommissionFields(contribution: Contribution, church: Church | null) {
+  private applyCommissionFields(
+    contribution: Contribution,
+    church: Church | null,
+  ) {
     const fields = this.calculateCommissionFields(
       church,
       Number(contribution.amount || 0),
@@ -1222,14 +1233,25 @@ export class ContributionsService {
       });
     }
 
-    if (query.contributor) {
+    const searchTerm = query.contributor || query.search;
+    if (searchTerm) {
       qb.andWhere(
-        '(contributor.name LIKE :search OR contributor.phone LIKE :search)',
+        '(contributor.name LIKE :search OR contributor.phone LIKE :search OR contribution.payerName LIKE :search OR contribution.paymentReference LIKE :search)',
         {
-          search: `%${query.contributor}%`,
+          search: `%${searchTerm}%`,
         },
       );
     }
+  }
+
+  private notifyMobileContribution(contributionId: string) {
+    void this.mobilePushService
+      .notifyContributionConfirmed(contributionId)
+      .catch((error: any) => {
+        this.logger.warn(
+          `Mobile push notification skipped for contribution=${contributionId}: ${error?.message || error}`,
+        );
+      });
   }
 
   private parseDateFilterBoundary(value: any, boundary: 'start' | 'end') {

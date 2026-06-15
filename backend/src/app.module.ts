@@ -27,6 +27,7 @@ import { DiscipleshipMemberContributor } from './entities/discipleship-member-co
 import { DiscipleshipMember } from './entities/discipleship-member.entity';
 import { DiscipleshipMembership } from './entities/discipleship-membership.entity';
 import { FundAccount } from './entities/fund-account.entity';
+import { MobileDevice } from './entities/mobile-device.entity';
 import { PlatformUser } from './entities/platform-user.entity';
 import { PlatformSmsConfig } from './entities/platform-sms-config.entity';
 import { SmsAddressBook } from './entities/sms-address-book.entity';
@@ -36,6 +37,7 @@ import { SmsOutbox } from './entities/sms-outbox.entity';
 import { SmsSender } from './entities/sms-sender.entity';
 import { SmsUnitPurchase } from './entities/sms-unit-purchase.entity';
 import { SmsModule } from './sms/sms.module';
+import { MobileModule } from './mobile/mobile.module';
 import { ChurchSubscriptionsModule } from './subscriptions/church-subscriptions.module';
 import { SchemaBootstrapService } from './common/schema-bootstrap.service';
 
@@ -69,6 +71,7 @@ import { SchemaBootstrapService } from './common/schema-bootstrap.service';
         DiscipleshipMember,
         DiscipleshipMembership,
         Contribution,
+        MobileDevice,
         ClientEnquiry,
         SmsAddressBook,
         SmsAddressBookContact,
@@ -82,6 +85,7 @@ import { SchemaBootstrapService } from './common/schema-bootstrap.service';
     AuthModule,
     SmsModule,
     PaymentsModule,
+    MobileModule,
     ChurchSubscriptionsModule,
     ContributionsModule,
     PlatformModule,
