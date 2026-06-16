@@ -253,22 +253,6 @@ export default function ChurchDiscipleship() {
         .get(`/church/discipleship/members${memberQuery}`)
         .then((response) => response.data),
   });
-  const recentMemberSearch = recentAttendanceSearch.trim();
-  const { data: recentMemberSearchResults = [] } = useQuery<
-    DiscipleshipMember[]
-  >({
-    queryKey: ['discipleship-recent-member-search', recentMemberSearch],
-    enabled: recentMemberSearch.length > 0,
-    queryFn: () =>
-      api
-        .get(
-          `/church/discipleship/members${buildQuery({
-            search: recentMemberSearch,
-          })}`,
-        )
-        .then((response) => response.data),
-  });
-
   const { data: attendance = [] } = useQuery<DiscipleshipAttendance[]>({
     queryKey: ['discipleship-attendance'],
     queryFn: () =>
@@ -319,6 +303,13 @@ export default function ChurchDiscipleship() {
     () => members.find((member) => member.id === selectedMemberId),
     [members, selectedMemberId],
   );
+  const panelMember = selectedMember || members[0] || null;
+  const panelMemberAttendance = useMemo(() => {
+    if (!panelMember) {
+      return [];
+    }
+    return attendance.filter((item) => item.member?.id === panelMember.id);
+  }, [attendance, panelMember]);
   const duplicateReviewCluster = useMemo(
     () =>
       duplicateClusters.find(
@@ -685,20 +676,6 @@ export default function ChurchDiscipleship() {
         .includes(search),
     );
   }, [attendance, recentAttendanceSearch]);
-  const recentMemberMatches = useMemo(() => {
-    const search = recentAttendanceSearch.trim();
-    if (!search) {
-      return [];
-    }
-    const latestAttendanceMemberIds = new Set(
-      recentAttendance
-        .map((item) => item.member?.id)
-        .filter((id): id is string => Boolean(id)),
-    );
-    return recentMemberSearchResults
-      .filter((member) => !latestAttendanceMemberIds.has(member.id))
-      .slice(0, 6);
-  }, [recentAttendance, recentAttendanceSearch, recentMemberSearchResults]);
   const selectedDuplicateMembers = useMemo(() => {
     if (!duplicateReviewCluster) {
       return [];
@@ -713,14 +690,14 @@ export default function ChurchDiscipleship() {
     null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 discipleship-page">
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {statCards.map(([label, value]) => (
-          <div key={label} className="panel p-5">
+          <div key={label} className="panel p-4 discipleship-stat-card">
             <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
               {label}
             </p>
-            <p className="mt-3 text-2xl font-semibold text-white">{value}</p>
+            <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
           </div>
         ))}
       </section>
@@ -988,63 +965,83 @@ export default function ChurchDiscipleship() {
             </div>
           </div>
 
-          <div className="panel p-5 sm:p-6">
+          <div className="panel p-5 sm:p-6 discipleship-detail-panel">
             <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-              Recent attendance
+              Member details
             </p>
             <h3 className="mt-2 text-xl font-semibold text-white">
-              Latest marks
+              {panelMember?.fullName || 'Select a member'}
             </h3>
-            <div className="relative mt-4">
-              <Search
-                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-stone-400"
-                size={17}
-              />
-              <input
-                className="input"
-                style={{ paddingLeft: '2.75rem' }}
-                placeholder="Search recent disciples"
-                value={recentAttendanceSearch}
-                onChange={(event) =>
-                  setRecentAttendanceSearch(event.target.value)
-                }
-              />
-            </div>
-            {recentMemberMatches.length > 0 ? (
-              <div className="mt-4 rounded-3xl border border-white/10 bg-black/10 p-3">
-                <p className="px-1 text-[11px] uppercase tracking-[0.18em] text-stone-400">
-                  Disciple matches
-                </p>
-                <div className="mt-2 space-y-2">
-                  {recentMemberMatches.map((member) => (
-                    <button
-                      key={member.id}
-                      className="w-full rounded-2xl border border-white/10 px-4 py-3 text-left transition hover:bg-white/5"
-                      type="button"
-                      onClick={() => setDetailMemberId(member.id)}
-                    >
-                      <span className="block font-semibold text-white">
-                        {member.fullName}
-                      </span>
-                      <span className="mt-1 block text-xs text-stone-400">
-                        {(member.groups || [])
-                          .map((group) => group.name)
-                          .join(', ') || 'No group assigned'}
-                      </span>
-                    </button>
-                  ))}
+            {panelMember ? (
+              <div className="mt-4 grid gap-3">
+                <div className="rounded-2xl border border-white/10 bg-black/10 p-4">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
+                        Phone
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-white">
+                        {panelMember.phone || 'Not captured'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
+                        Gender
+                      </p>
+                      <p className="mt-1 text-sm font-semibold capitalize text-white">
+                        {panelMember.gender || 'Not set'}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-sm text-stone-300">
+                    {(panelMember.groups || []).map((group) => group.name).join(', ') ||
+                      'No group assigned'}
+                  </p>
+                  <button
+                    className="btn-secondary mt-4 justify-center"
+                    type="button"
+                    onClick={() => setDetailMemberId(panelMember.id)}
+                  >
+                    Open full details
+                  </button>
                 </div>
+                {panelMember.contributionSummary ? (
+                  <div className="rounded-2xl border border-white/10 bg-black/10 p-4">
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
+                      Linked contributions
+                    </p>
+                    <p className="mt-2 text-lg font-semibold text-white">
+                      KES {Number(panelMember.contributionSummary.totalAmount || 0).toLocaleString()}
+                    </p>
+                    <p className="mt-1 text-xs text-stone-400">
+                      {panelMember.contributionSummary.contributionCount} contribution(s)
+                    </p>
+                  </div>
+                ) : null}
               </div>
             ) : null}
+            <div className="mt-5 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-stone-400">
+                  Attendance history
+                </p>
+                <h4 className="mt-1 font-semibold text-white">Latest marks</h4>
+              </div>
+              <button
+                className="btn-secondary px-3 py-2"
+                type="button"
+                onClick={() => setRecentAttendanceSearch('')}
+              >
+                Clear
+              </button>
+            </div>
             <div className="mt-5 space-y-3">
-              {recentAttendance.length === 0 ? (
+              {(panelMember ? panelMemberAttendance : recentAttendance).length === 0 ? (
                 <p className="rounded-2xl border border-white/10 p-4 text-sm text-stone-300">
-                  {recentAttendanceSearch
-                    ? 'No recent attendance matches that search.'
-                    : 'No attendance has been recorded yet.'}
+                  No attendance has been recorded for this member yet.
                 </p>
               ) : (
-                recentAttendance.slice(0, 12).map((item) => (
+                (panelMember ? panelMemberAttendance : recentAttendance).slice(0, 8).map((item) => (
                   <button
                     key={item.id}
                     className="w-full rounded-2xl border border-white/10 bg-black/10 p-4 text-left transition hover:bg-white/5"
@@ -1084,8 +1081,9 @@ export default function ChurchDiscipleship() {
       )}
 
       {activeTab === 'members' && (
-        <section className="panel overflow-hidden">
-          <div className="flex flex-col gap-4 border-b border-white/10 p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
+        <div className="panel overflow-hidden">
+          <div className="flex flex-col gap-4 border-b border-white/10 p-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
                 Member records
@@ -1221,7 +1219,7 @@ export default function ChurchDiscipleship() {
             </div>
           ) : null}
 
-          <div className="grid gap-3 border-b border-white/10 p-4 md:grid-cols-2">
+          <div className="grid gap-3 border-b border-white/10 p-3 md:grid-cols-2">
             <input
               className="input-compact"
               placeholder="Search members"
@@ -1244,18 +1242,20 @@ export default function ChurchDiscipleship() {
 
           <div className="divide-y divide-white/10">
             {members.length === 0 ? (
-              <p className="p-6 text-sm text-stone-300">No members found.</p>
+              <p className="p-4 text-sm text-stone-300">No members found.</p>
             ) : (
               members.map((member) => (
                 <div
                   key={member.id}
-                  className="grid cursor-pointer gap-4 p-5 transition hover:bg-white/5 md:grid-cols-[1fr_0.8fr_auto] md:items-center"
+                  className={`grid cursor-pointer gap-3 p-3 transition hover:bg-white/5 md:grid-cols-[1fr_0.8fr_auto] md:items-center ${
+                    panelMember?.id === member.id ? 'bg-amber-200/10' : ''
+                  }`}
                   role="button"
                   tabIndex={0}
-                  onClick={() => setDetailMemberId(member.id)}
+                  onClick={() => setSelectedMemberId(member.id)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
-                      setDetailMemberId(member.id);
+                      setSelectedMemberId(member.id);
                     }
                   }}
                 >
@@ -1305,6 +1305,115 @@ export default function ChurchDiscipleship() {
               ))
             )}
           </div>
+        </div>
+
+        <aside className="space-y-4">
+          <section className="panel p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                  Selected disciple
+                </p>
+                <h3 className="mt-2 text-xl font-semibold text-white">
+                  {panelMember?.fullName || 'Choose a member'}
+                </h3>
+              </div>
+              {panelMember ? (
+                <button
+                  className="rounded-full border border-white/10 p-2 text-stone-200 hover:bg-white/5"
+                  type="button"
+                  title="Edit member"
+                  onClick={() => openMemberEditor(panelMember)}
+                >
+                  <PencilLine size={16} />
+                </button>
+              ) : null}
+            </div>
+            {panelMember ? (
+              <div className="mt-4 space-y-3 text-sm text-stone-300">
+                <p>
+                  <span className="text-stone-400">Phone:</span>{' '}
+                  {panelMember.phone || 'Not captured'}
+                </p>
+                <p>
+                  <span className="text-stone-400">Gender:</span>{' '}
+                  {panelMember.gender || 'Not set'}
+                </p>
+                <p>
+                  <span className="text-stone-400">Groups:</span>{' '}
+                  {(panelMember.groups || []).map((group) => group.name).join(', ') ||
+                    'No group assigned'}
+                </p>
+                <p>
+                  <span className="text-stone-400">Last attendance:</span>{' '}
+                  {panelMemberAttendance[0]?.attendanceDate || 'No attendance yet'}
+                </p>
+                {panelMember.contributionSummary ? (
+                  <p>
+                    <span className="text-stone-400">Linked giving:</span> KES{' '}
+                    {Number(
+                      panelMember.contributionSummary.totalAmount || 0,
+                    ).toLocaleString()}
+                  </p>
+                ) : null}
+                <button
+                  className="btn-secondary mt-2 w-full justify-center"
+                  type="button"
+                  onClick={() => setDetailMemberId(panelMember.id)}
+                >
+                  View details
+                </button>
+              </div>
+            ) : (
+              <p className="mt-4 text-sm text-stone-300">
+                Select a member from the list to see biodata and attendance.
+              </p>
+            )}
+          </section>
+
+          <section className="panel p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                  Groups
+                </p>
+                <h3 className="mt-2 text-lg font-semibold text-white">
+                  Member categories
+                </h3>
+              </div>
+              <button
+                className="btn-primary px-3 py-2"
+                type="button"
+                onClick={() => openGroupEditor()}
+              >
+                <Plus size={16} />
+                Add
+              </button>
+            </div>
+            <div className="mt-4 space-y-2">
+              {groups.slice(0, 8).map((group) => (
+                <button
+                  key={group.id}
+                  className="w-full rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-left transition hover:bg-white/5"
+                  type="button"
+                  onClick={() => openGroupEditor(group)}
+                >
+                  <span className="block font-semibold text-white">
+                    {group.name}
+                  </span>
+                  <span className="mt-1 block text-xs text-stone-400">
+                    {group.memberCount || 0} members
+                  </span>
+                </button>
+              ))}
+              {groups.length === 0 ? (
+                <p className="rounded-2xl border border-white/10 p-3 text-sm text-stone-300">
+                  No groups created yet.
+                </p>
+              ) : null}
+            </div>
+          </section>
+        </aside>
         </section>
       )}
 

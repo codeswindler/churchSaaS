@@ -266,6 +266,16 @@ export class ChurchController {
     return this.churchService.getCongregationPage(req.user.churchId);
   }
 
+  @Get('notifications')
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
+  listNotifications(@Request() req: any, @Query() query: any) {
+    return this.churchService.listChurchNotifications(
+      req.user.churchId,
+      req.user.id,
+      query,
+    );
+  }
+
   @Patch('congregation-page')
   @Permissions(ChurchPermission.CONGREGATION_PAGE_MANAGE)
   @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
@@ -273,6 +283,7 @@ export class ChurchController {
     return this.churchService.updateCongregationPage(
       req.user.churchId,
       req.user.id,
+      req.user.role,
       body,
     );
   }
@@ -447,6 +458,51 @@ export class ChurchController {
       req.user.churchId,
       req.user.id,
       body,
+    );
+  }
+
+  @Post('congregation-page/fund-displays/:displayId/approve')
+  @Roles(ChurchUserRole.PRIEST)
+  approveFundDisplay(
+    @Request() req: any,
+    @Param('displayId') displayId: string,
+    @Body() body: any,
+  ) {
+    return this.churchService.reviewCongregationFundDisplay(
+      req.user.churchId,
+      req.user.id,
+      displayId,
+      'approve',
+      body?.note,
+    );
+  }
+
+  @Post('congregation-page/fund-displays/:displayId/reject')
+  @Roles(ChurchUserRole.PRIEST)
+  rejectFundDisplay(
+    @Request() req: any,
+    @Param('displayId') displayId: string,
+    @Body() body: any,
+  ) {
+    return this.churchService.reviewCongregationFundDisplay(
+      req.user.churchId,
+      req.user.id,
+      displayId,
+      'reject',
+      body?.note,
+    );
+  }
+
+  @Patch('notifications/:notificationId/read')
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
+  markNotificationRead(
+    @Request() req: any,
+    @Param('notificationId') notificationId: string,
+  ) {
+    return this.churchService.markChurchNotificationRead(
+      req.user.churchId,
+      req.user.id,
+      notificationId,
     );
   }
 

@@ -9,7 +9,7 @@ import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { extname, join } from 'path';
-import { In, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import ExcelJS from 'exceljs';
 import {
   ChurchFeature,
@@ -30,6 +30,10 @@ import {
   CongregationSermon,
   CongregationServiceTime,
 } from '../entities/church-congregation-page.entity';
+import {
+  ChurchNotification,
+  ChurchNotificationType,
+} from '../entities/church-notification.entity';
 import { Church } from '../entities/church.entity';
 import { ChurchUser, ChurchUserRole } from '../entities/church-user.entity';
 import {
@@ -131,6 +135,8 @@ export class ChurchService {
     private readonly churchRepo: Repository<Church>,
     @InjectRepository(ChurchCongregationPage)
     private readonly congregationPageRepo: Repository<ChurchCongregationPage>,
+    @InjectRepository(ChurchNotification)
+    private readonly churchNotificationRepo: Repository<ChurchNotification>,
     @InjectRepository(ChurchUser)
     private readonly churchUserRepo: Repository<ChurchUser>,
     @InjectRepository(FundAccount)
@@ -2053,7 +2059,12 @@ export class ChurchService {
     return page || this.buildDefaultCongregationPage(church);
   }
 
-  async updateCongregationPage(churchId: string, userId: string, body: any) {
+  async updateCongregationPage(
+    churchId: string,
+    userId: string,
+    userRole: string | null | undefined,
+    body: any,
+  ) {
     const church = await this.churchRepo.findOne({ where: { id: churchId } });
     if (!church) {
       throw new NotFoundException('Church not found');
@@ -2096,11 +2107,114 @@ export class ChurchService {
     existing.events = this.normalizeEvents(body.events);
     existing.massPrograms = this.normalizeMassPrograms(body.massPrograms);
     existing.sermons = this.normalizeSermons(body.sermons);
-    existing.fundDisplays = this.normalizeFundDisplays(body.fundDisplays);
+    const normalizedFundDisplays = this.normalizeFundDisplays(body.fundDisplays);
+    const previousFundDisplays = existing.fundDisplays || [];
+    const { items: fundDisplays, pendingIds } =
+      this.applyFundDisplayApprovalState(
+        previousFundDisplays,
+        normalizedFundDisplays,
+        userId,
+        this.isPriestRole(userRole),
+      );
+    existing.fundDisplays = fundDisplays;
     existing.galleryImages = this.normalizeGalleryImages(body.galleryImages);
     existing.updatedByUserId = userId;
 
-    return this.congregationPageRepo.save(existing);
+    const saved = await this.congregationPageRepo.save(existing);
+    await this.notifyPriestsForPendingFundDisplays(
+      churchId,
+      userId,
+      saved.fundDisplays || [],
+      pendingIds,
+    );
+    return saved;
+  }
+
+  async listChurchNotifications(
+    churchId: string,
+    userId: string,
+    query: any = {},
+  ) {
+    const includeRead = query?.includeRead === 'true';
+    const where: any[] = [
+      { churchId, recipientUserId: userId },
+      { churchId, recipientUserId: IsNull() },
+    ];
+    if (!includeRead) {
+      where.forEach((item) => (item.isRead = false));
+    }
+
+    const notifications = await this.churchNotificationRepo.find({
+      where,
+      order: { createdAt: 'DESC' },
+      take: Math.min(Number(query?.limit || 20) || 20, 50),
+    });
+
+    return notifications.map((notification) =>
+      this.mapChurchNotification(notification),
+    );
+  }
+
+  async markChurchNotificationRead(
+    churchId: string,
+    userId: string,
+    notificationId: string,
+  ) {
+    const notification = await this.churchNotificationRepo.findOne({
+      where: [
+        { id: notificationId, churchId, recipientUserId: userId },
+        { id: notificationId, churchId, recipientUserId: IsNull() },
+      ],
+    });
+    if (!notification) {
+      throw new NotFoundException('Notification not found');
+    }
+
+    notification.isRead = true;
+    notification.readAt = new Date();
+    const saved = await this.churchNotificationRepo.save(notification);
+    return this.mapChurchNotification(saved);
+  }
+
+  async reviewCongregationFundDisplay(
+    churchId: string,
+    userId: string,
+    displayId: string,
+    action: 'approve' | 'reject',
+    note?: string | null,
+  ) {
+    const page = await this.congregationPageRepo.findOne({
+      where: { churchId },
+    });
+    if (!page) {
+      throw new NotFoundException('Congregation page not found');
+    }
+
+    const displays = page.fundDisplays || [];
+    const index = displays.findIndex((display) => display.id === displayId);
+    if (index === -1) {
+      throw new NotFoundException('Fund display request not found');
+    }
+
+    const now = new Date().toISOString();
+    const display = { ...displays[index] };
+    if (action === 'approve') {
+      display.approvalStatus = 'approved';
+      display.approvedByUserId = userId;
+      display.approvedAt = now;
+      display.rejectedAt = null;
+    } else {
+      display.approvalStatus = 'rejected';
+      display.rejectedAt = now;
+    }
+    display.approvalNote = this.normalizeOptionalText(note, 240);
+    displays[index] = display;
+    page.fundDisplays = displays;
+    page.updatedByUserId = userId;
+
+    const saved = await this.congregationPageRepo.save(page);
+    await this.markFundDisplayNotificationsRead(churchId, displayId);
+    return saved;
   }
 
   async uploadCongregationImage(churchId: string, file: any) {
@@ -3791,6 +3905,23 @@ export class ChurchService {
           endMode,
           endDate,
           isActive: item.isActive === false ? false : true,
+          approvalStatus:
+            item.approvalStatus === 'pending' ||
+            item.approvalStatus === 'rejected' ||
+            item.approvalStatus === 'approved'
+              ? item.approvalStatus
+              : null,
+          requestedByUserId: this.normalizeOptionalText(
+            item.requestedByUserId,
+            36,
+          ),
+          approvedByUserId: this.normalizeOptionalText(
+            item.approvedByUserId,
+            36,
+          ),
+          approvedAt: this.normalizeOptionalText(item.approvedAt, 40),
+          rejectedAt: this.normalizeOptionalText(item.rejectedAt, 40),
+          approvalNote: this.normalizeOptionalText(item.approvalNote, 240),
         };
       })
       .filter((item) => {
@@ -3804,6 +3935,177 @@ export class ChurchService {
 
         return true;
       }) as CongregationFundDisplay[];
+  }
+
+  private applyFundDisplayApprovalState(
+    previousDisplays: CongregationFundDisplay[],
+    nextDisplays: CongregationFundDisplay[],
+    userId: string,
+    isPriest: boolean,
+  ) {
+    const previousById = new Map(
+      previousDisplays
+        .filter((display) => display.id)
+        .map((display) => [display.id as string, display]),
+    );
+    const now = new Date().toISOString();
+    const pendingIds: string[] = [];
+
+    const items = nextDisplays.map((display) => {
+      const previous = display.id ? previousById.get(display.id) : undefined;
+      const previousStatus = previous?.approvalStatus || 'approved';
+      const changed =
+        !previous ||
+        this.getFundDisplayComparable(previous) !==
+          this.getFundDisplayComparable(display);
+
+      if (isPriest) {
+        return {
+          ...display,
+          approvalStatus: 'approved' as const,
+          requestedByUserId: previous?.requestedByUserId || userId,
+          approvedByUserId: userId,
+          approvedAt: display.approvedAt || now,
+          rejectedAt: null,
+          approvalNote: display.approvalNote || null,
+        };
+      }
+
+      if (!changed) {
+        return {
+          ...display,
+          approvalStatus: previousStatus,
+          requestedByUserId: previous?.requestedByUserId || display.requestedByUserId || null,
+          approvedByUserId: previous?.approvedByUserId || display.approvedByUserId || null,
+          approvedAt: previous?.approvedAt || display.approvedAt || null,
+          rejectedAt: previous?.rejectedAt || display.rejectedAt || null,
+          approvalNote: previous?.approvalNote || display.approvalNote || null,
+        };
+      }
+
+      pendingIds.push(display.id as string);
+      return {
+        ...display,
+        approvalStatus: 'pending' as const,
+        requestedByUserId: userId,
+        approvedByUserId: null,
+        approvedAt: null,
+        rejectedAt: null,
+        approvalNote: null,
+      };
+    });
+
+    return { items, pendingIds };
+  }
+
+  private getFundDisplayComparable(display: CongregationFundDisplay) {
+    return JSON.stringify({
+      title: display.title || null,
+      description: display.description || null,
+      fundAccountId: display.fundAccountId,
+      startDate: display.startDate,
+      endMode: display.endMode || 'to_date',
+      endDate: display.endMode === 'static' ? display.endDate || null : null,
+      isActive: display.isActive !== false,
+    });
+  }
+
+  private isPriestRole(role?: string | null) {
+    return normalizeChurchRole(role) === ChurchUserRole.PRIEST;
+  }
+
+  private async notifyPriestsForPendingFundDisplays(
+    churchId: string,
+    requestingUserId: string,
+    displays: CongregationFundDisplay[],
+    pendingIds: string[],
+  ) {
+    if (pendingIds.length === 0) {
+      return;
+    }
+
+    const priests = await this.churchUserRepo.find({
+      where: { churchId, role: ChurchUserRole.PRIEST, isActive: true },
+    });
+    if (priests.length === 0) {
+      return;
+    }
+
+    const pendingDisplays = displays.filter(
+      (display) => display.id && pendingIds.includes(display.id),
+    );
+
+    for (const display of pendingDisplays) {
+      const existingUnread = await this.churchNotificationRepo.findOne({
+        where: {
+          churchId,
+          entityType: 'congregation_fund_display',
+          entityId: display.id,
+          isRead: false,
+        },
+      });
+      if (existingUnread) {
+        continue;
+      }
+
+      await this.churchNotificationRepo.save(
+        priests.map((priest) =>
+          this.churchNotificationRepo.create({
+            churchId,
+            recipientUserId: priest.id,
+            type: ChurchNotificationType.FUND_DISPLAY_APPROVAL_REQUESTED,
+            title: 'Fund display needs approval',
+            body: `${display.title || 'A public fund display'} was submitted for priest approval.`,
+            entityType: 'congregation_fund_display',
+            entityId: display.id || null,
+            actionUrl: '/church/congregation',
+            isRead: priest.id === requestingUserId ? true : false,
+            readAt: priest.id === requestingUserId ? new Date() : null,
+          }),
+        ),
+      );
+    }
+  }
+
+  private async markFundDisplayNotificationsRead(
+    churchId: string,
+    displayId: string,
+  ) {
+    const notifications = await this.churchNotificationRepo.find({
+      where: {
+        churchId,
+        entityType: 'congregation_fund_display',
+        entityId: displayId,
+        isRead: false,
+      },
+    });
+    if (notifications.length === 0) {
+      return;
+    }
+
+    const now = new Date();
+    await this.churchNotificationRepo.save(
+      notifications.map((notification) => ({
+        ...notification,
+        isRead: true,
+        readAt: now,
+      })),
+    );
+  }
+
+  private mapChurchNotification(notification: ChurchNotification) {
+    return {
+      id: notification.id,
+      type: notification.type,
+      title: notification.title,
+      body: notification.body,
+      entityType: notification.entityType,
+      entityId: notification.entityId,
+      actionUrl: notification.actionUrl,
+      isRead: notification.isRead,
+      readAt: notification.readAt,
+      createdAt: notification.createdAt,
+    };
   }
 
   private normalizeGalleryImages(value: unknown): CongregationGalleryImage[] {

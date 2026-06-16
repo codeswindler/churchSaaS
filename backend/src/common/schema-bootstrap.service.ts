@@ -15,8 +15,43 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
     await this.ensureSmsMessagingTables();
     await this.ensureSmsSenderTables();
     await this.ensureMobileDeviceTable();
+    await this.ensureChurchNotificationTable();
     await this.ensureDiscipleshipTables();
     await this.ensureCongregationPageTable();
+  }
+
+  private async ensureChurchNotificationTable() {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+
+    try {
+      const table = await queryRunner.getTable('church_notifications');
+      if (!table) {
+        await queryRunner.query(`
+          CREATE TABLE \`church_notifications\` (
+            \`id\` varchar(36) NOT NULL,
+            \`churchId\` varchar(36) NOT NULL,
+            \`recipientUserId\` varchar(36) NULL,
+            \`type\` varchar(80) NOT NULL,
+            \`title\` varchar(180) NOT NULL,
+            \`body\` text NULL,
+            \`entityType\` varchar(80) NULL,
+            \`entityId\` varchar(120) NULL,
+            \`actionUrl\` varchar(255) NULL,
+            \`isRead\` tinyint NOT NULL DEFAULT 0,
+            \`readAt\` datetime NULL,
+            \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            \`updatedAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+            PRIMARY KEY (\`id\`),
+            INDEX \`IDX_church_notifications_recipient\` (\`churchId\`, \`recipientUserId\`, \`isRead\`),
+            INDEX \`IDX_church_notifications_entity\` (\`churchId\`, \`entityType\`, \`entityId\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        this.logger.log('Created church notifications table.');
+      }
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   private async ensureSmsSenderTables() {

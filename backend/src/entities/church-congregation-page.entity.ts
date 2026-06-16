@@ -61,6 +61,12 @@ export interface CongregationFundDisplay {
   endMode?: 'to_date' | 'static' | null;
   endDate?: string | null;
   isActive?: boolean | null;
+  approvalStatus?: 'pending' | 'approved' | 'rejected' | null;
+  requestedByUserId?: string | null;
+  approvedByUserId?: string | null;
+  approvedAt?: string | null;
+  rejectedAt?: string | null;
+  approvalNote?: string | null;
 }
 
 export interface CongregationGalleryImage {

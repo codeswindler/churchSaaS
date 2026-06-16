@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { ContributionsModule } from '../contributions/contributions.module';
 import { ChurchCongregationPage } from '../entities/church-congregation-page.entity';
+import { ChurchNotification } from '../entities/church-notification.entity';
 import { Church } from '../entities/church.entity';
 import { ChurchUser } from '../entities/church-user.entity';
 import { Contribution } from '../entities/contribution.entity';
@@ -28,6 +29,7 @@ import { ChurchService } from './church.service';
     TypeOrmModule.forFeature([
       Church,
       ChurchCongregationPage,
+      ChurchNotification,
       ChurchUser,
       Contribution,
       FundAccount,

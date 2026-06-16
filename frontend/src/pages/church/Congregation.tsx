@@ -2,11 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BookOpen,
   CalendarDays,
+  CheckCircle2,
   Eye,
   ImagePlus,
   Link as LinkIcon,
   Plus,
   Trash2,
+  XCircle,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
@@ -145,6 +147,7 @@ function createFundDisplay(fundAccountId = '') {
     endMode: 'to_date',
     endDate: '',
     isActive: true,
+    approvalStatus: null,
   };
 }
 
@@ -240,6 +243,7 @@ export default function ChurchCongregation() {
     typeof window !== 'undefined' && publicPath
       ? `${window.location.origin}${publicPath}`
       : publicPath;
+  const isPriest = session?.user?.role === 'priest' || session?.user?.role === 'church_admin';
   const [form, setForm] = useState(emptyForm);
 
   const { data, isLoading } = useQuery({
@@ -274,6 +278,34 @@ export default function ChurchCongregation() {
       toast.error(
         error?.response?.data?.message ||
           'Unable to update verses & announcements',
+      );
+    },
+  });
+
+  const reviewFundDisplayMutation = useMutation({
+    mutationFn: ({
+      displayId,
+      action,
+    }: {
+      displayId: string;
+      action: 'approve' | 'reject';
+    }) =>
+      api
+        .post(`/church/congregation-page/fund-displays/${displayId}/${action}`)
+        .then((response) => response.data),
+    onSuccess: (data, variables) => {
+      setForm(normalizeForm(data));
+      queryClient.invalidateQueries({ queryKey: ['church-congregation-page'] });
+      queryClient.invalidateQueries({ queryKey: ['church-notifications'] });
+      toast.success(
+        variables.action === 'approve'
+          ? 'Fund display approved'
+          : 'Fund display rejected',
+      );
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message || 'Unable to review fund display',
       );
     },
   });
@@ -715,30 +747,83 @@ export default function ChurchCongregation() {
                   className="rounded-3xl border border-white/10 bg-black/10 p-4"
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <label className="inline-flex items-center gap-3 text-sm font-semibold text-stone-200">
-                      <input
-                        checked={item.isActive !== false}
-                        className="h-4 w-4 accent-emerald-300"
-                        type="checkbox"
-                        onChange={(event) =>
-                          updateListItem(
-                            'fundDisplays',
-                            index,
-                            'isActive',
-                            event.target.checked,
-                          )
-                        }
-                      />
-                      Show on public page
-                    </label>
-                    <button
-                      aria-label="Remove fund display"
-                      className="btn-secondary self-start px-3 py-2"
-                      type="button"
-                      onClick={() => removeListItem('fundDisplays', index)}
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    <div className="space-y-2">
+                      <label className="inline-flex items-center gap-3 text-sm font-semibold text-stone-200">
+                        <input
+                          checked={item.isActive !== false}
+                          className="h-4 w-4 accent-emerald-300"
+                          type="checkbox"
+                          onChange={(event) =>
+                            updateListItem(
+                              'fundDisplays',
+                              index,
+                              'isActive',
+                              event.target.checked,
+                            )
+                          }
+                        />
+                        Show on public page
+                      </label>
+                      <span
+                        className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${
+                          (item.approvalStatus || 'approved') === 'pending'
+                            ? 'border-amber-200/40 text-amber-100'
+                            : (item.approvalStatus || 'approved') === 'rejected'
+                              ? 'border-rose-200/40 text-rose-100'
+                              : 'border-emerald-200/30 text-emerald-100'
+                        }`}
+                      >
+                        {(item.approvalStatus || 'approved') === 'pending'
+                          ? 'Pending priest approval'
+                          : (item.approvalStatus || 'approved') === 'rejected'
+                            ? 'Rejected'
+                            : 'Approved'}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {isPriest &&
+                      item.id &&
+                      (item.approvalStatus || 'approved') === 'pending' ? (
+                        <>
+                          <button
+                            className="btn-primary px-3 py-2"
+                            disabled={reviewFundDisplayMutation.isPending}
+                            type="button"
+                            onClick={() =>
+                              reviewFundDisplayMutation.mutate({
+                                displayId: item.id,
+                                action: 'approve',
+                              })
+                            }
+                          >
+                            <CheckCircle2 size={16} />
+                            Approve
+                          </button>
+                          <button
+                            className="btn-secondary px-3 py-2"
+                            disabled={reviewFundDisplayMutation.isPending}
+                            type="button"
+                            onClick={() =>
+                              reviewFundDisplayMutation.mutate({
+                                displayId: item.id,
+                                action: 'reject',
+                              })
+                            }
+                          >
+                            <XCircle size={16} />
+                            Reject
+                          </button>
+                        </>
+                      ) : null}
+                      <button
+                        aria-label="Remove fund display"
+                        className="btn-secondary self-start px-3 py-2"
+                        type="button"
+                        onClick={() => removeListItem('fundDisplays', index)}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mt-4 grid gap-3 md:grid-cols-[1fr_220px]">

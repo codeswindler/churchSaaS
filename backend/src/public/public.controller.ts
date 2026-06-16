@@ -560,6 +560,7 @@ export class PublicController {
       ? displays.filter(
           (display) =>
             display?.isActive !== false &&
+            (display?.approvalStatus || 'approved') === 'approved' &&
             display?.fundAccountId &&
             display?.startDate,
         )

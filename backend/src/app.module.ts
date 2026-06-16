@@ -12,6 +12,7 @@ import { PublicModule } from './public/public.module';
 import { Church } from './entities/church.entity';
 import { ChurchSmsSender } from './entities/church-sms-sender.entity';
 import { ChurchCongregationPage } from './entities/church-congregation-page.entity';
+import { ChurchNotification } from './entities/church-notification.entity';
 import { ChurchSubscription } from './entities/church-subscription.entity';
 import { ChurchSubscriptionAdjustment } from './entities/church-subscription-adjustment.entity';
 import { ChurchUser } from './entities/church-user.entity';
@@ -57,6 +58,7 @@ import { SchemaBootstrapService } from './common/schema-bootstrap.service';
         Church,
         ChurchSmsSender,
         ChurchCongregationPage,
+        ChurchNotification,
         ChurchUser,
         ChurchSubscription,
         ChurchSubscriptionAdjustment,

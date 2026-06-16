@@ -1684,6 +1684,94 @@ textarea {
   color: #9f1239 !important;
 }
 
+@media (min-width: 769px) and (max-width: 1279px),
+  (hover: none) and (pointer: coarse) and (max-width: 1366px) {
+  html {
+    font-size: 93%;
+  }
+
+  .app-shell-background > .mx-auto {
+    gap: 0.85rem;
+    padding: 0.75rem;
+  }
+
+  main {
+    min-width: 0;
+  }
+
+  main > * {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .panel {
+    border-radius: 22px;
+  }
+
+  .shell-hero {
+    min-height: auto;
+    padding: 1rem;
+  }
+
+  .shell-hero h2 {
+    font-size: clamp(1.65rem, 3vw, 2.2rem);
+  }
+
+  .shell-toolbar {
+    padding: 0.85rem;
+  }
+
+  .stat-card,
+  .discipleship-stat-card {
+    min-height: auto;
+    padding: 1rem;
+  }
+
+  .overview-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.85rem;
+  }
+
+  .page-grid,
+  .overview-shell-grid,
+  .fund-split-layout {
+    gap: 0.9rem;
+  }
+
+  .overview-panel-tall,
+  .overview-panel-xl {
+    min-height: auto;
+  }
+
+  .table-shell th,
+  .table-shell td {
+    padding: 0.85rem;
+  }
+
+  .modal-shell {
+    align-items: center;
+    padding: 1rem;
+  }
+
+  .modal-card {
+    max-width: min(920px, calc(100vw - 2rem));
+    max-height: calc(100dvh - 2rem);
+  }
+
+  .discipleship-page {
+    gap: 1rem;
+  }
+
+  .discipleship-page .panel.p-5,
+  .discipleship-page .panel.sm\:p-6 {
+    padding: 1rem;
+  }
+
+  .discipleship-detail-panel {
+    min-height: auto;
+  }
+}
+
 .input-compact {
   @apply w-full rounded-xl px-3.5 py-2.5 text-sm text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-2;
   border: 1px solid var(--input-border);

@@ -5,6 +5,8 @@ import {
   ChartColumn,
   Clock4,
   Coins,
+  Bell,
+  CheckCircle2,
   Landmark,
   LogOut,
   Menu,
@@ -286,6 +288,14 @@ export function AppShell({ userType }: AppShellProps) {
     refetchInterval: 15_000,
   });
 
+  const { data: notifications = [] } = useQuery<any[]>({
+    queryKey: ['church-notifications'],
+    queryFn: () =>
+      api.get('/church/notifications').then((response) => response.data),
+    enabled: userType === 'church',
+    refetchInterval: 30_000,
+  });
+
   const currentUser = profile || session?.user;
   const permissionSet = new Set<string>(
     userType === 'church'
@@ -383,6 +393,14 @@ export function AppShell({ userType }: AppShellProps) {
     },
     onError: (error: any) => {
       toast.error(error?.response?.data?.message || 'Unable to update profile');
+    },
+  });
+
+  const markNotificationReadMutation = useMutation({
+    mutationFn: (notificationId: string) =>
+      api.patch(`/church/notifications/${notificationId}/read`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['church-notifications'] });
     },
   });
 
@@ -536,8 +554,8 @@ export function AppShell({ userType }: AppShellProps) {
 
   return (
     <div className="app-shell-background min-h-screen text-stone-50">
-      <div className="mx-auto grid min-h-screen max-w-none gap-5 px-3 py-3 lg:grid-cols-[250px_minmax(0,1fr)] xl:px-5 2xl:px-7">
-        <aside className="panel hidden flex-col gap-5 p-5 lg:flex">
+      <div className="mx-auto grid min-h-screen max-w-none gap-5 px-3 py-3 xl:grid-cols-[250px_minmax(0,1fr)] xl:px-5 2xl:px-7">
+        <aside className="panel hidden flex-col gap-5 p-5 xl:flex">
           {sidebarIntro}
           {sidebarProfileButton}
           {sidebarNavigation}
@@ -545,7 +563,7 @@ export function AppShell({ userType }: AppShellProps) {
         </aside>
 
         <main className="min-w-0 space-y-6">
-          <div className="mobile-shell-bar lg:hidden">
+          <div className="mobile-shell-bar xl:hidden">
             <button
               aria-label="Open navigation menu"
               className="shell-icon-button"
@@ -594,13 +612,46 @@ export function AppShell({ userType }: AppShellProps) {
             </div>
           )}
 
+          {userType === 'church' && notifications.length > 0 ? (
+            <section className="panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <span className="rounded-2xl border border-amber-200/30 bg-amber-200/10 p-2 text-amber-100">
+                  <Bell size={18} />
+                </span>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.22em] text-amber-100">
+                    Priest approval
+                  </p>
+                  <h3 className="mt-1 text-base font-semibold text-white">
+                    {notifications[0].title}
+                  </h3>
+                  {notifications[0].body ? (
+                    <p className="mt-1 text-sm text-stone-300">
+                      {notifications[0].body}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              <button
+                className="btn-secondary justify-center"
+                type="button"
+                onClick={() =>
+                  markNotificationReadMutation.mutate(notifications[0].id)
+                }
+              >
+                <CheckCircle2 size={16} />
+                Mark read
+              </button>
+            </section>
+          ) : null}
+
           <Outlet />
         </main>
       </div>
 
       {isNavOpen ? (
         <div
-          className="mobile-nav-backdrop lg:hidden"
+          className="mobile-nav-backdrop xl:hidden"
           role="presentation"
           onClick={() => setIsNavOpen(false)}
         >
