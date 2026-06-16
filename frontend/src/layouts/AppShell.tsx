@@ -266,6 +266,7 @@ export function AppShell({ userType }: AppShellProps) {
     return localStorage.getItem(COLOR_MODE_STORAGE_KEY) || 'dark';
   });
   const [isNavOpen, setIsNavOpen] = useState(false);
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [profileForm, setProfileForm] = useState({
     name: '',
@@ -318,6 +319,9 @@ export function AppShell({ userType }: AppShellProps) {
     [location.pathname, userType],
   );
   const isOverviewPage = currentPage.variant === 'hero';
+  const isChurchPriest =
+    userType === 'church' &&
+    (currentUser?.role === 'priest' || currentUser?.role === 'church_admin');
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -363,6 +367,7 @@ export function AppShell({ userType }: AppShellProps) {
 
   useEffect(() => {
     setIsNavOpen(false);
+    setIsNotificationOpen(false);
   }, [location.pathname]);
 
   const profileMutation = useMutation({
@@ -401,6 +406,24 @@ export function AppShell({ userType }: AppShellProps) {
       api.patch(`/church/notifications/${notificationId}/read`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['church-notifications'] });
+    },
+  });
+
+  const approveNotificationMutation = useMutation({
+    mutationFn: (notification: any) =>
+      api.post(
+        `/church/congregation-page/fund-displays/${notification.entityId}/approve`,
+      ),
+    onSuccess: () => {
+      toast.success('Fund display approved');
+      setIsNotificationOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['church-notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['church-congregation-page'] });
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message || 'Unable to approve fund display',
+      );
     },
   });
 
@@ -551,6 +574,80 @@ export function AppShell({ userType }: AppShellProps) {
   const sidebarFooter = (
     <div className="mt-auto flex justify-end">{sidebarLogoutButton}</div>
   );
+  const notificationButton = isChurchPriest ? (
+    <div className="relative">
+      <button
+        aria-label="Open approval notifications"
+        className="shell-icon-button relative"
+        title="Approval notifications"
+        type="button"
+        onClick={() => setIsNotificationOpen((current) => !current)}
+      >
+        <Bell size={18} />
+        {notifications.length > 0 ? (
+          <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-amber-200 px-1 text-[10px] font-bold text-stone-950">
+            {notifications.length}
+          </span>
+        ) : null}
+      </button>
+      {isNotificationOpen ? (
+        <div className="absolute right-0 top-full z-40 mt-2 w-[min(360px,calc(100vw-2rem))] rounded-3xl border border-white/10 bg-stone-950 p-3 shadow-2xl">
+          <p className="px-2 text-xs uppercase tracking-[0.22em] text-stone-400">
+            Approvals
+          </p>
+          <div className="mt-3 space-y-2">
+            {notifications.length === 0 ? (
+              <p className="rounded-2xl border border-white/10 bg-white/5 p-3 text-sm text-stone-300">
+                No pending approvals.
+              </p>
+            ) : (
+              notifications.slice(0, 6).map((notification) => (
+                <div
+                  key={notification.id}
+                  className="rounded-2xl border border-white/10 bg-black/20 p-3"
+                >
+                  <h4 className="font-semibold text-white">
+                    {notification.title}
+                  </h4>
+                  {notification.body ? (
+                    <p className="mt-1 text-sm text-stone-300">
+                      {notification.body}
+                    </p>
+                  ) : null}
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {notification.entityType ===
+                    'congregation_fund_display' ? (
+                      <button
+                        className="btn-primary justify-center px-3 py-2"
+                        disabled={approveNotificationMutation.isPending}
+                        type="button"
+                        onClick={() =>
+                          approveNotificationMutation.mutate(notification)
+                        }
+                      >
+                        <CheckCircle2 size={16} />
+                        Approve
+                      </button>
+                    ) : null}
+                    <button
+                      className="btn-secondary justify-center px-3 py-2"
+                      disabled={markNotificationReadMutation.isPending}
+                      type="button"
+                      onClick={() =>
+                        markNotificationReadMutation.mutate(notification.id)
+                      }
+                    >
+                      Mark read
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  ) : null;
 
   return (
     <div className="app-shell-background min-h-screen text-stone-50">
@@ -583,6 +680,7 @@ export function AppShell({ userType }: AppShellProps) {
                 {organizationName}
               </div>
             </div>
+
           </div>
 
           {isOverviewPage ? (
@@ -605,45 +703,14 @@ export function AppShell({ userType }: AppShellProps) {
                   label={subscription.countdown?.label}
                 />
               ) : null}
+              {notificationButton}
             </header>
           ) : (
             <div className="shell-toolbar">
               <div className="shell-toolbar-chip">{currentPage.title}</div>
+              {notificationButton}
             </div>
           )}
-
-          {userType === 'church' && notifications.length > 0 ? (
-            <section className="panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-start gap-3">
-                <span className="rounded-2xl border border-amber-200/30 bg-amber-200/10 p-2 text-amber-100">
-                  <Bell size={18} />
-                </span>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.22em] text-amber-100">
-                    Priest approval
-                  </p>
-                  <h3 className="mt-1 text-base font-semibold text-white">
-                    {notifications[0].title}
-                  </h3>
-                  {notifications[0].body ? (
-                    <p className="mt-1 text-sm text-stone-300">
-                      {notifications[0].body}
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-              <button
-                className="btn-secondary justify-center"
-                type="button"
-                onClick={() =>
-                  markNotificationReadMutation.mutate(notifications[0].id)
-                }
-              >
-                <CheckCircle2 size={16} />
-                Mark read
-              </button>
-            </section>
-          ) : null}
 
           <Outlet />
         </main>

@@ -12,14 +12,13 @@ import {
   Search,
   Upload,
   UserCheck,
-  UsersRound,
   X,
 } from 'lucide-react';
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 
-type DiscipleshipTab = 'attendance' | 'members' | 'groups';
+type DiscipleshipTab = 'attendance' | 'members';
 
 interface DiscipleshipGroup {
   id: string;
@@ -156,6 +155,52 @@ function formatYesNo(value: boolean | null | undefined) {
   return 'Not set';
 }
 
+type MiniBarItem = {
+  label: string;
+  value: number;
+  caption?: string;
+};
+
+function MiniBarGraph({
+  items,
+  emptyLabel,
+}: {
+  items: MiniBarItem[];
+  emptyLabel: string;
+}) {
+  const maxValue = Math.max(1, ...items.map((item) => item.value));
+  if (items.length === 0) {
+    return (
+      <div className="discipleship-mini-graph-empty">{emptyLabel}</div>
+    );
+  }
+
+  return (
+    <div className="discipleship-mini-graph">
+      {items.map((item) => (
+        <div key={item.label} className="discipleship-mini-graph-row">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-white">
+              {item.label}
+            </p>
+            {item.caption ? (
+              <p className="mt-0.5 truncate text-xs text-stone-400">
+                {item.caption}
+              </p>
+            ) : null}
+          </div>
+          <div className="discipleship-mini-graph-track">
+            <span
+              className="discipleship-mini-graph-fill"
+              style={{ width: `${Math.max(10, (item.value / maxValue) * 100)}%` }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function createMemberForm() {
   return {
     fullName: '',
@@ -184,7 +229,6 @@ const discipleshipTabs: {
 }[] = [
   { value: 'attendance', label: 'Attendance', icon: CalendarCheck2 },
   { value: 'members', label: 'Members', icon: UserCheck },
-  { value: 'groups', label: 'Groups', icon: UsersRound },
 ];
 
 export default function ChurchDiscipleship() {
@@ -192,7 +236,6 @@ export default function ChurchDiscipleship() {
   const [activeTab, setActiveTab] = useState<DiscipleshipTab>('attendance');
   const [memberSearch, setMemberSearch] = useState('');
   const [memberGroupFilter, setMemberGroupFilter] = useState('');
-  const [recentAttendanceSearch, setRecentAttendanceSearch] = useState('');
   const [selectedMemberId, setSelectedMemberId] = useState('');
   const [isAttendanceTypeOpen, setIsAttendanceTypeOpen] = useState(false);
   const [attendanceForm, setAttendanceForm] = useState<{
@@ -429,29 +472,6 @@ export default function ChurchDiscipleship() {
     },
   });
 
-  const statementImportMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const formData = new FormData();
-      formData.append('file', file);
-      return api
-        .post('/church/discipleship/reconciliation/mpesa-statement', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        })
-        .then((response) => response.data);
-    },
-    onSuccess: (data) => {
-      refreshDiscipleship();
-      toast.success(
-        `Matched ${Number(data.matched || 0)} statement row(s); updated ${Number(data.updated || 0)} name(s)`,
-      );
-    },
-    onError: (error: any) => {
-      toast.error(
-        error?.response?.data?.message || 'Unable to reconcile statement',
-      );
-    },
-  });
-
   const matchReviewMutation = useMutation({
     mutationFn: ({
       candidateId,
@@ -665,17 +685,52 @@ export default function ChurchDiscipleship() {
       lastAttended: memberAttendance[0]?.attendanceDate || 'No attendance yet',
     };
   }, [memberAttendance]);
-  const recentAttendance = useMemo(() => {
-    const search = recentAttendanceSearch.trim().toLowerCase();
-    if (!search) {
-      return attendance;
-    }
-    return attendance.filter((item) =>
-      `${item.member?.fullName || ''} ${item.group?.name || ''} ${item.eventName || ''}`
-        .toLowerCase()
-        .includes(search),
-    );
-  }, [attendance, recentAttendanceSearch]);
+  const panelAttendanceBars = useMemo(() => {
+    const counts = new Map<string, number>();
+    panelMemberAttendance.forEach((item) => {
+      const label =
+        item.group?.name ||
+        item.eventName ||
+        (item.attendanceType === 'service' ? 'Church service' : 'Group');
+      counts.set(label, (counts.get(label) || 0) + 1);
+    });
+    return Array.from(counts.entries())
+      .map(([label, value]) => ({ label, value, caption: `${value} mark${value === 1 ? '' : 's'}` }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 4);
+  }, [panelMemberAttendance]);
+  const panelContributionBars = useMemo(() => {
+    return (panelMember?.contributionSummary?.dates || [])
+      .slice(0, 4)
+      .map((item) => ({
+        label: item.date,
+        value: Number(item.amount || 0),
+        caption: `${item.count} contribution${item.count === 1 ? '' : 's'} - ${formatKes(item.amount)}`,
+      }));
+  }, [panelMember]);
+  const detailAttendanceBars = useMemo(() => {
+    const counts = new Map<string, number>();
+    memberAttendance.forEach((item) => {
+      const label =
+        item.group?.name ||
+        item.eventName ||
+        (item.attendanceType === 'service' ? 'Church service' : 'Group');
+      counts.set(label, (counts.get(label) || 0) + 1);
+    });
+    return Array.from(counts.entries())
+      .map(([label, value]) => ({ label, value, caption: `${value} mark${value === 1 ? '' : 's'}` }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 6);
+  }, [memberAttendance]);
+  const detailContributionBars = useMemo(() => {
+    return (detailMember?.contributionSummary?.dates || [])
+      .slice(0, 6)
+      .map((item) => ({
+        label: item.date,
+        value: Number(item.amount || 0),
+        caption: `${item.count} contribution${item.count === 1 ? '' : 's'} - ${formatKes(item.amount)}`,
+      }));
+  }, [detailMember]);
   const selectedDuplicateMembers = useMemo(() => {
     if (!duplicateReviewCluster) {
       return [];
@@ -703,7 +758,7 @@ export default function ChurchDiscipleship() {
       </section>
 
       <section className="panel p-3">
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2">
           {discipleshipTabs.map(({ value, label, icon: TabIcon }) => {
             return (
               <button
@@ -1020,61 +1075,23 @@ export default function ChurchDiscipleship() {
                 ) : null}
               </div>
             ) : null}
-            <div className="mt-5 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-stone-400">
-                  Attendance history
-                </p>
-                <h4 className="mt-1 font-semibold text-white">Latest marks</h4>
-              </div>
-              <button
-                className="btn-secondary px-3 py-2"
-                type="button"
-                onClick={() => setRecentAttendanceSearch('')}
-              >
-                Clear
-              </button>
+            <div className="mt-5">
+              <p className="text-xs uppercase tracking-[0.2em] text-stone-400">
+                Attendance pattern
+              </p>
+              <MiniBarGraph
+                items={panelAttendanceBars}
+                emptyLabel="No attendance has been recorded for this member yet."
+              />
             </div>
-            <div className="mt-5 space-y-3">
-              {(panelMember ? panelMemberAttendance : recentAttendance).length === 0 ? (
-                <p className="rounded-2xl border border-white/10 p-4 text-sm text-stone-300">
-                  No attendance has been recorded for this member yet.
-                </p>
-              ) : (
-                (panelMember ? panelMemberAttendance : recentAttendance).slice(0, 8).map((item) => (
-                  <button
-                    key={item.id}
-                    className="w-full rounded-2xl border border-white/10 bg-black/10 p-4 text-left transition hover:bg-white/5"
-                    type="button"
-                    onClick={() => {
-                      if (item.member?.id) {
-                        setDetailMemberId(item.member.id);
-                      }
-                    }}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h4 className="font-semibold text-white">
-                          {item.member?.fullName || 'Member'}
-                        </h4>
-                        <p className="mt-1 text-xs text-stone-400">
-                          {item.weekday}, {item.attendanceDate}
-                        </p>
-                      </div>
-                      <span className="rounded-full border border-amber-200/40 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-amber-100">
-                        {item.group?.name || item.attendanceType}
-                      </span>
-                    </div>
-                    {(item.group || item.eventName) && (
-                      <p className="mt-3 text-sm text-stone-300">
-                        {[item.group?.name, item.eventName]
-                          .filter(Boolean)
-                          .join(' - ')}
-                      </p>
-                    )}
-                  </button>
-                ))
-              )}
+            <div className="mt-5">
+              <p className="text-xs uppercase tracking-[0.2em] text-stone-400">
+                Giving pattern
+              </p>
+              <MiniBarGraph
+                items={panelContributionBars}
+                emptyLabel="No linked contributions for this member."
+              />
             </div>
           </div>
         </section>
@@ -1093,25 +1110,6 @@ export default function ChurchDiscipleship() {
               </h3>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
-              <label className="btn-secondary cursor-pointer justify-center">
-                <Upload size={17} />
-                {statementImportMutation.isPending
-                  ? 'Reconciling...'
-                  : 'Reconcile M-Pesa names'}
-                <input
-                  accept=".xlsx,.csv"
-                  className="hidden"
-                  disabled={statementImportMutation.isPending}
-                  type="file"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) {
-                      statementImportMutation.mutate(file);
-                    }
-                    event.target.value = '';
-                  }}
-                />
-              </label>
               <button
                 className="btn-secondary justify-center"
                 type="button"
@@ -1330,32 +1328,48 @@ export default function ChurchDiscipleship() {
               ) : null}
             </div>
             {panelMember ? (
-              <div className="mt-4 space-y-3 text-sm text-stone-300">
-                <p>
-                  <span className="text-stone-400">Phone:</span>{' '}
-                  {panelMember.phone || 'Not captured'}
-                </p>
-                <p>
-                  <span className="text-stone-400">Gender:</span>{' '}
-                  {panelMember.gender || 'Not set'}
-                </p>
+              <div className="mt-4 space-y-4 text-base text-stone-300">
+                <div className="grid gap-2 rounded-2xl bg-black/10 p-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                  <p>
+                    <span className="block text-xs uppercase tracking-[0.18em] text-stone-400">
+                      Phone
+                    </span>
+                    <span className="font-semibold text-white">
+                      {panelMember.phone || 'Not captured'}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="block text-xs uppercase tracking-[0.18em] text-stone-400">
+                      Gender
+                    </span>
+                    <span className="font-semibold capitalize text-white">
+                      {panelMember.gender || 'Not set'}
+                    </span>
+                  </p>
+                </div>
                 <p>
                   <span className="text-stone-400">Groups:</span>{' '}
                   {(panelMember.groups || []).map((group) => group.name).join(', ') ||
                     'No group assigned'}
                 </p>
-                <p>
-                  <span className="text-stone-400">Last attendance:</span>{' '}
-                  {panelMemberAttendance[0]?.attendanceDate || 'No attendance yet'}
-                </p>
-                {panelMember.contributionSummary ? (
-                  <p>
-                    <span className="text-stone-400">Linked giving:</span> KES{' '}
-                    {Number(
-                      panelMember.contributionSummary.totalAmount || 0,
-                    ).toLocaleString()}
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
+                    Attendance
                   </p>
-                ) : null}
+                  <MiniBarGraph
+                    items={panelAttendanceBars}
+                    emptyLabel="No attendance marks yet."
+                  />
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
+                    Contributions
+                  </p>
+                  <MiniBarGraph
+                    items={panelContributionBars}
+                    emptyLabel="No linked contribution pattern."
+                  />
+                </div>
                 <button
                   className="btn-secondary mt-2 w-full justify-center"
                   type="button"
@@ -1414,65 +1428,6 @@ export default function ChurchDiscipleship() {
             </div>
           </section>
         </aside>
-        </section>
-      )}
-
-      {activeTab === 'groups' && (
-        <section className="panel overflow-hidden">
-          <div className="flex flex-col gap-4 border-b border-white/10 p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
-            <div>
-              <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-                Church groups
-              </p>
-              <h3 className="mt-2 text-xl font-semibold text-white">
-                Group setup
-              </h3>
-            </div>
-            <button
-              className="btn-primary justify-center"
-              type="button"
-              onClick={() => openGroupEditor()}
-            >
-              <Plus size={17} />
-              Add group
-            </button>
-          </div>
-
-          <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
-            {groups.length === 0 ? (
-              <p className="text-sm text-stone-300">No groups created yet.</p>
-            ) : (
-              groups.map((group) => (
-                <div
-                  key={group.id}
-                  className="rounded-3xl border border-white/10 bg-black/10 p-5"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h4 className="font-semibold text-white">{group.name}</h4>
-                      <p className="mt-1 text-xs text-stone-400">
-                        {group.memberCount || 0} members ·{' '}
-                        {group.isActive ? 'Active' : 'Inactive'}
-                      </p>
-                    </div>
-                    <button
-                      className="rounded-full border border-white/10 p-2 text-stone-200 hover:bg-white/5"
-                      type="button"
-                      onClick={() => openGroupEditor(group)}
-                      title="Edit group"
-                    >
-                      <PencilLine size={16} />
-                    </button>
-                  </div>
-                  {group.description && (
-                    <p className="mt-4 text-sm leading-6 text-stone-300">
-                      {group.description}
-                    </p>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
         </section>
       )}
 
@@ -2139,6 +2094,33 @@ export default function ChurchDiscipleship() {
                     <p className="mt-2 font-semibold text-white">{value}</p>
                   </div>
                 ))}
+              </div>
+
+              <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-3xl bg-white/[0.045] p-5">
+                  <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                    Attendance pattern
+                  </p>
+                  {memberAttendanceLoading ? (
+                    <p className="mt-3 text-sm text-stone-300">
+                      Loading attendance...
+                    </p>
+                  ) : (
+                    <MiniBarGraph
+                      items={detailAttendanceBars}
+                      emptyLabel="No attendance pattern yet."
+                    />
+                  )}
+                </div>
+                <div className="rounded-3xl bg-white/[0.045] p-5">
+                  <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                    Contribution pattern
+                  </p>
+                  <MiniBarGraph
+                    items={detailContributionBars}
+                    emptyLabel="No linked contribution pattern."
+                  />
+                </div>
               </div>
 
               <div className="mt-6 grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
