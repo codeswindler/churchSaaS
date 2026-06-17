@@ -14,11 +14,18 @@ import {
   UserCheck,
   X,
 } from 'lucide-react';
-import { type FormEvent, useEffect, useMemo, useState } from 'react';
+import {
+  type FormEvent,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+} from 'react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 
 type DiscipleshipTab = 'attendance' | 'members';
+type MemberDetailSection = 'attendance' | 'contributions';
 
 interface DiscipleshipGroup {
   id: string;
@@ -155,48 +162,212 @@ function formatYesNo(value: boolean | null | undefined) {
   return 'Not set';
 }
 
-type MiniBarItem = {
+type ProgressChartItem = {
   label: string;
   value: number;
   caption?: string;
 };
 
-function MiniBarGraph({
+function formatChartDateLabel(value: string) {
+  const [year, month, day] = value.split('-');
+  if (year && month && day) {
+    return `${Number(day)}/${Number(month)}`;
+  }
+  return value;
+}
+
+function ProgressChart({
   items,
   emptyLabel,
+  mode = 'line',
+  valueLabel = 'records',
+  onViewDetails,
 }: {
-  items: MiniBarItem[];
+  items: ProgressChartItem[];
   emptyLabel: string;
+  mode?: 'bar' | 'line';
+  valueLabel?: string;
+  onViewDetails?: () => void;
 }) {
+  const chartId = useId().replace(/:/g, '');
+  const barGradientId = `discipleship-bar-${chartId}`;
+  const areaGradientId = `discipleship-area-${chartId}`;
   const maxValue = Math.max(1, ...items.map((item) => item.value));
+  const width = 520;
+  const height = 230;
+  const paddingX = 36;
+  const paddingTop = 24;
+  const paddingBottom = 46;
+  const chartWidth = width - paddingX * 2;
+  const chartHeight = height - paddingTop - paddingBottom;
+  const points = items.map((item, index) => {
+    const x =
+      items.length === 1
+        ? width / 2
+        : paddingX + (index / (items.length - 1)) * chartWidth;
+    const y = paddingTop + chartHeight - (item.value / maxValue) * chartHeight;
+    return { ...item, x, y };
+  });
+  const linePath = points
+    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
+    .join(' ');
+  const areaPath =
+    points.length > 0
+      ? `${linePath} L ${points[points.length - 1].x} ${height - paddingBottom} L ${
+          points[0].x
+        } ${height - paddingBottom} Z`
+      : '';
+  const barWidth =
+    points.length > 0 ? Math.min(54, (chartWidth / points.length) * 0.58) : 0;
+  const total = items.reduce((sum, item) => sum + item.value, 0);
+  const totalLabel =
+    valueLabel === 'KES'
+      ? formatKes(total)
+      : `${total.toLocaleString()} ${valueLabel}`;
+
   if (items.length === 0) {
     return (
-      <div className="discipleship-mini-graph-empty">{emptyLabel}</div>
+      <div className="discipleship-chart-empty">
+        <p>{emptyLabel}</p>
+        {onViewDetails ? (
+          <button
+            className="btn-secondary mt-3 px-3 py-2"
+            type="button"
+            onClick={onViewDetails}
+          >
+            View details
+          </button>
+        ) : null}
+      </div>
     );
   }
 
   return (
-    <div className="discipleship-mini-graph">
-      {items.map((item) => (
-        <div key={item.label} className="discipleship-mini-graph-row">
-          <div className="min-w-0">
+    <div className="discipleship-progress-chart">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xl font-semibold text-white">{totalLabel}</p>
+          <p className="mt-1 text-sm text-stone-400">
+            {items[0].label} to {items[items.length - 1].label}
+          </p>
+        </div>
+        {onViewDetails ? (
+          <button
+            className="btn-secondary justify-center px-3 py-2"
+            type="button"
+            onClick={onViewDetails}
+          >
+            View details
+          </button>
+        ) : null}
+      </div>
+
+      <svg
+        className="discipleship-chart-svg"
+        role="img"
+        viewBox={`0 0 ${width} ${height}`}
+      >
+        <defs>
+          <linearGradient
+            id={barGradientId}
+            x1="0"
+            x2="0"
+            y1="0"
+            y2="1"
+          >
+            <stop offset="0%" stopColor="#f6de84" />
+            <stop offset="100%" stopColor="#34d399" />
+          </linearGradient>
+          <linearGradient
+            id={areaGradientId}
+            x1="0"
+            x2="0"
+            y1="0"
+            y2="1"
+          >
+            <stop offset="0%" stopColor="#34d399" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="#34d399" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        {[0, 0.5, 1].map((ratio) => {
+          const y = paddingTop + chartHeight - ratio * chartHeight;
+          return (
+            <g key={ratio}>
+              <line
+                className="discipleship-chart-grid"
+                x1={paddingX}
+                x2={width - paddingX}
+                y1={y}
+                y2={y}
+              />
+              <text
+                className="discipleship-chart-y-label"
+                x={paddingX - 10}
+                y={y + 4}
+                textAnchor="end"
+              >
+                {Math.round(maxValue * ratio).toLocaleString()}
+              </text>
+            </g>
+          );
+        })}
+
+        {mode === 'line' && areaPath ? (
+          <path
+            className="discipleship-chart-area"
+            d={areaPath}
+            fill={`url(#${areaGradientId})`}
+          />
+        ) : null}
+        {mode === 'line' && linePath ? (
+          <path className="discipleship-chart-line" d={linePath} />
+        ) : null}
+        {mode === 'bar'
+          ? points.map((point) => (
+              <rect
+                key={point.label}
+                className="discipleship-chart-bar"
+                fill={`url(#${barGradientId})`}
+                height={height - paddingBottom - point.y}
+                rx="8"
+                width={barWidth}
+                x={point.x - barWidth / 2}
+                y={point.y}
+              />
+            ))
+          : null}
+        {points.map((point) => (
+          <g key={point.label}>
+            <circle
+              className="discipleship-chart-point"
+              cx={point.x}
+              cy={point.y}
+              r={mode === 'bar' ? 4 : 5}
+            />
+            <text
+              className="discipleship-chart-x-label"
+              textAnchor="middle"
+              x={point.x}
+              y={height - 18}
+            >
+              {formatChartDateLabel(point.label)}
+            </text>
+          </g>
+        ))}
+      </svg>
+
+      <div className="discipleship-chart-caption-grid">
+        {items.slice(-3).map((item) => (
+          <div key={item.label} className="min-w-0">
             <p className="truncate text-sm font-semibold text-white">
               {item.label}
             </p>
-            {item.caption ? (
-              <p className="mt-0.5 truncate text-xs text-stone-400">
-                {item.caption}
-              </p>
-            ) : null}
+            <p className="mt-0.5 truncate text-xs text-stone-400">
+              {item.caption || `${item.value.toLocaleString()} ${valueLabel}`}
+            </p>
           </div>
-          <div className="discipleship-mini-graph-track">
-            <span
-              className="discipleship-mini-graph-fill"
-              style={{ width: `${Math.max(10, (item.value / maxValue) * 100)}%` }}
-            />
-          </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
@@ -250,6 +421,8 @@ export default function ChurchDiscipleship() {
   const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
   const [memberRegistrationStep, setMemberRegistrationStep] = useState(1);
   const [detailMemberId, setDetailMemberId] = useState('');
+  const [detailSection, setDetailSection] =
+    useState<MemberDetailSection>('attendance');
   const [memberEditor, setMemberEditor] = useState<DiscipleshipMember | null>(
     null,
   );
@@ -685,46 +858,56 @@ export default function ChurchDiscipleship() {
       lastAttended: memberAttendance[0]?.attendanceDate || 'No attendance yet',
     };
   }, [memberAttendance]);
-  const panelAttendanceBars = useMemo(() => {
+  const panelAttendanceChart = useMemo(() => {
     const counts = new Map<string, number>();
     panelMemberAttendance.forEach((item) => {
-      const label =
-        item.group?.name ||
-        item.eventName ||
-        (item.attendanceType === 'service' ? 'Church service' : 'Group');
-      counts.set(label, (counts.get(label) || 0) + 1);
+      counts.set(
+        item.attendanceDate,
+        (counts.get(item.attendanceDate) || 0) + 1,
+      );
     });
     return Array.from(counts.entries())
-      .map(([label, value]) => ({ label, value, caption: `${value} mark${value === 1 ? '' : 's'}` }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 4);
+      .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+      .slice(-8)
+      .map(([label, value]) => ({
+        label,
+        value,
+        caption: `${value} attendance mark${value === 1 ? '' : 's'}`,
+      }));
   }, [panelMemberAttendance]);
-  const panelContributionBars = useMemo(() => {
+  const panelContributionChart = useMemo(() => {
     return (panelMember?.contributionSummary?.dates || [])
-      .slice(0, 4)
+      .slice()
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(-8)
       .map((item) => ({
         label: item.date,
         value: Number(item.amount || 0),
         caption: `${item.count} contribution${item.count === 1 ? '' : 's'} - ${formatKes(item.amount)}`,
       }));
   }, [panelMember]);
-  const detailAttendanceBars = useMemo(() => {
+  const detailAttendanceChart = useMemo(() => {
     const counts = new Map<string, number>();
     memberAttendance.forEach((item) => {
-      const label =
-        item.group?.name ||
-        item.eventName ||
-        (item.attendanceType === 'service' ? 'Church service' : 'Group');
-      counts.set(label, (counts.get(label) || 0) + 1);
+      counts.set(
+        item.attendanceDate,
+        (counts.get(item.attendanceDate) || 0) + 1,
+      );
     });
     return Array.from(counts.entries())
-      .map(([label, value]) => ({ label, value, caption: `${value} mark${value === 1 ? '' : 's'}` }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 6);
+      .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+      .slice(-12)
+      .map(([label, value]) => ({
+        label,
+        value,
+        caption: `${value} attendance mark${value === 1 ? '' : 's'}`,
+      }));
   }, [memberAttendance]);
-  const detailContributionBars = useMemo(() => {
+  const detailContributionChart = useMemo(() => {
     return (detailMember?.contributionSummary?.dates || [])
-      .slice(0, 6)
+      .slice()
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(-12)
       .map((item) => ({
         label: item.date,
         value: Number(item.amount || 0),
@@ -743,6 +926,40 @@ export default function ChurchDiscipleship() {
     selectedDuplicateMembers.find((member) => member.isManual)?.id ||
     selectedDuplicateMembers[0]?.id ||
     null;
+  const detailStatCards =
+    detailSection === 'attendance'
+      ? [
+          ['Attendance marks', memberAttendanceSummary.total],
+          ['Groups attended', memberAttendanceSummary.groupsAttended],
+          ['Group events', memberAttendanceSummary.groupCount],
+          ['Last attended', memberAttendanceSummary.lastAttended],
+        ]
+      : [
+          [
+            'Total contributed',
+            formatKes(detailMember?.contributionSummary?.totalAmount),
+          ],
+          [
+            'Contribution entries',
+            detailMember?.contributionSummary?.contributionCount || 0,
+          ],
+          [
+            'Latest contribution',
+            detailMember?.contributionSummary?.latestContributionAt ||
+              'No contribution yet',
+          ],
+          [
+            'Linked identities',
+            detailMember?.linkedContributorCount || 0,
+          ],
+        ];
+  const openMemberDetails = (
+    memberId: string,
+    section: MemberDetailSection,
+  ) => {
+    setDetailSection(section);
+    setDetailMemberId(memberId);
+  };
 
   return (
     <div className="space-y-4 discipleship-page">
@@ -1028,69 +1245,61 @@ export default function ChurchDiscipleship() {
               {panelMember?.fullName || 'Select a member'}
             </h3>
             {panelMember ? (
-              <div className="mt-4 grid gap-3">
-                <div className="rounded-2xl border border-white/10 bg-black/10 p-4">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
-                        Phone
-                      </p>
-                      <p className="mt-1 text-sm font-semibold text-white">
-                        {panelMember.phone || 'Not captured'}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
-                        Gender
-                      </p>
-                      <p className="mt-1 text-sm font-semibold capitalize text-white">
-                        {panelMember.gender || 'Not set'}
-                      </p>
-                    </div>
-                  </div>
-                  <p className="mt-3 text-sm text-stone-300">
-                    {(panelMember.groups || []).map((group) => group.name).join(', ') ||
-                      'No group assigned'}
-                  </p>
-                  <button
-                    className="btn-secondary mt-4 justify-center"
-                    type="button"
-                    onClick={() => setDetailMemberId(panelMember.id)}
-                  >
-                    Open full details
-                  </button>
-                </div>
-                {panelMember.contributionSummary ? (
-                  <div className="rounded-2xl border border-white/10 bg-black/10 p-4">
+              <div className="mt-4 rounded-2xl bg-white/[0.04] p-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
                     <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
-                      Linked contributions
+                      Phone
                     </p>
-                    <p className="mt-2 text-lg font-semibold text-white">
-                      KES {Number(panelMember.contributionSummary.totalAmount || 0).toLocaleString()}
-                    </p>
-                    <p className="mt-1 text-xs text-stone-400">
-                      {panelMember.contributionSummary.contributionCount} contribution(s)
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {panelMember.phone || 'Not captured'}
                     </p>
                   </div>
-                ) : null}
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
+                      Gender
+                    </p>
+                    <p className="mt-1 text-sm font-semibold capitalize text-white">
+                      {panelMember.gender || 'Not set'}
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-3 text-sm text-stone-300">
+                  {(panelMember.groups || []).map((group) => group.name).join(', ') ||
+                    'No group assigned'}
+                </p>
               </div>
             ) : null}
-            <div className="mt-5">
+            <div className="mt-5 rounded-3xl bg-white/[0.045] p-4">
               <p className="text-xs uppercase tracking-[0.2em] text-stone-400">
-                Attendance pattern
+                Attendance chart
               </p>
-              <MiniBarGraph
-                items={panelAttendanceBars}
+              <ProgressChart
                 emptyLabel="No attendance has been recorded for this member yet."
+                items={panelAttendanceChart}
+                mode="bar"
+                onViewDetails={
+                  panelMember
+                    ? () => openMemberDetails(panelMember.id, 'attendance')
+                    : undefined
+                }
+                valueLabel="marks"
               />
             </div>
-            <div className="mt-5">
+            <div className="mt-5 rounded-3xl bg-white/[0.045] p-4">
               <p className="text-xs uppercase tracking-[0.2em] text-stone-400">
-                Giving pattern
+                Giving chart
               </p>
-              <MiniBarGraph
-                items={panelContributionBars}
+              <ProgressChart
                 emptyLabel="No linked contributions for this member."
+                items={panelContributionChart}
+                mode="line"
+                onViewDetails={
+                  panelMember
+                    ? () => openMemberDetails(panelMember.id, 'contributions')
+                    : undefined
+                }
+                valueLabel="KES"
               />
             </div>
           </div>
@@ -1354,29 +1563,32 @@ export default function ChurchDiscipleship() {
                 </p>
                 <div>
                   <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
-                    Attendance
+                    Attendance chart
                   </p>
-                  <MiniBarGraph
-                    items={panelAttendanceBars}
+                  <ProgressChart
                     emptyLabel="No attendance marks yet."
+                    items={panelAttendanceChart}
+                    mode="bar"
+                    onViewDetails={() =>
+                      openMemberDetails(panelMember.id, 'attendance')
+                    }
+                    valueLabel="marks"
                   />
                 </div>
                 <div>
                   <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
-                    Contributions
+                    Giving chart
                   </p>
-                  <MiniBarGraph
-                    items={panelContributionBars}
+                  <ProgressChart
                     emptyLabel="No linked contribution pattern."
+                    items={panelContributionChart}
+                    mode="line"
+                    onViewDetails={() =>
+                      openMemberDetails(panelMember.id, 'contributions')
+                    }
+                    valueLabel="KES"
                   />
                 </div>
-                <button
-                  className="btn-secondary mt-2 w-full justify-center"
-                  type="button"
-                  onClick={() => setDetailMemberId(panelMember.id)}
-                >
-                  View details
-                </button>
               </div>
             ) : (
               <p className="mt-4 text-sm text-stone-300">
@@ -2043,7 +2255,9 @@ export default function ChurchDiscipleship() {
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-                    Member profile
+                    {detailSection === 'attendance'
+                      ? 'Attendance details'
+                      : 'Contribution details'}
                   </p>
                   <h3 className="mt-2 text-2xl font-semibold text-white">
                     {detailMember?.fullName || 'Member details'}
@@ -2078,12 +2292,7 @@ export default function ChurchDiscipleship() {
               </div>
 
               <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {[
-                  ['Attendance marks', memberAttendanceSummary.total],
-                  ['Groups attended', memberAttendanceSummary.groupsAttended],
-                  ['Group events', memberAttendanceSummary.groupCount],
-                  ['Last attended', memberAttendanceSummary.lastAttended],
-                ].map(([label, value]) => (
+                {detailStatCards.map(([label, value]) => (
                   <div
                     key={label}
                     className="rounded-2xl border border-white/10 bg-black/10 p-4"
@@ -2096,31 +2305,33 @@ export default function ChurchDiscipleship() {
                 ))}
               </div>
 
-              <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                <div className="rounded-3xl bg-white/[0.045] p-5">
-                  <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
-                    Attendance pattern
-                  </p>
-                  {memberAttendanceLoading ? (
+              <div className="mt-5 rounded-3xl bg-white/[0.045] p-5">
+                <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                  {detailSection === 'attendance'
+                    ? 'Attendance progression'
+                    : 'Contribution progression'}
+                </p>
+                {detailSection === 'attendance' ? (
+                  memberAttendanceLoading ? (
                     <p className="mt-3 text-sm text-stone-300">
                       Loading attendance...
                     </p>
                   ) : (
-                    <MiniBarGraph
-                      items={detailAttendanceBars}
+                    <ProgressChart
                       emptyLabel="No attendance pattern yet."
+                      items={detailAttendanceChart}
+                      mode="bar"
+                      valueLabel="marks"
                     />
-                  )}
-                </div>
-                <div className="rounded-3xl bg-white/[0.045] p-5">
-                  <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
-                    Contribution pattern
-                  </p>
-                  <MiniBarGraph
-                    items={detailContributionBars}
+                  )
+                ) : (
+                  <ProgressChart
                     emptyLabel="No linked contribution pattern."
+                    items={detailContributionChart}
+                    mode="line"
+                    valueLabel="KES"
                   />
-                </div>
+                )}
               </div>
 
               <div className="mt-6 grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
@@ -2177,120 +2388,93 @@ export default function ChurchDiscipleship() {
                   </dl>
                 </div>
 
-                <div className="rounded-3xl border border-white/10 bg-black/10 p-5">
-                  <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
-                    Attendance history
-                  </p>
-                  <div className="mt-4 max-h-[420px] space-y-2 overflow-y-auto pr-1">
-                    {memberAttendanceLoading ? (
-                      <p className="text-sm text-stone-300">
-                        Loading attendance...
-                      </p>
-                    ) : memberAttendance.length === 0 ? (
-                      <p className="text-sm text-stone-300">
-                        No attendance has been recorded for this member.
-                      </p>
-                    ) : (
-                      memberAttendance.map((item) => (
-                        <div
-                          key={item.id}
-                          className="rounded-2xl border border-white/10 bg-white/5 p-4"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="font-semibold text-white">
-                                {item.attendanceType === 'service'
-                                  ? item.eventName || 'Church service'
-                                  : item.eventName ||
-                                    item.group?.name ||
-                                    'Group attendance'}
-                              </p>
-                              <p className="mt-1 text-xs text-stone-400">
-                                {item.weekday}, {item.attendanceDate}
+                {detailSection === 'attendance' ? (
+                  <div className="rounded-3xl border border-white/10 bg-black/10 p-5">
+                    <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                      Attendance history
+                    </p>
+                    <div className="mt-4 max-h-[420px] space-y-2 overflow-y-auto pr-1">
+                      {memberAttendanceLoading ? (
+                        <p className="text-sm text-stone-300">
+                          Loading attendance...
+                        </p>
+                      ) : memberAttendance.length === 0 ? (
+                        <p className="text-sm text-stone-300">
+                          No attendance has been recorded for this member.
+                        </p>
+                      ) : (
+                        memberAttendance.map((item) => (
+                          <div
+                            key={item.id}
+                            className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="font-semibold text-white">
+                                  {item.attendanceType === 'service'
+                                    ? item.eventName || 'Church service'
+                                    : item.eventName ||
+                                      item.group?.name ||
+                                      'Group attendance'}
+                                </p>
+                                <p className="mt-1 text-xs text-stone-400">
+                                  {item.weekday}, {item.attendanceDate}
+                                </p>
+                              </div>
+                              <span className="rounded-full border border-amber-200/30 px-3 py-1 text-xs font-semibold text-amber-100">
+                                {item.attendanceType === 'group'
+                                  ? item.group?.name || 'Group'
+                                  : 'Service'}
+                              </span>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-3xl border border-white/10 bg-black/10 p-5">
+                    <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                      Contribution history
+                    </p>
+                    <div className="mt-4 max-h-[420px] space-y-2 overflow-y-auto pr-1">
+                      {(
+                        detailMember?.contributionSummary?.contributions || []
+                      ).length === 0 ? (
+                        <p className="text-sm text-stone-300">
+                          No linked contributions for this member.
+                        </p>
+                      ) : (
+                        (
+                          detailMember?.contributionSummary?.contributions || []
+                        ).map((item) => (
+                          <div
+                            key={item.id}
+                            className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="font-semibold text-white">
+                                  {item.fundAccountName || 'General contribution'}
+                                </p>
+                                <p className="mt-1 text-xs text-stone-400">
+                                  {item.date}
+                                  {item.paymentReference
+                                    ? ` · ${item.paymentReference}`
+                                    : ''}
+                                </p>
+                              </div>
+                              <p className="font-semibold text-amber-100">
+                                {formatKes(item.amount)}
                               </p>
                             </div>
-                            <span className="rounded-full border border-amber-200/30 px-3 py-1 text-xs font-semibold text-amber-100">
-                              {item.attendanceType === 'group'
-                                ? item.group?.name || 'Group'
-                                : 'Service'}
-                            </span>
                           </div>
-                        </div>
-                      ))
-                    )}
+                        ))
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
-
-              {Number(
-                detailMember?.contributionSummary?.contributionCount || 0,
-              ) > 0 ? (
-                <div className="mt-4 rounded-3xl border border-white/10 bg-black/10 p-5">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
-                        Contribution record
-                      </p>
-                      <h4 className="mt-2 text-lg font-semibold text-white">
-                        Transaction-linked discipleship
-                      </h4>
-                      <p className="mt-1 text-sm text-stone-300">
-                        Church Service attendance is inferred from confirmed
-                        contribution dates.
-                      </p>
-                    </div>
-                    <div className="grid gap-2 text-right sm:grid-cols-2">
-                      <div className="rounded-2xl border border-white/10 px-4 py-3">
-                        <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
-                          Total
-                        </p>
-                        <p className="mt-1 font-semibold text-white">
-                          {formatKes(
-                            detailMember?.contributionSummary?.totalAmount,
-                          )}
-                        </p>
-                      </div>
-                      <div className="rounded-2xl border border-white/10 px-4 py-3">
-                        <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
-                          Entries
-                        </p>
-                        <p className="mt-1 font-semibold text-white">
-                          {
-                            detailMember?.contributionSummary
-                              ?.contributionCount
-                          }
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    {(detailMember?.contributionSummary?.dates || [])
-                      .slice(0, 12)
-                      .map((item) => (
-                        <div
-                          key={item.date}
-                          className="rounded-2xl border border-white/10 bg-white/5 p-4"
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <p className="font-semibold text-white">
-                                {item.date}
-                              </p>
-                              <p className="mt-1 text-xs text-stone-400">
-                                {item.count} contribution
-                                {item.count === 1 ? '' : 's'}
-                              </p>
-                            </div>
-                            <p className="font-semibold text-amber-100">
-                              {formatKes(item.amount)}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              ) : null}
             </section>
           </div>
         </div>
