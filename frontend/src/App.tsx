@@ -1,5 +1,9 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { ChurchPermissionRoute } from './components/ChurchPermissionRoute';
+import {
+  LayoutDiagnosticsOverlay,
+  LayoutDiagnosticsPage,
+} from './components/LayoutDiagnostics';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AppShell } from './layouts/AppShell';
 import ChurchSignup from './pages/auth/ChurchSignup';
@@ -47,124 +51,128 @@ function ChurchIndexRedirect() {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<PublicEntry />} />
-      <Route path="/login" element={<PublicEntry />} />
-      <Route path="/signup" element={<ChurchSignup />} />
-      <Route path="/c/:slug" element={<PublicCongregation />} />
-      <Route path="/c/:slug/give" element={<PublicGive />} />
-      <Route path="/display/church-presentation" element={<PresentationDisplay />} />
+    <>
+      <Routes>
+        <Route path="/" element={<PublicEntry />} />
+        <Route path="/login" element={<PublicEntry />} />
+        <Route path="/signup" element={<ChurchSignup />} />
+        <Route path="/layout-diagnostics" element={<LayoutDiagnosticsPage />} />
+        <Route path="/c/:slug" element={<PublicCongregation />} />
+        <Route path="/c/:slug/give" element={<PublicGive />} />
+        <Route path="/display/church-presentation" element={<PresentationDisplay />} />
 
-      <Route
-        path="/platform"
-        element={
-          <ProtectedRoute userType="platform">
-            <AppShell userType="platform" />
-          </ProtectedRoute>
-        }
-      >
-        <Route path="dashboard" element={<PlatformDashboard />} />
-        <Route path="churches" element={<PlatformChurches />} />
-        <Route path="collections" element={<PlatformCollections />} />
-        <Route path="messaging" element={<PlatformMessaging />} />
-        <Route path="enquiries" element={<PlatformEnquiries />} />
-        <Route path="users" element={<PlatformUsers />} />
-        <Route path="senders" element={<PlatformSenders />} />
-        <Route path="settings" element={<PlatformSettings />} />
-        <Route index element={<Navigate to="/platform/dashboard" replace />} />
-      </Route>
+        <Route
+          path="/platform"
+          element={
+            <ProtectedRoute userType="platform">
+              <AppShell userType="platform" />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="dashboard" element={<PlatformDashboard />} />
+          <Route path="churches" element={<PlatformChurches />} />
+          <Route path="collections" element={<PlatformCollections />} />
+          <Route path="messaging" element={<PlatformMessaging />} />
+          <Route path="enquiries" element={<PlatformEnquiries />} />
+          <Route path="users" element={<PlatformUsers />} />
+          <Route path="senders" element={<PlatformSenders />} />
+          <Route path="settings" element={<PlatformSettings />} />
+          <Route index element={<Navigate to="/platform/dashboard" replace />} />
+        </Route>
 
-      <Route
-        path="/church"
-        element={
-          <ProtectedRoute userType="church">
-            <AppShell userType="church" />
-          </ProtectedRoute>
-        }
-      >
-        <Route path="access" element={<ChurchAccessHome />} />
         <Route
-          path="dashboard"
+          path="/church"
           element={
-            <ChurchPermissionRoute permission="dashboard.view">
-              <ChurchDashboard />
-            </ChurchPermissionRoute>
+            <ProtectedRoute userType="church">
+              <AppShell userType="church" />
+            </ProtectedRoute>
           }
-        />
-        <Route
-          path="fund-accounts"
-          element={
-            <ChurchPermissionRoute permission="fundAccounts.view">
-              <ChurchFundAccounts />
-            </ChurchPermissionRoute>
-          }
-        />
-        <Route
-          path="fund-displays"
-          element={
-            <ChurchPermissionRoute permission="congregation.manage">
-              <ChurchFundDisplays />
-            </ChurchPermissionRoute>
-          }
-        />
-        <Route
-          path="contributions"
-          element={
-            <ChurchPermissionRoute permission="contributions.view">
-              <ChurchContributions />
-            </ChurchPermissionRoute>
-          }
-        />
-        <Route
-          path="congregation"
-          element={
-            <ChurchPermissionRoute permission="congregation.manage">
-              <ChurchCongregation />
-            </ChurchPermissionRoute>
-          }
-        />
-        <Route
-          path="messaging"
-          element={
-            <ChurchPermissionRoute permission="messaging.view">
-              <ChurchMessaging />
-            </ChurchPermissionRoute>
-          }
-        />
-        <Route
-          path="discipleship"
-          element={
-            <ChurchPermissionRoute permission="discipleship.view">
-              <ChurchDiscipleship />
-            </ChurchPermissionRoute>
-          }
-        />
-        <Route
-          path="users"
-          element={
-            <ChurchPermissionRoute permission="users.view">
-              <ChurchUsers />
-            </ChurchPermissionRoute>
-          }
-        />
-        <Route
-          path="reports"
-          element={
-            <ChurchPermissionRoute permission="reports.view">
-              <ChurchReports />
-            </ChurchPermissionRoute>
-          }
-        />
-        <Route
-          path="presentation"
-          element={
-            <ChurchPermissionRoute permission="presentation.manage">
-              <ChurchPresentation />
-            </ChurchPermissionRoute>
-          }
-        />
-        <Route index element={<ChurchIndexRedirect />} />
-      </Route>
-    </Routes>
+        >
+          <Route path="access" element={<ChurchAccessHome />} />
+          <Route
+            path="dashboard"
+            element={
+              <ChurchPermissionRoute permission="dashboard.view">
+                <ChurchDashboard />
+              </ChurchPermissionRoute>
+            }
+          />
+          <Route
+            path="fund-accounts"
+            element={
+              <ChurchPermissionRoute permission="fundAccounts.view">
+                <ChurchFundAccounts />
+              </ChurchPermissionRoute>
+            }
+          />
+          <Route
+            path="fund-displays"
+            element={
+              <ChurchPermissionRoute permission="congregation.manage">
+                <ChurchFundDisplays />
+              </ChurchPermissionRoute>
+            }
+          />
+          <Route
+            path="contributions"
+            element={
+              <ChurchPermissionRoute permission="contributions.view">
+                <ChurchContributions />
+              </ChurchPermissionRoute>
+            }
+          />
+          <Route
+            path="congregation"
+            element={
+              <ChurchPermissionRoute permission="congregation.manage">
+                <ChurchCongregation />
+              </ChurchPermissionRoute>
+            }
+          />
+          <Route
+            path="messaging"
+            element={
+              <ChurchPermissionRoute permission="messaging.view">
+                <ChurchMessaging />
+              </ChurchPermissionRoute>
+            }
+          />
+          <Route
+            path="discipleship"
+            element={
+              <ChurchPermissionRoute permission="discipleship.view">
+                <ChurchDiscipleship />
+              </ChurchPermissionRoute>
+            }
+          />
+          <Route
+            path="users"
+            element={
+              <ChurchPermissionRoute permission="users.view">
+                <ChurchUsers />
+              </ChurchPermissionRoute>
+            }
+          />
+          <Route
+            path="reports"
+            element={
+              <ChurchPermissionRoute permission="reports.view">
+                <ChurchReports />
+              </ChurchPermissionRoute>
+            }
+          />
+          <Route
+            path="presentation"
+            element={
+              <ChurchPermissionRoute permission="presentation.manage">
+                <ChurchPresentation />
+              </ChurchPermissionRoute>
+            }
+          />
+          <Route index element={<ChurchIndexRedirect />} />
+        </Route>
+      </Routes>
+      <LayoutDiagnosticsOverlay />
+    </>
   );
 }
