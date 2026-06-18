@@ -13,6 +13,10 @@ const compactLandscapeQuery = `${desktopLandscapeQuery}, ${touchTabletLandscapeQ
 interface ElementSnapshot {
   display: string;
   visibility: string;
+  gridTemplateColumns: string;
+  flexDirection: string;
+  gap: string;
+  padding: string;
   width: number;
   height: number;
   left: number;
@@ -88,6 +92,10 @@ function snapshotElement(selector: string): ElementSnapshot | null {
   return {
     display: style.display,
     visibility: style.visibility,
+    gridTemplateColumns: style.gridTemplateColumns,
+    flexDirection: style.flexDirection,
+    gap: style.gap,
+    padding: style.padding,
     width: Math.round(rect.width),
     height: Math.round(rect.height),
     left: Math.round(rect.left),
