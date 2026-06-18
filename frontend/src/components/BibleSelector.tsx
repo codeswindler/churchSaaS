@@ -364,7 +364,7 @@ export function BibleSelector({
 
   return (
     <div className={className}>
-      <div className="grid gap-3 md:grid-cols-[120px_minmax(150px,1.2fr)_96px_96px_96px_auto]">
+      <div className="bible-selector-grid grid gap-3 md:grid-cols-[120px_minmax(150px,1.2fr)_96px_96px_96px_auto]">
         <div>
           <label className={labelClassName}>Version</label>
           <select

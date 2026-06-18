@@ -1960,8 +1960,7 @@ textarea {
   }
 }
 
-@media (min-width: 1024px) and (max-width: 1279px) and (orientation: landscape),
-  (min-width: 1024px) and (max-width: 1366px) and (orientation: landscape) and (hover: none) and (pointer: coarse) {
+@media (min-width: 800px) and (min-height: 500px) and (max-width: 1366px) and (orientation: landscape) {
   .app-shell-grid {
     grid-template-columns: 11.5rem minmax(0, 1fr) !important;
     gap: 0.85rem !important;
@@ -1986,6 +1985,7 @@ textarea {
 
   .desktop-sidebar .sidebar-header-row {
     align-items: flex-start;
+    gap: 0.35rem;
   }
 
   .desktop-sidebar .sidebar-header-row .brand-logo-wrap {
@@ -1994,17 +1994,17 @@ textarea {
   }
 
   .desktop-sidebar .sidebar-header-row p {
-    font-size: 0.58rem;
-    letter-spacing: 0.18em;
+    display: none;
   }
 
   .desktop-sidebar .sidebar-header-actions {
-    gap: 0.25rem;
+    flex: none;
+    gap: 0.2rem;
   }
 
   .desktop-sidebar .shell-icon-button-sm {
-    height: 2rem;
-    width: 2rem;
+    height: 1.75rem;
+    width: 1.75rem;
   }
 
   .desktop-sidebar .sidebar-profile-button {
@@ -2145,6 +2145,14 @@ textarea {
   .congregation-workspace {
     grid-template-columns: minmax(0, 1fr) 15.5rem;
     align-items: start;
+  }
+
+  .congregation-workspace .grid > * {
+    min-width: 0;
+  }
+
+  .congregation-workspace .bible-selector-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .congregation-workspace > aside {
