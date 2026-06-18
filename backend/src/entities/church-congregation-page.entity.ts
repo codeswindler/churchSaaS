@@ -70,6 +70,10 @@ export interface CongregationFundDisplay {
   approvalDurationMinutes?: number | null;
   visibleFrom?: string | null;
   visibleUntil?: string | null;
+  createdAt?: string | null;
+  createdByUserId?: string | null;
+  updatedAt?: string | null;
+  updatedByUserId?: string | null;
 }
 
 export interface CongregationGalleryImage {

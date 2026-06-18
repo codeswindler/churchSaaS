@@ -20,6 +20,7 @@ import { FundAccount } from '../entities/fund-account.entity';
 import { SmsAddressBook } from '../entities/sms-address-book.entity';
 import { SmsAddressBookContact } from '../entities/sms-address-book-contact.entity';
 import { SmsModule } from '../sms/sms.module';
+import { MobilePushModule } from '../mobile/mobile-push.module';
 import { ChurchSubscriptionsModule } from '../subscriptions/church-subscriptions.module';
 import { ChurchController } from './church.controller';
 import { ChurchService } from './church.service';
@@ -48,9 +49,11 @@ import { ChurchService } from './church.service';
     AuthModule,
     ChurchSubscriptionsModule,
     ContributionsModule,
+    MobilePushModule,
     SmsModule,
   ],
   controllers: [ChurchController],
   providers: [ChurchService],
+  exports: [ChurchService],
 })
 export class ChurchModule {}

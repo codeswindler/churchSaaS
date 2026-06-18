@@ -14,7 +14,11 @@ import { AuthService } from '../src/auth/auth.service';
 import { JwtAuthGuard } from '../src/auth/jwt-auth.guard';
 import { JwtStrategy } from '../src/auth/jwt.strategy';
 import { MobileAuthController } from '../src/mobile/mobile-auth.controller';
-import { MOBILE_FUNDS_SCOPE, MOBILE_FUNDS_TOKEN_USE } from '../src/mobile/mobile.constants';
+import {
+  MOBILE_FUND_DISPLAY_REVIEW_SCOPE,
+  MOBILE_FUNDS_SCOPE,
+  MOBILE_FUNDS_TOKEN_USE,
+} from '../src/mobile/mobile.constants';
 import { MobileFundsController } from '../src/mobile/mobile-funds.controller';
 import { MobileFundsGuard } from '../src/mobile/mobile-funds.guard';
 import { MobileFundsService } from '../src/mobile/mobile-funds.service';
@@ -45,17 +49,14 @@ describe('Mobile funds API contracts (e2e)', () => {
   let app: INestApplication;
   let jwtService: JwtService;
 
-  const signMobileToken = (
-    churchId = 'church-1',
-    role = 'priest',
-  ) =>
+  const signMobileToken = (churchId = 'church-1', role = 'priest') =>
     jwtService.sign({
       sub: 'user-1',
       role,
       userType: 'church',
       churchId,
       tokenUse: MOBILE_FUNDS_TOKEN_USE,
-      scope: [MOBILE_FUNDS_SCOPE],
+      scope: [MOBILE_FUNDS_SCOPE, MOBILE_FUND_DISPLAY_REVIEW_SCOPE],
     });
 
   const signWebToken = () =>
@@ -110,58 +111,56 @@ describe('Mobile funds API contracts (e2e)', () => {
     await app.close();
   });
 
-  it.each(['priest', 'church_admin'])(
-    'returns the mobile login contract for %s accounts',
-    async (role) => {
-      const token = signMobileToken('church-1', role);
-      authService.mobileFundsLogin.mockResolvedValue({
-        access_token: token,
-        tokenUse: MOBILE_FUNDS_TOKEN_USE,
-        scope: [MOBILE_FUNDS_SCOPE],
-        user: {
-          id: 'user-1',
-          name: 'Bishop Geoffrey',
-          role,
-          userType: 'church',
-          churchId: 'church-1',
-        },
-        church: {
-          id: 'church-1',
-          name: 'Test Church',
-          slug: 'test-church',
-          billingModel: 'commission',
-        },
-      });
+  it('returns both mobile scopes for a priest login', async () => {
+    const role = 'priest';
+    const token = signMobileToken('church-1', role);
+    authService.mobileFundsLogin.mockResolvedValue({
+      access_token: token,
+      tokenUse: MOBILE_FUNDS_TOKEN_USE,
+      scope: [MOBILE_FUNDS_SCOPE, MOBILE_FUND_DISPLAY_REVIEW_SCOPE],
+      user: {
+        id: 'user-1',
+        name: 'Bishop Geoffrey',
+        role,
+        userType: 'church',
+        churchId: 'church-1',
+      },
+      church: {
+        id: 'church-1',
+        name: 'Test Church',
+        slug: 'test-church',
+        billingModel: 'commission',
+      },
+    });
 
-      const response = await request(app.getHttpServer())
-        .post('/api/mobile/auth/login')
-        .send({ identifier: 'bishop', password: 'secret' })
-        .expect(200);
+    const response = await request(app.getHttpServer())
+      .post('/api/mobile/auth/login')
+      .send({ identifier: 'bishop', password: 'secret' })
+      .expect(200);
 
-      expect(authService.mobileFundsLogin).toHaveBeenCalledWith(
-        'bishop',
-        'secret',
-      );
-      expect(response.body).toEqual({
-        access_token: token,
-        tokenUse: MOBILE_FUNDS_TOKEN_USE,
-        scope: [MOBILE_FUNDS_SCOPE],
-        user: {
-          id: 'user-1',
-          name: 'Bishop Geoffrey',
-          role,
-          userType: 'church',
-          churchId: 'church-1',
-        },
-        church: {
-          id: 'church-1',
-          name: 'Test Church',
-          slug: 'test-church',
-          billingModel: 'commission',
-        },
-      });
-    },
-  );
+    expect(authService.mobileFundsLogin).toHaveBeenCalledWith(
+      'bishop',
+      'secret',
+    );
+    expect(response.body).toEqual({
+      access_token: token,
+      tokenUse: MOBILE_FUNDS_TOKEN_USE,
+      scope: [MOBILE_FUNDS_SCOPE, MOBILE_FUND_DISPLAY_REVIEW_SCOPE],
+      user: {
+        id: 'user-1',
+        name: 'Bishop Geoffrey',
+        role,
+        userType: 'church',
+        churchId: 'church-1',
+      },
+      church: {
+        id: 'church-1',
+        name: 'Test Church',
+        slug: 'test-church',
+        billingModel: 'commission',
+      },
+    });
+  });
 
   it('returns the dashboard contract scoped to the token church', async () => {
     const dashboard = {

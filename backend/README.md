@@ -38,6 +38,11 @@ NestJS backend for the multi-tenant church management business system.
 - `GET /api/mobile/funds/summary`
 - `GET /api/mobile/funds/transactions`
 - `GET /api/mobile/funds/fund-accounts`
+- `GET /api/mobile/notifications`
+- `PATCH /api/mobile/notifications/:notificationId/read`
+- `GET /api/mobile/fund-display-approvals`
+- `POST /api/mobile/fund-display-approvals/:displayId/approve`
+- `POST /api/mobile/fund-display-approvals/:displayId/reject`
 - `POST /api/mobile/devices`
 - `DELETE /api/mobile/devices/:deviceId`
 
@@ -48,11 +53,12 @@ to the database. `POST /api/mobile/auth/login` accepts the same church
 identifier and password as church web login, but returns a scoped JWT with:
 
 - `tokenUse: "mobile_funds"`
-- `scope: ["mobile:funds:read"]`
+- `scope: ["mobile:funds:read", "mobile:fund-displays:review"]`
 
-That token is accepted only by `/api/mobile/*` funds/device endpoints. Existing
-web controllers reject mobile-scoped tokens, so priest accounts keep full web
-access while Android app access stays read-only and funds-only.
+The review scope is issued only to active users whose stored role is exactly
+`priest`. Approval endpoints recheck the live user role, church tenant, and
+subscription status. Existing web controllers continue to reject all
+mobile-scoped tokens.
 
 Firebase Cloud Messaging is optional. If these values are not set, confirmed
 contributions continue normally and the backend logs the notification it would

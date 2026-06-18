@@ -24,6 +24,10 @@ import {
   PlatformUserRole,
 } from '../entities/platform-user.entity';
 import { ChurchSubscriptionsService } from '../subscriptions/church-subscriptions.service';
+import {
+  MOBILE_FUNDS_SCOPE,
+  MOBILE_FUND_DISPLAY_REVIEW_SCOPE,
+} from '../mobile/mobile.constants';
 
 @Injectable()
 export class AuthService {
@@ -150,14 +154,14 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
-    if (normalizeChurchRole(user.role) !== ChurchUserRole.PRIEST) {
+    if (user.role !== ChurchUserRole.PRIEST) {
       throw new UnauthorizedException(
         'Mobile funds access is limited to priest accounts',
       );
     }
 
     const access = this.buildChurchAccess(user);
-    const scope = ['mobile:funds:read'];
+    const scope = [MOBILE_FUNDS_SCOPE, MOBILE_FUND_DISPLAY_REVIEW_SCOPE];
     const payload = {
       sub: user.id,
       role: user.role,

@@ -22,16 +22,17 @@ describe('ChurchService discipleship name matching', () => {
   });
 
   it('matches name parts independently of case and spacing', () => {
-    expect(
-      scoreName('  WILSON   MWIR0 ', 'Wilson Murioki Mwiro'),
-    ).toBe(0);
+    expect(scoreName('  WILSON   MWIR0 ', 'Wilson Murioki Mwiro')).toBe(0);
     expect(
       scoreName('  WILSON   MWIRO ', 'Wilson Murioki Mwiro'),
     ).toBeGreaterThan(0);
   });
 
   it('detects contradictory known phone numbers', () => {
-    const hasConflict = (transactionPhone: string | null, memberPhone: string | null) =>
+    const hasConflict = (
+      transactionPhone: string | null,
+      memberPhone: string | null,
+    ) =>
       (service as any).hasDiscipleshipPhoneConflict(
         transactionPhone,
         memberPhone,
@@ -178,9 +179,7 @@ describe('ChurchService discipleship name matching', () => {
 
     expect(pageRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({
-        fundDisplays: [
-          expect.objectContaining({ id: 'active-display' }),
-        ],
+        fundDisplays: [expect.objectContaining({ id: 'active-display' })],
       }),
     );
     expect(notificationRepo.delete).toHaveBeenCalledWith(
@@ -189,5 +188,140 @@ describe('ChurchService discipleship name matching', () => {
         entityType: 'congregation_fund_display',
       }),
     );
+  });
+
+  it('approves within the supplied tenant and automatically reads display notifications', async () => {
+    const page = {
+      id: 'page-1',
+      churchId: 'church-1',
+      updatedByUserId: null,
+      fundDisplays: [
+        {
+          id: 'display-1',
+          title: 'Building fund',
+          fundAccountId: 'fund-1',
+          startDate: '2026-06-01',
+          endMode: 'to_date',
+          approvalStatus: 'pending',
+          requestedByUserId: 'admin-1',
+        },
+      ],
+    };
+    const pageRepo = {
+      findOne: jest.fn(({ where }) =>
+        Promise.resolve(where.churchId === 'church-1' ? page : null),
+      ),
+      save: jest.fn(async (value) => value),
+    };
+    const notificationRepo = {
+      find: jest.fn().mockResolvedValue([
+        {
+          id: 'notification-1',
+          churchId: 'church-1',
+          entityId: 'display-1',
+          isRead: false,
+          readAt: null,
+        },
+      ]),
+      save: jest.fn(async (value) => value),
+    };
+    (service as any).congregationPageRepo = pageRepo;
+    (service as any).churchNotificationRepo = notificationRepo;
+    (service as any).fundAccountRepo = {
+      findOne: jest.fn().mockResolvedValue(null),
+    };
+
+    const result = await service.reviewCongregationFundDisplay(
+      'church-1',
+      'priest-1',
+      'display-1',
+      'approve',
+      { note: 'Approved from mobile' },
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        id: 'display-1',
+        approvalStatus: 'approved',
+        displayStatus: 'active',
+        visibleUntil: null,
+        updatedByUserId: 'priest-1',
+      }),
+    );
+    expect(notificationRepo.find).toHaveBeenCalledWith({
+      where: {
+        churchId: 'church-1',
+        entityType: 'congregation_fund_display',
+        entityId: 'display-1',
+        isRead: false,
+      },
+    });
+    expect(notificationRepo.save).toHaveBeenCalledWith([
+      expect.objectContaining({
+        id: 'notification-1',
+        isRead: true,
+        readAt: expect.any(Date),
+      }),
+    ]);
+
+    await expect(
+      service.reviewCongregationFundDisplay(
+        'church-2',
+        'priest-1',
+        'display-1',
+        'reject',
+      ),
+    ).rejects.toThrow('Congregation page not found');
+  });
+
+  it('creates recipient-specific mobile pushes for new approval notifications', async () => {
+    const notificationRepo = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn((value) => value),
+      save: jest.fn(async (values: any[]) =>
+        values.map((value, index) => ({
+          ...value,
+          id: `notification-${index + 1}`,
+        })),
+      ),
+    };
+    const mobilePushService = {
+      notifyFundDisplayApprovalRequested: jest
+        .fn()
+        .mockResolvedValue(undefined),
+    };
+    (service as any).churchUserRepo = {
+      find: jest.fn().mockResolvedValue([
+        { id: 'priest-1', role: 'priest', isActive: true },
+        { id: 'priest-2', role: 'priest', isActive: true },
+      ]),
+    };
+    (service as any).churchNotificationRepo = notificationRepo;
+    (service as any).mobilePushService = mobilePushService;
+
+    await (service as any).notifyPriestsForPendingFundDisplays(
+      'church-1',
+      'admin-1',
+      [
+        {
+          id: 'display-1',
+          title: 'Building fund',
+          approvalStatus: 'pending',
+        },
+      ],
+      ['display-1'],
+    );
+
+    expect(
+      mobilePushService.notifyFundDisplayApprovalRequested,
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      mobilePushService.notifyFundDisplayApprovalRequested,
+    ).toHaveBeenNthCalledWith(1, {
+      notificationId: 'notification-1',
+      displayId: 'display-1',
+      churchId: 'church-1',
+      recipientUserId: 'priest-1',
+    });
   });
 });
