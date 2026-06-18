@@ -4,6 +4,7 @@ import * as express from 'express';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { AppModule } from './app.module';
+import { createCorsOriginHandler } from './common/cors-origin';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -22,14 +23,7 @@ async function bootstrap() {
 
   app.use('/api/uploads', express.static(uploadRoot));
   app.enableCors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-        return;
-      }
-
-      callback(new Error('Origin not allowed by CORS'));
-    },
+    origin: createCorsOriginHandler(allowedOrigins),
   });
   app.setGlobalPrefix('api');
   app.useGlobalPipes(

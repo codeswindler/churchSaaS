@@ -214,7 +214,7 @@ export default function ChurchContributions() {
 
       <section className="table-shell">
         <div className="border-b border-white/10 px-6 py-5">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="contribution-list-header flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div>
               <h3 className="text-2xl font-semibold text-white">
                 Cash and M-Pesa entries

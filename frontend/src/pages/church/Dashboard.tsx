@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { CalendarRange, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CountdownBadge } from '../../components/CountdownBadge';
@@ -604,6 +605,7 @@ export default function ChurchDashboard() {
   );
   const [trendGranularity, setTrendGranularity] =
     useState<TrendGranularity>('monthly');
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const queryString = useMemo(() => toQueryString(filters), [filters]);
 
   const { data, isLoading } = useQuery({
@@ -710,22 +712,45 @@ export default function ChurchDashboard() {
 
   return (
     <div className="space-y-6">
-      <section className="panel p-5">
-        <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-end 2xl:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-              Dashboard Analytics
-            </p>
-            <h3 className="mt-2 text-2xl font-semibold text-white">
-              Contribution trends and fund split
-            </h3>
-            <p className="mt-2 text-sm text-stone-300">
-              Filter the dashboard by date range or fund account to compare
-              performance without leaving the overview.
-            </p>
-          </div>
+      <section className="dashboard-kpi-section relative">
+        <div className="mb-3 flex justify-end">
+          <button
+            aria-expanded={isFilterOpen}
+            className="btn-secondary justify-center"
+            type="button"
+            onClick={() => setIsFilterOpen((current) => !current)}
+          >
+            <CalendarRange size={17} />
+            Filter period
+            {activeFilterCount > 0 ? (
+              <span className="grid h-6 min-w-6 place-items-center rounded-full bg-amber-200 px-1 text-xs font-bold text-stone-950">
+                {activeFilterCount}
+              </span>
+            ) : null}
+          </button>
+        </div>
 
-          <div className="grid gap-3 md:grid-cols-4 2xl:min-w-[780px]">
+        {isFilterOpen ? (
+          <div className="panel dashboard-filter-popover absolute right-0 top-12 z-30 w-full max-w-3xl p-4 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                  Dashboard filters
+                </p>
+                <h3 className="mt-1 text-lg font-semibold text-white">
+                  Choose reporting period
+                </h3>
+              </div>
+              <button
+                aria-label="Close dashboard filters"
+                className="shell-icon-button shell-icon-button-sm"
+                type="button"
+                onClick={() => setIsFilterOpen(false)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-4">
             <div>
               <label className="label-compact">From</label>
               <input
@@ -785,10 +810,10 @@ export default function ChurchDashboard() {
               </button>
             </div>
           </div>
-        </div>
-      </section>
+          </div>
+        ) : null}
 
-      <div className="overview-stat-grid">
+        <div className="overview-stat-grid dashboard-stat-grid">
         {overviewKpis.map(({ label, value, to, hint }) => (
           <Link
             key={label}
@@ -811,10 +836,11 @@ export default function ChurchDashboard() {
             </p>
           </Link>
         ))}
-      </div>
+        </div>
+      </section>
 
-      <div className="overview-shell-grid">
-        <section className="panel p-6 xl:col-span-8">
+      <div className="overview-shell-grid dashboard-overview-grid">
+        <section className="panel dashboard-trend-panel p-6 xl:col-span-8">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
@@ -856,7 +882,7 @@ export default function ChurchDashboard() {
           </div>
         </section>
 
-        <section className="panel p-6 xl:col-span-4">
+        <section className="panel dashboard-split-panel p-6 xl:col-span-4">
           <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
             Fund Split
           </p>

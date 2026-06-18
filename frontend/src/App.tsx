@@ -10,6 +10,7 @@ import ChurchCongregation from './pages/church/Congregation';
 import ChurchDashboard from './pages/church/Dashboard';
 import ChurchDiscipleship from './pages/church/Discipleship';
 import ChurchFundAccounts from './pages/church/FundAccounts';
+import ChurchFundDisplays from './pages/church/FundDisplays';
 import ChurchMessaging from './pages/church/Messaging';
 import ChurchPresentation from './pages/church/Presentation';
 import ChurchReports from './pages/church/Reports';
@@ -95,6 +96,14 @@ export default function App() {
           element={
             <ChurchPermissionRoute permission="fundAccounts.view">
               <ChurchFundAccounts />
+            </ChurchPermissionRoute>
+          }
+        />
+        <Route
+          path="fund-displays"
+          element={
+            <ChurchPermissionRoute permission="congregation.manage">
+              <ChurchFundDisplays />
             </ChurchPermissionRoute>
           }
         />

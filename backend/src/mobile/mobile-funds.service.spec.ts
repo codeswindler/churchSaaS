@@ -98,4 +98,38 @@ describe('MobileFundsService', () => {
     });
     expect(result.pagination.total).toBe(1);
   });
+
+  it('keeps the fund account response envelope and public fields stable', async () => {
+    fundAccountRepo.find.mockResolvedValue([
+      {
+        id: 'fund-1',
+        name: 'Tithe',
+        code: 'tithe',
+        description: 'Regular tithe contributions',
+        displayOrder: 1,
+        isActive: true,
+        receiptTemplate: 'internal template',
+        churchId: 'church-1',
+      },
+    ]);
+
+    const result = await service.listFundAccounts('church-1');
+
+    expect(fundAccountRepo.find).toHaveBeenCalledWith({
+      where: { churchId: 'church-1', isActive: true },
+      order: { displayOrder: 'ASC', createdAt: 'ASC' },
+    });
+    expect(result).toEqual({
+      fundAccounts: [
+        {
+          id: 'fund-1',
+          name: 'Tithe',
+          code: 'tithe',
+          description: 'Regular tithe contributions',
+          displayOrder: 1,
+          isActive: true,
+        },
+      ],
+    });
+  });
 });

@@ -2,13 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BookOpen,
   CalendarDays,
-  CheckCircle2,
   Eye,
   ImagePlus,
   Link as LinkIcon,
   Plus,
   Trash2,
-  XCircle,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
@@ -137,20 +135,6 @@ function createSermon() {
   };
 }
 
-function createFundDisplay(fundAccountId = '') {
-  return {
-    id: createId(),
-    title: '',
-    description: '',
-    fundAccountId,
-    startDate: getTodayInputDate(),
-    endMode: 'to_date',
-    endDate: '',
-    isActive: true,
-    approvalStatus: null,
-  };
-}
-
 function createGalleryImage(imageUrl = '', title = '', isDefault = false) {
   return {
     id: isDefault ? `gallery-${createId()}` : createId(),
@@ -220,8 +204,10 @@ function normalizeForm(data: any) {
 
 function buildSavePayload(form: typeof emptyForm) {
   const firstVerse = form.dailyVerses.find((item) => item.text);
+  const { fundDisplays: _fundDisplays, ...pageFields } = form;
+  void _fundDisplays;
   return {
-    ...form,
+    ...pageFields,
     isPublished: true,
     verseReference: firstVerse?.reference || form.verseReference,
     verseText: firstVerse?.text || form.verseText,
@@ -243,7 +229,6 @@ export default function ChurchCongregation() {
     typeof window !== 'undefined' && publicPath
       ? `${window.location.origin}${publicPath}`
       : publicPath;
-  const isPriest = session?.user?.role === 'priest' || session?.user?.role === 'church_admin';
   const [form, setForm] = useState(emptyForm);
 
   const { data, isLoading } = useQuery({
@@ -251,15 +236,6 @@ export default function ChurchCongregation() {
     queryFn: () =>
       api.get('/church/congregation-page').then((response) => response.data),
   });
-  const { data: fundAccounts } = useQuery({
-    queryKey: ['church-fund-accounts'],
-    queryFn: () =>
-      api.get('/church/fund-accounts').then((response) => response.data),
-  });
-  const activeFundAccounts = (fundAccounts || []).filter(
-    (fundAccount: any) => fundAccount.isActive !== false,
-  );
-
   useEffect(() => {
     if (data) {
       setForm(normalizeForm(data));
@@ -278,34 +254,6 @@ export default function ChurchCongregation() {
       toast.error(
         error?.response?.data?.message ||
           'Unable to update verses & announcements',
-      );
-    },
-  });
-
-  const reviewFundDisplayMutation = useMutation({
-    mutationFn: ({
-      displayId,
-      action,
-    }: {
-      displayId: string;
-      action: 'approve' | 'reject';
-    }) =>
-      api
-        .post(`/church/congregation-page/fund-displays/${displayId}/${action}`)
-        .then((response) => response.data),
-    onSuccess: (data, variables) => {
-      setForm(normalizeForm(data));
-      queryClient.invalidateQueries({ queryKey: ['church-congregation-page'] });
-      queryClient.invalidateQueries({ queryKey: ['church-notifications'] });
-      toast.success(
-        variables.action === 'approve'
-          ? 'Fund display approved'
-          : 'Fund display rejected',
-      );
-    },
-    onError: (error: any) => {
-      toast.error(
-        error?.response?.data?.message || 'Unable to review fund display',
       );
     },
   });
@@ -378,7 +326,6 @@ export default function ChurchCongregation() {
       { label: 'Current Verses', value: currentDailyVerses.length },
       { label: 'Events', value: form.events.length },
       { label: 'Programs', value: form.massPrograms.length },
-      { label: 'Fund Displays', value: form.fundDisplays.length },
       { label: 'Gallery Images', value: form.galleryImages.length },
     ],
     [form, currentDailyVerses.length],
@@ -391,7 +338,6 @@ export default function ChurchCongregation() {
       | 'events'
       | 'massPrograms'
       | 'sermons'
-      | 'fundDisplays'
       | 'galleryImages',
     index: number,
     field: string,
@@ -428,7 +374,6 @@ export default function ChurchCongregation() {
       | 'events'
       | 'massPrograms'
       | 'sermons'
-      | 'fundDisplays'
       | 'galleryImages',
     index: number,
   ) => {
@@ -542,7 +487,7 @@ export default function ChurchCongregation() {
           </div>
         </div>
 
-        <div className="mt-6 grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+        <div className="mt-6 grid gap-4 md:grid-cols-3 xl:grid-cols-5">
           {pageSummary.map((item) => (
             <div
               key={item.label}
@@ -708,244 +653,6 @@ export default function ChurchCongregation() {
                   ))}
                 </div>
               </section>
-            </div>
-          </section>
-
-          <section className="panel p-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-                  Public Collections
-                </p>
-                <h3 className="mt-2 text-2xl font-semibold text-white">
-                  Fund account totals
-                </h3>
-              </div>
-              <button
-                className="btn-secondary justify-center"
-                disabled={activeFundAccounts.length === 0}
-                type="button"
-                onClick={() =>
-                  setForm((current) => ({
-                    ...current,
-                    fundDisplays: [
-                      ...current.fundDisplays,
-                      createFundDisplay(activeFundAccounts[0]?.id || ''),
-                    ],
-                  }))
-                }
-              >
-                <Plus size={16} />
-                Add display
-              </button>
-            </div>
-
-            <div className="mt-5 space-y-4">
-              {form.fundDisplays.map((item, index) => (
-                <div
-                  key={item.id || index}
-                  className="rounded-3xl border border-white/10 bg-black/10 p-4"
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="space-y-2">
-                      <label className="inline-flex items-center gap-3 text-sm font-semibold text-stone-200">
-                        <input
-                          checked={item.isActive !== false}
-                          className="h-4 w-4 accent-emerald-300"
-                          type="checkbox"
-                          onChange={(event) =>
-                            updateListItem(
-                              'fundDisplays',
-                              index,
-                              'isActive',
-                              event.target.checked,
-                            )
-                          }
-                        />
-                        Show on public page
-                      </label>
-                      <span
-                        className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${
-                          (item.approvalStatus || 'approved') === 'pending'
-                            ? 'border-amber-200/40 text-amber-100'
-                            : (item.approvalStatus || 'approved') === 'rejected'
-                              ? 'border-rose-200/40 text-rose-100'
-                              : 'border-emerald-200/30 text-emerald-100'
-                        }`}
-                      >
-                        {(item.approvalStatus || 'approved') === 'pending'
-                          ? 'Pending priest approval'
-                          : (item.approvalStatus || 'approved') === 'rejected'
-                            ? 'Rejected'
-                            : 'Approved'}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {isPriest &&
-                      item.id &&
-                      (item.approvalStatus || 'approved') === 'pending' ? (
-                        <>
-                          <button
-                            className="btn-primary px-3 py-2"
-                            disabled={reviewFundDisplayMutation.isPending}
-                            type="button"
-                            onClick={() =>
-                              reviewFundDisplayMutation.mutate({
-                                displayId: item.id,
-                                action: 'approve',
-                              })
-                            }
-                          >
-                            <CheckCircle2 size={16} />
-                            Approve
-                          </button>
-                          <button
-                            className="btn-secondary px-3 py-2"
-                            disabled={reviewFundDisplayMutation.isPending}
-                            type="button"
-                            onClick={() =>
-                              reviewFundDisplayMutation.mutate({
-                                displayId: item.id,
-                                action: 'reject',
-                              })
-                            }
-                          >
-                            <XCircle size={16} />
-                            Reject
-                          </button>
-                        </>
-                      ) : null}
-                      <button
-                        aria-label="Remove fund display"
-                        className="btn-secondary self-start px-3 py-2"
-                        type="button"
-                        onClick={() => removeListItem('fundDisplays', index)}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 md:grid-cols-[1fr_220px]">
-                    <div>
-                      <label className="label-compact">Display title</label>
-                      <input
-                        className="input-compact mt-1.5"
-                        placeholder="Tithe collections"
-                        value={item.title || ''}
-                        onChange={(event) =>
-                          updateListItem(
-                            'fundDisplays',
-                            index,
-                            'title',
-                            event.target.value,
-                          )
-                        }
-                      />
-                    </div>
-                    <div>
-                      <label className="label-compact">Fund account</label>
-                      <select
-                        className="input-compact mt-1.5"
-                        value={item.fundAccountId || ''}
-                        onChange={(event) =>
-                          updateListItem(
-                            'fundDisplays',
-                            index,
-                            'fundAccountId',
-                            event.target.value,
-                          )
-                        }
-                      >
-                        <option value="">Select account</option>
-                        {activeFundAccounts.map((fundAccount: any) => (
-                          <option key={fundAccount.id} value={fundAccount.id}>
-                            {fundAccount.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 grid gap-3 md:grid-cols-[180px_180px_180px]">
-                    <div>
-                      <label className="label-compact">Start date</label>
-                      <input
-                        className="input-compact mt-1.5"
-                        type="date"
-                        value={item.startDate || ''}
-                        onChange={(event) =>
-                          updateListItem(
-                            'fundDisplays',
-                            index,
-                            'startDate',
-                            event.target.value,
-                          )
-                        }
-                      />
-                    </div>
-                    <div>
-                      <label className="label-compact">End mode</label>
-                      <select
-                        className="input-compact mt-1.5"
-                        value={item.endMode || 'to_date'}
-                        onChange={(event) =>
-                          updateListItem(
-                            'fundDisplays',
-                            index,
-                            'endMode',
-                            event.target.value,
-                          )
-                        }
-                      >
-                        <option value="to_date">To date</option>
-                        <option value="static">Fixed end date</option>
-                      </select>
-                    </div>
-                    {item.endMode === 'static' ? (
-                      <div>
-                        <label className="label-compact">End date</label>
-                        <input
-                          className="input-compact mt-1.5"
-                          type="date"
-                          value={item.endDate || ''}
-                          onChange={(event) =>
-                            updateListItem(
-                              'fundDisplays',
-                              index,
-                              'endDate',
-                              event.target.value,
-                            )
-                          }
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="mt-3">
-                    <label className="label-compact">Public note</label>
-                    <textarea
-                      className="input-compact mt-1.5 min-h-20"
-                      placeholder="Optional short context shown below the total."
-                      value={item.description || ''}
-                      onChange={(event) =>
-                        updateListItem(
-                          'fundDisplays',
-                          index,
-                          'description',
-                          event.target.value,
-                        )
-                      }
-                    />
-                  </div>
-                </div>
-              ))}
-              {form.fundDisplays.length === 0 ? (
-                <div className="rounded-3xl border border-white/10 bg-black/10 p-4 text-sm text-stone-400">
-                  Add a public collection display when you want members to see a
-                  fund account total for a selected timeframe.
-                </div>
-              ) : null}
             </div>
           </section>
 

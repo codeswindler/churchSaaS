@@ -556,13 +556,18 @@ export class PublicController {
   }
 
   private async resolvePublicFundDisplays(churchId: string, displays: any[]) {
+    const now = Date.now();
     const activeDisplays = Array.isArray(displays)
       ? displays.filter(
           (display) =>
             display?.isActive !== false &&
             (display?.approvalStatus || 'approved') === 'approved' &&
             display?.fundAccountId &&
-            display?.startDate,
+            display?.startDate &&
+            (!display?.visibleFrom ||
+              new Date(display.visibleFrom).getTime() <= now) &&
+            (!display?.visibleUntil ||
+              new Date(display.visibleUntil).getTime() > now),
         )
       : [];
     if (activeDisplays.length === 0) {
@@ -612,6 +617,8 @@ export class PublicController {
         startDate: display.startDate,
         endMode,
         endDate: endMode === 'static' ? display.endDate || null : null,
+        visibleFrom: display.visibleFrom || null,
+        visibleUntil: display.visibleUntil || null,
         totalAmount: totals.totalAmount,
         contributionCount: totals.contributionCount,
         lastContributionAt: totals.lastContributionAt,

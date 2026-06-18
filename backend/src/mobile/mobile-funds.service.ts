@@ -5,6 +5,7 @@ import { ContributionsService } from '../contributions/contributions.service';
 import { Church } from '../entities/church.entity';
 import { Contribution } from '../entities/contribution.entity';
 import { FundAccount } from '../entities/fund-account.entity';
+import { MobileFundAccountsResponseDto } from './mobile-funds.dto';
 
 @Injectable()
 export class MobileFundsService {
@@ -76,7 +77,9 @@ export class MobileFundsService {
     };
   }
 
-  async listFundAccounts(churchId: string) {
+  async listFundAccounts(
+    churchId: string,
+  ): Promise<MobileFundAccountsResponseDto> {
     const accounts = await this.fundAccountRepo.find({
       where: { churchId, isActive: true },
       order: { displayOrder: 'ASC', createdAt: 'ASC' },

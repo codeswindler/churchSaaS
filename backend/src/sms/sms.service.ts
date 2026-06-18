@@ -963,6 +963,12 @@ export class SmsService {
     if (query.type) {
       qb.andWhere('message.messageType = :type', { type: query.type });
     }
+    if (`${query.search || ''}`.trim()) {
+      qb.andWhere(
+        '(message.recipientName LIKE :search OR contributor.name LIKE :search OR message.recipientMobile LIKE :search)',
+        { search: `%${`${query.search}`.trim()}%` },
+      );
+    }
 
     return qb.getMany();
   }

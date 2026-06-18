@@ -288,6 +288,56 @@ export class ChurchController {
     );
   }
 
+  @Get('congregation-page/fund-displays')
+  @Permissions(ChurchPermission.CONGREGATION_PAGE_MANAGE)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
+  listFundDisplays(@Request() req: any) {
+    return this.churchService.listCongregationFundDisplays(req.user.churchId);
+  }
+
+  @Post('congregation-page/fund-displays')
+  @Permissions(ChurchPermission.CONGREGATION_PAGE_MANAGE)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
+  createFundDisplay(@Request() req: any, @Body() body: any) {
+    return this.churchService.createCongregationFundDisplay(
+      req.user.churchId,
+      req.user.id,
+      req.user.role,
+      body,
+    );
+  }
+
+  @Patch('congregation-page/fund-displays/:displayId')
+  @Permissions(ChurchPermission.CONGREGATION_PAGE_MANAGE)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
+  updateFundDisplay(
+    @Request() req: any,
+    @Param('displayId') displayId: string,
+    @Body() body: any,
+  ) {
+    return this.churchService.updateCongregationFundDisplay(
+      req.user.churchId,
+      req.user.id,
+      req.user.role,
+      displayId,
+      body,
+    );
+  }
+
+  @Delete('congregation-page/fund-displays/:displayId')
+  @Permissions(ChurchPermission.CONGREGATION_PAGE_MANAGE)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
+  deleteFundDisplay(
+    @Request() req: any,
+    @Param('displayId') displayId: string,
+  ) {
+    return this.churchService.deleteCongregationFundDisplay(
+      req.user.churchId,
+      req.user.id,
+      displayId,
+    );
+  }
+
   @Post('congregation-page/images')
   @UseInterceptors(
     FileInterceptor('image', {
@@ -473,7 +523,11 @@ export class ChurchController {
       req.user.id,
       displayId,
       'approve',
-      body?.note,
+      {
+        note: body?.note,
+        visibleFrom: body?.visibleFrom,
+        visibleUntil: body?.visibleUntil,
+      },
     );
   }
 
@@ -489,7 +543,7 @@ export class ChurchController {
       req.user.id,
       displayId,
       'reject',
-      body?.note,
+      { note: body?.note },
     );
   }
 

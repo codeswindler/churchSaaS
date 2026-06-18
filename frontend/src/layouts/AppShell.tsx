@@ -6,7 +6,7 @@ import {
   Clock4,
   Coins,
   Bell,
-  CheckCircle2,
+  Eye,
   Landmark,
   LogOut,
   Menu,
@@ -123,6 +123,12 @@ const churchLinks: ShellLink[] = [
     ],
   },
   {
+    to: '/church/fund-displays',
+    label: 'Fund Displays',
+    icon: Eye,
+    permission: 'congregation.manage',
+  },
+  {
     to: '/church/congregation',
     label: 'Verses & Announcements',
     icon: BookOpenText,
@@ -202,13 +208,17 @@ const pageMeta = {
     },
     {
       prefix: '/church/dashboard',
-      title: 'Church finance operations',
-      eyebrow: 'Business System',
-      variant: 'hero',
+      title: 'Overview',
+      variant: 'compact',
     },
     {
       prefix: '/church/fund-accounts',
       title: 'Fund accounts',
+      variant: 'compact',
+    },
+    {
+      prefix: '/church/fund-displays',
+      title: 'Fund displays',
       variant: 'compact',
     },
     {
@@ -409,24 +419,6 @@ export function AppShell({ userType }: AppShellProps) {
     },
   });
 
-  const approveNotificationMutation = useMutation({
-    mutationFn: (notification: any) =>
-      api.post(
-        `/church/congregation-page/fund-displays/${notification.entityId}/approve`,
-      ),
-    onSuccess: () => {
-      toast.success('Fund display approved');
-      setIsNotificationOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['church-notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['church-congregation-page'] });
-    },
-    onError: (error: any) => {
-      toast.error(
-        error?.response?.data?.message || 'Unable to approve fund display',
-      );
-    },
-  });
-
   const handleLogout = () => {
     clearSession();
     navigate('/login', { replace: true });
@@ -619,14 +611,17 @@ export function AppShell({ userType }: AppShellProps) {
                     'congregation_fund_display' ? (
                       <button
                         className="btn-primary justify-center px-3 py-2"
-                        disabled={approveNotificationMutation.isPending}
                         type="button"
-                        onClick={() =>
-                          approveNotificationMutation.mutate(notification)
-                        }
+                        onClick={() => {
+                          setIsNotificationOpen(false);
+                          navigate(
+                            notification.actionUrl ||
+                              `/church/fund-displays?review=${notification.entityId}`,
+                          );
+                        }}
                       >
-                        <CheckCircle2 size={16} />
-                        Approve
+                        <Eye size={16} />
+                        Review
                       </button>
                     ) : null}
                     <button
@@ -651,8 +646,8 @@ export function AppShell({ userType }: AppShellProps) {
 
   return (
     <div className="app-shell-background min-h-screen text-stone-50">
-      <div className="mx-auto grid min-h-screen max-w-none gap-5 px-3 py-3 xl:grid-cols-[250px_minmax(0,1fr)] xl:px-5 2xl:px-7">
-        <aside className="panel hidden flex-col gap-5 p-5 xl:flex">
+      <div className="app-shell-grid mx-auto grid min-h-screen max-w-none gap-5 px-3 py-3 xl:grid-cols-[250px_minmax(0,1fr)] xl:px-5 2xl:px-7">
+        <aside className="panel desktop-sidebar hidden flex-col gap-5 p-5 xl:flex">
           {sidebarIntro}
           {sidebarProfileButton}
           {sidebarNavigation}

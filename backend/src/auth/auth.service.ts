@@ -13,11 +13,12 @@ import {
   ChurchPermission,
   PERMISSION_FEATURE_MAP,
   normalizeFeatureList,
+  normalizeChurchRole,
   resolveChurchPermissions,
 } from '../common/access-control';
 import { sanitizeChurchForTenant } from '../common/church.utils';
 import { ChurchStatus } from '../entities/church.entity';
-import { ChurchUser } from '../entities/church-user.entity';
+import { ChurchUser, ChurchUserRole } from '../entities/church-user.entity';
 import {
   PlatformUser,
   PlatformUserRole,
@@ -148,6 +149,11 @@ export class AuthService {
     );
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+    if (normalizeChurchRole(user.role) !== ChurchUserRole.PRIEST) {
+      throw new UnauthorizedException(
+        'Mobile funds access is limited to priest accounts',
+      );
     }
 
     const access = this.buildChurchAccess(user);

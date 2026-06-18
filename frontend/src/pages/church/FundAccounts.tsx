@@ -217,7 +217,7 @@ export default function ChurchFundAccounts() {
   };
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(22rem,26rem)_minmax(0,1fr)] xl:items-start">
+    <div className="fund-accounts-layout grid gap-5 xl:grid-cols-[minmax(22rem,26rem)_minmax(0,1fr)] xl:items-start">
       <section className="table-shell">
         <div className="border-b border-white/10 px-6 py-5">
           <div className="flex flex-col gap-4">
@@ -285,7 +285,7 @@ export default function ChurchFundAccounts() {
         )}
       </section>
 
-      <section className="panel p-5 xl:sticky xl:top-6 xl:p-6">
+      <section className="panel fund-account-preview-panel p-5 xl:sticky xl:top-6 xl:p-6">
         <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
           Receipt Preview
         </p>

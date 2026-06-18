@@ -1762,10 +1762,6 @@ textarea {
 
 @media (min-width: 769px) and (max-width: 1279px),
   (hover: none) and (pointer: coarse) and (max-width: 1366px) {
-  html {
-    font-size: 93%;
-  }
-
   .app-shell-background > .mx-auto {
     gap: 0.85rem;
     padding: 0.75rem;
@@ -1849,6 +1845,157 @@ textarea {
 
   .discipleship-chart-svg {
     min-height: 10rem;
+  }
+}
+
+@media (min-width: 1024px) and (max-width: 1279px) and (orientation: landscape),
+  (min-width: 1024px) and (max-width: 1366px) and (orientation: landscape) and (hover: none) and (pointer: coarse) {
+  .app-shell-grid {
+    grid-template-columns: 12.25rem minmax(0, 1fr) !important;
+    gap: 0.85rem !important;
+    padding: 0.75rem !important;
+  }
+
+  .desktop-sidebar {
+    position: sticky;
+    top: 0.75rem;
+    display: flex !important;
+    max-height: calc(100dvh - 1.5rem);
+    gap: 0.8rem !important;
+    overflow-y: auto;
+    padding: 0.85rem !important;
+  }
+
+  .desktop-sidebar h1 {
+    margin-top: 0.35rem;
+    font-size: 1.05rem;
+    line-height: 1.2;
+  }
+
+  .desktop-sidebar .sidebar-header-row {
+    align-items: flex-start;
+  }
+
+  .desktop-sidebar .sidebar-header-row .brand-logo-wrap {
+    height: 2rem;
+    width: 2rem;
+  }
+
+  .desktop-sidebar .sidebar-header-row p {
+    font-size: 0.58rem;
+    letter-spacing: 0.18em;
+  }
+
+  .desktop-sidebar .sidebar-header-actions {
+    gap: 0.25rem;
+  }
+
+  .desktop-sidebar .shell-icon-button-sm {
+    height: 2rem;
+    width: 2rem;
+  }
+
+  .desktop-sidebar .sidebar-profile-button {
+    border-radius: 1rem;
+    padding: 0.65rem;
+  }
+
+  .desktop-sidebar nav {
+    font-size: 0.9rem;
+  }
+
+  .desktop-sidebar nav > div > a {
+    gap: 0.6rem;
+    border-radius: 1rem;
+    padding: 0.62rem 0.72rem;
+  }
+
+  .desktop-sidebar nav > div > a svg {
+    height: 1rem;
+    width: 1rem;
+  }
+
+  .mobile-shell-bar,
+  .mobile-nav-backdrop {
+    display: none !important;
+  }
+
+  .app-shell-grid > main {
+    gap: 1rem;
+  }
+
+  .dashboard-stat-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .dashboard-stat-grid .stat-card {
+    min-height: 9rem;
+    padding: 1rem;
+  }
+
+  .dashboard-stat-grid .text-3xl {
+    font-size: 1.45rem;
+  }
+
+  .dashboard-overview-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .dashboard-overview-grid > * {
+    grid-column: 1 / -1;
+  }
+
+  .dashboard-overview-grid > .dashboard-trend-panel {
+    grid-column: span 8 / span 8;
+  }
+
+  .dashboard-overview-grid > .dashboard-split-panel {
+    grid-column: span 4 / span 4;
+  }
+
+  .fund-accounts-layout {
+    grid-template-columns: minmax(0, 1fr) 15.5rem;
+    align-items: start;
+  }
+
+  .fund-account-preview-panel {
+    position: sticky;
+    top: 0.75rem;
+    padding: 1rem !important;
+  }
+
+  .fund-account-preview-panel .sms-phone-preview__device,
+  .messaging-compose-layout .sms-phone-preview__device {
+    max-width: 15rem;
+  }
+
+  .messaging-compose-layout {
+    grid-template-columns: minmax(0, 1fr) 15rem;
+    align-items: start;
+    gap: 1rem;
+  }
+
+  .messaging-compose-layout > :last-child {
+    position: sticky;
+    top: 0.75rem;
+  }
+
+  .contribution-list-header {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+
+  .contribution-list-header > :last-child {
+    max-width: 22rem;
+  }
+
+  .fund-display-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fund-display-card {
+    padding: 1rem;
   }
 }
 

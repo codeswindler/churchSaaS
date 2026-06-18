@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2,
+  ChevronDown,
   CreditCard,
   Download,
   Eye,
@@ -8,6 +9,7 @@ import {
   Inbox,
   Loader2,
   RotateCcw,
+  Search,
   Send,
   SlidersHorizontal,
   Trash2,
@@ -52,6 +54,7 @@ const initialUploadForm = {
 };
 
 const initialOutboxFilters = {
+  search: '',
   from: '',
   to: '',
   type: '',
@@ -128,6 +131,7 @@ export default function ChurchMessaging() {
   const [uploadForm, setUploadForm] = useState(initialUploadForm);
   const [selectedAddressBookId, setSelectedAddressBookId] = useState('');
   const [filters, setFilters] = useState(initialOutboxFilters);
+  const [isOutboxFiltersOpen, setIsOutboxFiltersOpen] = useState(false);
   const [selectedOutboxMessage, setSelectedOutboxMessage] =
     useState<any | null>(null);
   const [paymentPhone, setPaymentPhone] = useState('');
@@ -802,8 +806,70 @@ export default function ChurchMessaging() {
               Create bulk SMS
             </h3>
 
-            <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] xl:items-start">
+            <div className="messaging-compose-layout mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] xl:items-start">
               <div className="grid gap-4 lg:grid-cols-2">
+              <div className="lg:col-span-2">
+                <div className="mb-3 rounded-2xl border border-white/10 bg-black/10 p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400">
+                    Personalization placeholder
+                  </p>
+                  <button
+                    className="mt-2 inline-flex items-center gap-2 rounded-full border border-amber-200/40 bg-amber-200/10 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-200 hover:text-stone-950"
+                    type="button"
+                    onClick={() => insertMessagePlaceholder('{name}')}
+                  >
+                    Recipient name
+                    <span className="rounded-full bg-black/20 px-2 py-0.5 font-mono text-xs">
+                      {'{name}'}
+                    </span>
+                  </button>
+                </div>
+                <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+                  <label className="label mb-0">Message</label>
+                  <span className="text-xs text-stone-400">
+                    {messageMetrics.length} chars | {messageMetrics.segments}{' '}
+                    unit{messageMetrics.segments === 1 ? '' : 's'} |{' '}
+                    {messageMetrics.remainingInCurrentSegment} left on current
+                    segment
+                  </span>
+                </div>
+                <textarea
+                  ref={messageTextareaRef}
+                  className="input mt-2 min-h-44 resize-y"
+                  placeholder="Use {name} to personalize each message. Example: Dear {name}, our meeting starts at 5 PM."
+                  value={form.message}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      message: event.target.value,
+                    }))
+                  }
+                />
+                <div className="mt-4 max-w-md">
+                  <label className="label">Sender ID</label>
+                  <select
+                    className="input"
+                    value={form.smsShortcode}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        smsShortcode: event.target.value,
+                      }))
+                    }
+                  >
+                    {shortcodes.length === 0 ? (
+                      <option value="">Default sender</option>
+                    ) : null}
+                    {shortcodes.map((shortcode: string) => (
+                      <option key={shortcode} value={shortcode}>
+                        {shortcode}
+                        {shortcode === defaultShortcode ? ' (default)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               <div className="lg:col-span-2">
                 <label className="label">Audience</label>
                 <div className="grid gap-2 md:grid-cols-3">
@@ -908,68 +974,6 @@ export default function ChurchMessaging() {
                     }))
                   }
                 />
-              </div>
-
-              <div className="lg:col-span-2">
-                <div className="mb-3 rounded-2xl border border-white/10 bg-black/10 p-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400">
-                    Personalization placeholder
-                  </p>
-                  <button
-                    className="mt-2 inline-flex items-center gap-2 rounded-full border border-amber-200/40 bg-amber-200/10 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-200 hover:text-stone-950"
-                    type="button"
-                    onClick={() => insertMessagePlaceholder('{name}')}
-                  >
-                    Recipient name
-                    <span className="rounded-full bg-black/20 px-2 py-0.5 font-mono text-xs">
-                      {'{name}'}
-                    </span>
-                  </button>
-                </div>
-                <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
-                  <label className="label mb-0">Message</label>
-                  <span className="text-xs text-stone-400">
-                    {messageMetrics.length} chars | {messageMetrics.segments}{' '}
-                    unit{messageMetrics.segments === 1 ? '' : 's'} |{' '}
-                    {messageMetrics.remainingInCurrentSegment} left on current
-                    segment
-                  </span>
-                </div>
-                <textarea
-                  ref={messageTextareaRef}
-                  className="input mt-2 min-h-44 resize-y"
-                  placeholder="Use {name} to personalize each message. Example: Dear {name}, our meeting starts at 5 PM."
-                  value={form.message}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      message: event.target.value,
-                    }))
-                  }
-                />
-                <div className="mt-4 max-w-md">
-                  <label className="label">Sender ID</label>
-                  <select
-                    className="input"
-                    value={form.smsShortcode}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        smsShortcode: event.target.value,
-                      }))
-                    }
-                  >
-                    {shortcodes.length === 0 ? (
-                      <option value="">Default sender</option>
-                    ) : null}
-                    {shortcodes.map((shortcode: string) => (
-                      <option key={shortcode} value={shortcode}>
-                        {shortcode}
-                        {shortcode === defaultShortcode ? ' (default)' : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
               </div>
 
               <div className="lg:col-span-2 rounded-3xl border border-white/10 bg-black/10 p-4">
@@ -1530,18 +1534,54 @@ export default function ChurchMessaging() {
       {activeWorkspace === 'outbox' ? (
         <section className="space-y-5">
           <section className="panel p-5 sm:p-6">
-            <div className="flex items-start gap-3">
-              <SlidersHorizontal className="mt-1 text-amber-200" size={18} />
-              <div>
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="flex items-start gap-3">
+                <SlidersHorizontal className="mt-1 text-amber-200" size={18} />
+                <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
                   Outbox Filters
                 </p>
                 <h3 className="mt-2 text-2xl font-semibold text-white">
                   Review provider and delivery activity
                 </h3>
+                </div>
+              </div>
+              <div className="flex w-full flex-col gap-2 sm:flex-row lg:max-w-xl">
+                <div className="relative min-w-0 flex-1">
+                  <Search
+                    className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-stone-400"
+                    size={17}
+                  />
+                  <input
+                    aria-label="Search outbox recipients"
+                    className="input pl-11"
+                    placeholder="Search recipient name or phone"
+                    value={filters.search}
+                    onChange={(event) =>
+                      setFilters((current) => ({
+                        ...current,
+                        search: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <button
+                  aria-expanded={isOutboxFiltersOpen}
+                  className="btn-secondary justify-center"
+                  type="button"
+                  onClick={() => setIsOutboxFiltersOpen((current) => !current)}
+                >
+                  <SlidersHorizontal size={16} />
+                  More filters
+                  <ChevronDown
+                    className={`transition ${isOutboxFiltersOpen ? 'rotate-180' : ''}`}
+                    size={16}
+                  />
+                </button>
               </div>
             </div>
 
+            {isOutboxFiltersOpen ? (
             <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
               <div>
                 <label className="label">From</label>
@@ -1626,6 +1666,7 @@ export default function ChurchMessaging() {
                 </select>
               </div>
             </div>
+            ) : null}
           </section>
 
           <section className="table-shell">

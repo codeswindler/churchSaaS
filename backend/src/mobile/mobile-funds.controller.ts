@@ -1,5 +1,6 @@
 import { Controller, Get, Query, Request, UseGuards } from '@nestjs/common';
 import { MobileFundsGuard } from './mobile-funds.guard';
+import { MobileFundAccountsResponseDto } from './mobile-funds.dto';
 import { MobileFundsService } from './mobile-funds.service';
 
 @Controller('mobile/funds')
@@ -23,7 +24,9 @@ export class MobileFundsController {
   }
 
   @Get('fund-accounts')
-  listFundAccounts(@Request() req: any) {
+  listFundAccounts(
+    @Request() req: any,
+  ): Promise<MobileFundAccountsResponseDto> {
     return this.mobileFundsService.listFundAccounts(req.user.churchId);
   }
 }

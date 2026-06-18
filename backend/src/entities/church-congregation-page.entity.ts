@@ -67,6 +67,8 @@ export interface CongregationFundDisplay {
   approvedAt?: string | null;
   rejectedAt?: string | null;
   approvalNote?: string | null;
+  visibleFrom?: string | null;
+  visibleUntil?: string | null;
 }
 
 export interface CongregationGalleryImage {
