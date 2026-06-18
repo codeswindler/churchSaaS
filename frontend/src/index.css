@@ -2234,6 +2234,18 @@ textarea {
   }
 }
 
+/*
+ * Some Android tablets expose roughly 1014 CSS pixels at 100% page zoom and
+ * 1352 CSS pixels at 75%. Match the comfortable 75% physical density at the
+ * native zoom without affecting pointer-based laptops or double-scaling an
+ * already zoomed-out tablet.
+ */
+@media (min-width: 960px) and (max-width: 1100px) and (orientation: landscape) and (hover: none) and (pointer: coarse) and (min-device-height: 600px) {
+  html {
+    font-size: 67.5%;
+  }
+}
+
 .input-compact {
   @apply w-full rounded-xl px-3.5 py-2.5 text-sm text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-2;
   border: 1px solid var(--input-border);

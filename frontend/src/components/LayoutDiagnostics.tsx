@@ -10,6 +10,9 @@ const touchTabletLandscapeQuery =
 
 const compactLandscapeQuery = `${desktopLandscapeQuery}, ${touchTabletLandscapeQuery}`;
 
+const tabletDensityQuery =
+  '(min-width: 960px) and (max-width: 1100px) and (orientation: landscape) and (hover: none) and (pointer: coarse) and (min-device-height: 600px)';
+
 interface ElementSnapshot {
   display: string;
   visibility: string;
@@ -64,6 +67,7 @@ interface DiagnosticsReport {
     compactLandscapeQuery: string;
     desktopLandscapeQuery: string;
     touchTabletLandscapeQuery: string;
+    tabletDensityQuery: string;
   };
 }
 
@@ -104,12 +108,17 @@ function snapshotElement(selector: string): ElementSnapshot | null {
 }
 
 function classifyDevice() {
+  const isTabletDensity = mediaMatches(tabletDensityQuery);
   const isCompactLandscape = mediaMatches(compactLandscapeQuery);
   const isDesktopWide = mediaMatches('(min-width: 1280px)');
   const isTouchFirst = mediaMatches('(hover: none) and (pointer: coarse)');
   const isLandscape = mediaMatches('(orientation: landscape)');
   const isTabletHeight = mediaMatches('(min-device-height: 600px)');
   const isPhoneWidth = mediaMatches('(max-width: 640px)');
+
+  if (isTabletDensity) {
+    return 'compact-tablet-density-active';
+  }
 
   if (isCompactLandscape) {
     return 'compact-landscape-layout-active';
@@ -165,6 +174,7 @@ function collectDiagnostics(): DiagnosticsReport {
       compactLandscape: mediaMatches(compactLandscapeQuery),
       desktopLandscape: mediaMatches(desktopLandscapeQuery),
       touchTabletLandscape: mediaMatches(touchTabletLandscapeQuery),
+      tabletDensity: mediaMatches(tabletDensityQuery),
       tailwindXlDesktop: mediaMatches('(min-width: 1280px)'),
       portrait: mediaMatches('(orientation: portrait)'),
       landscape: mediaMatches('(orientation: landscape)'),
@@ -197,6 +207,7 @@ function collectDiagnostics(): DiagnosticsReport {
       compactLandscapeQuery,
       desktopLandscapeQuery,
       touchTabletLandscapeQuery,
+      tabletDensityQuery,
     },
   };
 }
