@@ -711,17 +711,18 @@ export default function ChurchDashboard() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="church-console-page dashboard-page space-y-6">
       <section className="dashboard-kpi-section relative">
         <div className="mb-3 flex justify-end">
           <button
+            aria-label="Filter dashboard period"
             aria-expanded={isFilterOpen}
-            className="btn-secondary justify-center"
+            className="btn-secondary dashboard-filter-button justify-center"
             type="button"
             onClick={() => setIsFilterOpen((current) => !current)}
           >
             <CalendarRange size={17} />
-            Filter period
+            <span className="dashboard-filter-label">Filter period</span>
             {activeFilterCount > 0 ? (
               <span className="grid h-6 min-w-6 place-items-center rounded-full bg-amber-200 px-1 text-xs font-bold text-stone-950">
                 {activeFilterCount}

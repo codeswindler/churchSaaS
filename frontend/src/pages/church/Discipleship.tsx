@@ -963,7 +963,7 @@ export default function ChurchDiscipleship() {
 
   return (
     <div className="space-y-4 discipleship-page">
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="discipleship-stat-grid grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {statCards.map(([label, value]) => (
           <div key={label} className="panel p-4 discipleship-stat-card">
             <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
@@ -974,7 +974,7 @@ export default function ChurchDiscipleship() {
         ))}
       </section>
 
-      <section className="panel p-3">
+      <section className="panel discipleship-tabs p-3">
         <div className="grid gap-2 sm:grid-cols-2">
           {discipleshipTabs.map(({ value, label, icon: TabIcon }) => {
             return (
@@ -1035,7 +1035,7 @@ export default function ChurchDiscipleship() {
       ) : null}
 
       {activeTab === 'attendance' && (
-        <section className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+        <section className="discipleship-attendance-workspace grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
           <div className="panel p-5 sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -1056,7 +1056,7 @@ export default function ChurchDiscipleship() {
               </button>
             </div>
 
-            <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_0.95fr]">
+            <div className="discipleship-attendance-form-grid mt-5 grid gap-4 lg:grid-cols-[1fr_0.95fr]">
               <div className="space-y-3">
                 <label className="space-y-2">
                   <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
@@ -1077,7 +1077,7 @@ export default function ChurchDiscipleship() {
                   </div>
                 </label>
 
-                <div className="max-h-[410px] space-y-2 overflow-y-auto pr-1">
+                <div className="discipleship-member-picker max-h-[410px] space-y-2 overflow-y-auto pr-1">
                   {membersLoading ? (
                     <p className="rounded-2xl border border-white/10 p-4 text-sm text-stone-300">
                       Loading members...
@@ -1307,7 +1307,7 @@ export default function ChurchDiscipleship() {
       )}
 
       {activeTab === 'members' && (
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
+        <section className="discipleship-members-workspace grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
         <div className="panel overflow-hidden">
           <div className="flex flex-col gap-4 border-b border-white/10 p-4 sm:flex-row sm:items-start sm:justify-between">
             <div>

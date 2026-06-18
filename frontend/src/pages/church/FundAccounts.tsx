@@ -217,7 +217,7 @@ export default function ChurchFundAccounts() {
   };
 
   return (
-    <div className="fund-accounts-layout grid gap-5 xl:grid-cols-[minmax(22rem,26rem)_minmax(0,1fr)] xl:items-start">
+    <div className="church-console-page fund-accounts-layout grid gap-5 xl:grid-cols-[minmax(22rem,26rem)_minmax(0,1fr)] xl:items-start">
       <section className="table-shell">
         <div className="border-b border-white/10 px-6 py-5">
           <div className="flex flex-col gap-4">

@@ -525,9 +525,23 @@ export class ChurchController {
       'approve',
       {
         note: body?.note,
-        visibleFrom: body?.visibleFrom,
-        visibleUntil: body?.visibleUntil,
+        durationMinutes: body?.durationMinutes,
       },
+    );
+  }
+
+  @Post('congregation-page/fund-displays/:displayId/duration')
+  @Roles(ChurchUserRole.PRIEST)
+  updateFundDisplayDuration(
+    @Request() req: any,
+    @Param('displayId') displayId: string,
+    @Body() body: any,
+  ) {
+    return this.churchService.updateCongregationFundDisplayDuration(
+      req.user.churchId,
+      req.user.id,
+      displayId,
+      body,
     );
   }
 

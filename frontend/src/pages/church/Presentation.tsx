@@ -917,7 +917,7 @@ export default function ChurchPresentation() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="church-console-page presentation-page space-y-6">
       <section className="panel p-5 sm:p-6">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div>
@@ -955,7 +955,7 @@ export default function ChurchPresentation() {
         </div>
       </section>
 
-      <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
+      <div className="presentation-workspace grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
         <section className="panel p-5">
           <div className="flex items-center justify-between gap-3">
             <div>

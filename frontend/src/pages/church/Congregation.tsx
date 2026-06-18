@@ -435,7 +435,7 @@ export default function ChurchCongregation() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="church-console-page congregation-page space-y-6">
       <section className="panel p-6">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div>
@@ -487,7 +487,7 @@ export default function ChurchCongregation() {
           </div>
         </div>
 
-        <div className="mt-6 grid gap-4 md:grid-cols-3 xl:grid-cols-5">
+        <div className="congregation-summary-grid mt-6 grid gap-4 md:grid-cols-3 xl:grid-cols-5">
           {pageSummary.map((item) => (
             <div
               key={item.label}
@@ -504,7 +504,7 @@ export default function ChurchCongregation() {
         </div>
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <section className="congregation-workspace grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="space-y-5">
           <section className="panel p-6">
             <div className="flex items-center justify-between gap-4">

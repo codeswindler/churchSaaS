@@ -78,7 +78,7 @@ export default function ChurchAccessHome() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="church-console-page access-page space-y-6">
       <section className="panel p-6">
         <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
           Workspace Access

@@ -1760,6 +1760,71 @@ textarea {
   color: #9f1239 !important;
 }
 
+.duration-preset,
+.duration-mode {
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: #e7e5e4;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.duration-preset {
+  min-height: 2.5rem;
+  border-radius: 0.85rem;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.duration-preset:hover,
+.duration-mode:hover,
+.duration-preset.is-active,
+.duration-mode.is-active {
+  border-color: rgba(253, 230, 138, 0.55);
+  background: rgba(253, 230, 138, 0.14);
+  color: #fef3c7;
+}
+
+.duration-mode {
+  display: flex;
+  min-height: 5rem;
+  align-items: flex-start;
+  gap: 0.75rem;
+  border-radius: 1rem;
+  padding: 0.9rem;
+  text-align: left;
+}
+
+.duration-mode strong,
+.duration-mode small {
+  display: block;
+}
+
+.duration-mode small {
+  margin-top: 0.25rem;
+  color: #a8a29e;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+:root[data-color-mode='light'] .duration-preset,
+:root[data-color-mode='light'] .duration-mode {
+  background: rgba(24, 49, 38, 0.035);
+  color: #183126;
+}
+
+:root[data-color-mode='light'] .duration-preset:hover,
+:root[data-color-mode='light'] .duration-mode:hover,
+:root[data-color-mode='light'] .duration-preset.is-active,
+:root[data-color-mode='light'] .duration-mode.is-active {
+  border-color: rgba(180, 117, 12, 0.42);
+  background: rgba(245, 190, 80, 0.18);
+  color: #684006;
+}
+
 @media (min-width: 769px) and (max-width: 1279px),
   (hover: none) and (pointer: coarse) and (max-width: 1366px) {
   .app-shell-background > .mx-auto {
@@ -1778,6 +1843,45 @@ textarea {
 
   .panel {
     border-radius: 22px;
+  }
+
+  .church-console-page > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.85rem;
+  }
+
+  .church-console-page .panel.p-6,
+  .church-console-page .panel.p-5,
+  .church-console-page .panel.sm\:p-6,
+  .church-console-page .table-shell > .border-b {
+    padding: 0.9rem !important;
+  }
+
+  .church-console-page .gap-6,
+  .church-console-page .gap-5 {
+    gap: 0.85rem;
+  }
+
+  .church-console-page .mt-6 {
+    margin-top: 0.9rem;
+  }
+
+  .church-console-page .mt-5 {
+    margin-top: 0.8rem;
+  }
+
+  .church-console-page .rounded-3xl {
+    border-radius: 1rem;
+  }
+
+  .church-console-page h2.text-2xl,
+  .church-console-page h3.text-2xl {
+    font-size: 1.3rem;
+    line-height: 1.35;
+  }
+
+  .church-console-page .btn-primary,
+  .church-console-page .btn-secondary {
+    min-height: 2.5rem;
   }
 
   .shell-hero {
@@ -1817,7 +1921,7 @@ textarea {
 
   .table-shell th,
   .table-shell td {
-    padding: 0.85rem;
+    padding: 0.7rem;
   }
 
   .modal-shell {
@@ -1846,12 +1950,20 @@ textarea {
   .discipleship-chart-svg {
     min-height: 10rem;
   }
+
+  .messaging-page textarea.min-h-44 {
+    min-height: 8rem;
+  }
+
+  .messaging-page textarea.min-h-\[320px\] {
+    min-height: 13rem;
+  }
 }
 
 @media (min-width: 1024px) and (max-width: 1279px) and (orientation: landscape),
   (min-width: 1024px) and (max-width: 1366px) and (orientation: landscape) and (hover: none) and (pointer: coarse) {
   .app-shell-grid {
-    grid-template-columns: 12.25rem minmax(0, 1fr) !important;
+    grid-template-columns: 11.5rem minmax(0, 1fr) !important;
     gap: 0.85rem !important;
     padding: 0.75rem !important;
   }
@@ -1921,7 +2033,27 @@ textarea {
   }
 
   .app-shell-grid > main {
-    gap: 1rem;
+    gap: 0.75rem;
+  }
+
+  .shell-toolbar {
+    min-height: 2.75rem;
+    padding: 0.55rem 0.75rem;
+  }
+
+  .shell-toolbar-chip {
+    min-height: 2rem;
+    padding: 0.45rem 0.75rem;
+  }
+
+  .dashboard-filter-button {
+    min-height: 2.5rem;
+    width: 2.5rem;
+    padding: 0 !important;
+  }
+
+  .dashboard-filter-label {
+    display: none;
   }
 
   .dashboard-stat-grid {
@@ -1996,6 +2128,100 @@ textarea {
 
   .fund-display-card {
     padding: 1rem;
+  }
+
+  .access-page > section:last-child > .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .reports-stat-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .congregation-summary-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  }
+
+  .congregation-workspace {
+    grid-template-columns: minmax(0, 1fr) 15.5rem;
+    align-items: start;
+  }
+
+  .congregation-workspace > aside {
+    position: sticky;
+    top: 0.75rem;
+    max-height: calc(100dvh - 1.5rem);
+    overflow-y: auto;
+  }
+
+  .messaging-addressbook-layout {
+    grid-template-columns: 18rem minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .messaging-upload-layout {
+    grid-template-columns: minmax(15rem, 0.7fr) minmax(0, 1.3fr);
+  }
+
+  .presentation-workspace {
+    grid-template-columns: 16rem minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .presentation-workspace > section:first-child {
+    position: sticky;
+    top: 0.75rem;
+    max-height: calc(100dvh - 1.5rem);
+    overflow-y: auto;
+  }
+
+  .discipleship-stat-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .discipleship-tabs > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .discipleship-tabs button {
+    min-height: 2.5rem;
+    padding: 0.55rem 0.75rem;
+  }
+
+  .discipleship-attendance-workspace {
+    grid-template-columns: minmax(0, 1.45fr) minmax(16rem, 0.8fr);
+    align-items: start;
+  }
+
+  .discipleship-attendance-workspace > .panel,
+  .discipleship-members-workspace > .panel,
+  .discipleship-members-workspace > aside {
+    max-height: calc(100dvh - 10.5rem);
+    overflow-y: auto;
+  }
+
+  .discipleship-attendance-form-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(13rem, 0.82fr);
+  }
+
+  .discipleship-member-picker {
+    max-height: calc(100dvh - 24rem);
+    min-height: 12rem;
+  }
+
+  .discipleship-members-workspace {
+    grid-template-columns: minmax(0, 1.35fr) minmax(16rem, 0.65fr);
+    align-items: start;
+  }
+
+  .discipleship-members-workspace > aside {
+    position: sticky;
+    top: 0.75rem;
+  }
+
+  .users-page .table-shell,
+  .contributions-page .table-shell {
+    overflow: hidden;
   }
 }
 

@@ -4,12 +4,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Interval } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { extname, join } from 'path';
-import { In, IsNull, Repository } from 'typeorm';
+import { DataSource, In, IsNull, Repository } from 'typeorm';
 import ExcelJS from 'exceljs';
 import {
   ChurchFeature,
@@ -129,6 +130,7 @@ function getDefaultGalleryImageName(imageUrl?: string | null) {
 export class ChurchService {
   private readonly receiptTemplateLimit = 459;
   private readonly discipleshipTransactionSyncs = new Map<string, Promise<any>>();
+  private fundDisplayCleanupRunning = false;
 
   constructor(
     @InjectRepository(Church)
@@ -168,6 +170,7 @@ export class ChurchService {
     private readonly churchSubscriptionsService: ChurchSubscriptionsService,
     private readonly contributionsService: ContributionsService,
     private readonly smsService: SmsService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async getDashboard(churchId: string, query: any = {}) {
@@ -2171,7 +2174,7 @@ export class ChurchService {
     const display: CongregationFundDisplay = isPriest
       ? {
           ...normalized,
-          ...this.requireFundDisplayVisibilityWindow(normalized),
+          ...this.buildFundDisplayDurationWindow(body?.durationMinutes),
           approvalStatus: 'approved',
           requestedByUserId: userId,
           approvedByUserId: userId,
@@ -2187,6 +2190,9 @@ export class ChurchService {
           approvedAt: null,
           rejectedAt: null,
           approvalNote: null,
+          approvalDurationMinutes: null,
+          visibleFrom: null,
+          visibleUntil: null,
         };
 
     page.fundDisplays = [...(page.fundDisplays || []), display];
@@ -2235,10 +2241,23 @@ export class ChurchService {
 
     const isPriest = this.isPriestRole(userRole);
     const now = new Date().toISOString();
+    const wasApproved = displays[index].approvalStatus === 'approved';
+    const priestVisibility = isPriest
+      ? body?.durationMinutes !== undefined
+        ? this.buildFundDisplayDurationWindow(body.durationMinutes)
+        : wasApproved
+          ? {
+              approvalDurationMinutes:
+                displays[index].approvalDurationMinutes || null,
+              visibleFrom: displays[index].visibleFrom || null,
+              visibleUntil: displays[index].visibleUntil || null,
+            }
+          : this.buildFundDisplayDurationWindow(body?.durationMinutes)
+      : null;
     const display: CongregationFundDisplay = isPriest
       ? {
           ...normalized,
-          ...this.requireFundDisplayVisibilityWindow(normalized),
+          ...priestVisibility,
           approvalStatus: 'approved',
           requestedByUserId:
             displays[index].requestedByUserId || userId,
@@ -2254,6 +2273,9 @@ export class ChurchService {
           approvedAt: null,
           rejectedAt: null,
           approvalNote: null,
+          approvalDurationMinutes: null,
+          visibleFrom: null,
+          visibleUntil: null,
         };
 
     displays[index] = display;
@@ -2349,8 +2371,7 @@ export class ChurchService {
     action: 'approve' | 'reject',
     options: {
       note?: string | null;
-      visibleFrom?: string | null;
-      visibleUntil?: string | null;
+      durationMinutes?: number | string | null;
     } = {},
   ) {
     const page = await this.congregationPageRepo.findOne({
@@ -2369,11 +2390,9 @@ export class ChurchService {
     const now = new Date().toISOString();
     const display = { ...displays[index] };
     if (action === 'approve') {
-      const visibility = this.requireFundDisplayVisibilityWindow({
-        ...display,
-        visibleFrom: options.visibleFrom,
-        visibleUntil: options.visibleUntil,
-      });
+      const visibility = this.buildFundDisplayDurationWindow(
+        options.durationMinutes,
+      );
       display.approvalStatus = 'approved';
       display.approvedByUserId = userId;
       display.approvedAt = now;
@@ -2392,6 +2411,113 @@ export class ChurchService {
     const saved = await this.congregationPageRepo.save(page);
     await this.markFundDisplayNotificationsRead(churchId, displayId);
     return this.getCongregationFundDisplaySummary(churchId, display);
+  }
+
+  async updateCongregationFundDisplayDuration(
+    churchId: string,
+    userId: string,
+    displayId: string,
+    body: any,
+  ) {
+    const page = await this.congregationPageRepo.findOne({
+      where: { churchId },
+    });
+    if (!page) {
+      throw new NotFoundException('Congregation page not found');
+    }
+
+    const displays = page.fundDisplays || [];
+    const index = displays.findIndex((display) => display.id === displayId);
+    if (index === -1) {
+      throw new NotFoundException('Fund display not found');
+    }
+
+    const display = { ...displays[index] };
+    if (display.approvalStatus !== 'approved') {
+      throw new BadRequestException(
+        'Only an approved fund display can have its timer changed',
+      );
+    }
+
+    const mode = body?.mode === 'extend' ? 'extend' : 'replace';
+    const visibility = this.buildFundDisplayDurationWindow(
+      body?.durationMinutes,
+      {
+        mode,
+        currentVisibleFrom: display.visibleFrom,
+        currentVisibleUntil: display.visibleUntil,
+      },
+    );
+
+    Object.assign(display, visibility, {
+      approvedByUserId: userId,
+      approvalNote: this.normalizeOptionalText(body?.note, 240),
+    });
+    displays[index] = display;
+    page.fundDisplays = displays;
+    page.updatedByUserId = userId;
+    await this.congregationPageRepo.save(page);
+
+    return this.getCongregationFundDisplaySummary(churchId, display);
+  }
+
+  @Interval(60_000)
+  async cleanupExpiredFundDisplays() {
+    if (this.fundDisplayCleanupRunning) {
+      return;
+    }
+
+    this.fundDisplayCleanupRunning = true;
+    try {
+      const pages = await this.congregationPageRepo.find({
+        select: ['id'],
+      });
+
+      for (const pageSummary of pages) {
+        await this.dataSource.transaction(async (manager) => {
+          const pageRepo = manager.getRepository(ChurchCongregationPage);
+          const notificationRepo = manager.getRepository(ChurchNotification);
+          const page = await pageRepo.findOne({
+            where: { id: pageSummary.id },
+            lock: { mode: 'pessimistic_write' },
+          });
+          if (!page) {
+            return;
+          }
+
+          const now = Date.now();
+          const expiredIds = (page.fundDisplays || [])
+            .filter((display) => {
+              const expiresAt = display.visibleUntil
+                ? new Date(display.visibleUntil).getTime()
+                : Number.NaN;
+              return (
+                display.approvalStatus === 'approved' &&
+                Number.isFinite(expiresAt) &&
+                expiresAt <= now
+              );
+            })
+            .map((display) => display.id)
+            .filter((id): id is string => Boolean(id));
+
+          if (expiredIds.length === 0) {
+            return;
+          }
+
+          page.fundDisplays = (page.fundDisplays || []).filter(
+            (display) => !display.id || !expiredIds.includes(display.id),
+          );
+          await pageRepo.save(page);
+          await notificationRepo.delete({
+            churchId: page.churchId,
+            entityType: 'congregation_fund_display',
+            entityId: In(expiredIds),
+          });
+        });
+      }
+    } finally {
+      this.fundDisplayCleanupRunning = false;
+    }
   }
 
   async uploadCongregationImage(churchId: string, file: any) {
@@ -4072,6 +4198,25 @@ export class ChurchService {
         const startDate = this.normalizeDateText(item.startDate);
         const endDate =
           endMode === 'static' ? this.normalizeDateText(item.endDate) : null;
+        const visibleFrom = this.normalizeFundDisplayTimestamp(item.visibleFrom);
+        const visibleUntil = this.normalizeFundDisplayTimestamp(
+          item.visibleUntil,
+        );
+        const storedDuration = this.normalizeFundDisplayDurationMinutes(
+          item.approvalDurationMinutes,
+          false,
+        );
+        const derivedDuration =
+          !storedDuration && visibleFrom && visibleUntil
+            ? Math.max(
+                1,
+                Math.round(
+                  (new Date(visibleUntil).getTime() -
+                    new Date(visibleFrom).getTime()) /
+                    60_000,
+                ),
+              )
+            : null;
 
         return {
           id: this.normalizeOptionalText(item.id, 80) || randomUUID(),
@@ -4099,8 +4244,9 @@ export class ChurchService {
           approvedAt: this.normalizeOptionalText(item.approvedAt, 40),
           rejectedAt: this.normalizeOptionalText(item.rejectedAt, 40),
           approvalNote: this.normalizeOptionalText(item.approvalNote, 240),
-          visibleFrom: this.normalizeFundDisplayTimestamp(item.visibleFrom),
-          visibleUntil: this.normalizeFundDisplayTimestamp(item.visibleUntil),
+          approvalDurationMinutes: storedDuration || derivedDuration,
+          visibleFrom,
+          visibleUntil,
         };
       })
       .filter((item) => {
@@ -4139,13 +4285,21 @@ export class ChurchService {
           this.getFundDisplayComparable(display);
 
       if (isPriest) {
-        const visibility = changed
-          ? this.requireFundDisplayVisibilityWindow(display)
-          : {
-              visibleFrom: previous?.visibleFrom || display.visibleFrom || null,
-              visibleUntil:
-                previous?.visibleUntil || display.visibleUntil || null,
-            };
+        const visibility =
+          changed && display.approvalDurationMinutes
+            ? this.buildFundDisplayDurationWindow(
+                display.approvalDurationMinutes,
+              )
+            : {
+                approvalDurationMinutes:
+                  previous?.approvalDurationMinutes ||
+                  display.approvalDurationMinutes ||
+                  null,
+                visibleFrom:
+                  previous?.visibleFrom || display.visibleFrom || null,
+                visibleUntil:
+                  previous?.visibleUntil || display.visibleUntil || null,
+              };
         return {
           ...display,
           ...visibility,
@@ -4196,6 +4350,7 @@ export class ChurchService {
       isActive: display.isActive !== false,
       visibleFrom: display.visibleFrom || null,
       visibleUntil: display.visibleUntil || null,
+      approvalDurationMinutes: display.approvalDurationMinutes || null,
     });
   }
 
@@ -4212,24 +4367,70 @@ export class ChurchService {
     return parsed.toISOString();
   }
 
-  private requireFundDisplayVisibilityWindow(
-    display: Pick<CongregationFundDisplay, 'visibleFrom' | 'visibleUntil'>,
+  private normalizeFundDisplayDurationMinutes(
+    value: unknown,
+    required = true,
   ) {
-    const visibleFrom = this.normalizeFundDisplayTimestamp(display.visibleFrom);
-    const visibleUntil = this.normalizeFundDisplayTimestamp(
-      display.visibleUntil,
-    );
-    if (!visibleFrom || !visibleUntil) {
+    if (value === null || value === undefined || value === '') {
+      if (required) {
+        throw new BadRequestException('Approval duration is required');
+      }
+      return null;
+    }
+
+    const durationMinutes = Number(value);
+    if (
+      !Number.isInteger(durationMinutes) ||
+      durationMinutes < 1 ||
+      durationMinutes > 525_600
+    ) {
       throw new BadRequestException(
-        'Visibility start and end times are required',
+        'Approval duration must be between 1 minute and 365 days',
       );
     }
-    if (new Date(visibleUntil).getTime() <= new Date(visibleFrom).getTime()) {
-      throw new BadRequestException(
-        'Visibility end time must be after the start time',
-      );
+    return durationMinutes;
+  }
+
+  private buildFundDisplayDurationWindow(
+    durationValue: unknown,
+    options: {
+      mode?: 'replace' | 'extend';
+      currentVisibleFrom?: string | null;
+      currentVisibleUntil?: string | null;
+      now?: Date;
+    } = {},
+  ) {
+    const approvalDurationMinutes =
+      this.normalizeFundDisplayDurationMinutes(durationValue);
+    if (!approvalDurationMinutes) {
+      throw new BadRequestException('Approval duration is required');
     }
-    return { visibleFrom, visibleUntil };
+
+    const now = options.now || new Date();
+    const nowMs = now.getTime();
+    const currentUntilMs = options.currentVisibleUntil
+      ? new Date(options.currentVisibleUntil).getTime()
+      : Number.NaN;
+    const isExtension =
+      options.mode === 'extend' && Number.isFinite(currentUntilMs);
+    const expiryBaseMs = isExtension
+      ? Math.max(nowMs, currentUntilMs)
+      : nowMs;
+    const existingStartMs = options.currentVisibleFrom
+      ? new Date(options.currentVisibleFrom).getTime()
+      : Number.NaN;
+    const visibleFrom =
+      isExtension && Number.isFinite(existingStartMs) && existingStartMs <= nowMs
+        ? new Date(existingStartMs).toISOString()
+        : now.toISOString();
+
+    return {
+      approvalDurationMinutes,
+      visibleFrom,
+      visibleUntil: new Date(
+        expiryBaseMs + approvalDurationMinutes * 60_000,
+      ).toISOString(),
+    };
   }
 
   private async resolveCongregationFundDisplaySummaries(

@@ -790,7 +790,7 @@ export default function ChurchMessaging() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="church-console-page messaging-page space-y-5">
       {activeWorkspace === 'compose' ? (
         <section className="panel p-5 sm:p-6">
           <form
@@ -1124,7 +1124,7 @@ export default function ChurchMessaging() {
       ) : null}
 
       {activeWorkspace === 'addressBooks' ? (
-        <section className="grid gap-5 xl:grid-cols-[minmax(340px,0.9fr)_minmax(0,1.3fr)]">
+        <section className="messaging-addressbook-layout grid gap-5 xl:grid-cols-[minmax(340px,0.9fr)_minmax(0,1.3fr)]">
           <section className="panel p-5 sm:p-6">
             <div className="flex items-start gap-3">
               <Users className="mt-1 text-amber-200" size={18} />
@@ -1460,7 +1460,7 @@ export default function ChurchMessaging() {
             </button>
           </div>
 
-          <div className="mt-6 grid gap-5 xl:grid-cols-[0.75fr_1.25fr]">
+          <div className="messaging-upload-layout mt-6 grid gap-5 xl:grid-cols-[0.75fr_1.25fr]">
             <div className="space-y-4 rounded-3xl border border-white/10 bg-black/10 p-4">
               <div>
                 <label className="label">Destination group</label>

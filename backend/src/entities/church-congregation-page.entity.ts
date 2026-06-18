@@ -67,6 +67,7 @@ export interface CongregationFundDisplay {
   approvedAt?: string | null;
   rejectedAt?: string | null;
   approvalNote?: string | null;
+  approvalDurationMinutes?: number | null;
   visibleFrom?: string | null;
   visibleUntil?: string | null;
 }

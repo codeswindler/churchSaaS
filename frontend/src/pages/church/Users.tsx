@@ -244,7 +244,7 @@ export default function ChurchUsers() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="church-console-page users-page space-y-6">
       <section className="table-shell">
         <div className="border-b border-white/10 px-6 py-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

@@ -185,7 +185,7 @@ export default function ChurchContributions() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="church-console-page contributions-page space-y-6">
       <section className="panel p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>

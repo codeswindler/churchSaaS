@@ -43,29 +43,36 @@ describe('ChurchService discipleship name matching', () => {
     expect(hasConflict(null, '254724075174')).toBe(false);
   });
 
-  it('requires a valid visibility window for newly approved fund displays', () => {
-    const requireWindow = (visibleFrom?: string, visibleUntil?: string) =>
-      (service as any).requireFundDisplayVisibilityWindow({
-        visibleFrom,
-        visibleUntil,
+  it('starts approval duration immediately and validates its bounds', () => {
+    const buildWindow = (durationMinutes?: number) =>
+      (service as any).buildFundDisplayDurationWindow(durationMinutes, {
+        now: new Date('2026-06-18T06:00:00.000Z'),
       });
 
-    expect(
-      requireWindow(
-        '2026-06-18T09:00:00+03:00',
-        '2026-06-18T18:00:00+03:00',
-      ),
-    ).toEqual({
+    expect(buildWindow(60)).toEqual({
+      approvalDurationMinutes: 60,
       visibleFrom: '2026-06-18T06:00:00.000Z',
-      visibleUntil: '2026-06-18T15:00:00.000Z',
+      visibleUntil: '2026-06-18T07:00:00.000Z',
     });
-    expect(() => requireWindow()).toThrow(BadRequestException);
-    expect(() =>
-      requireWindow(
-        '2026-06-18T18:00:00+03:00',
-        '2026-06-18T09:00:00+03:00',
-      ),
-    ).toThrow('Visibility end time must be after the start time');
+    expect(() => buildWindow()).toThrow(BadRequestException);
+    expect(() => buildWindow(0)).toThrow(
+      'Approval duration must be between 1 minute and 365 days',
+    );
+  });
+
+  it('extends an active timer from its current expiry', () => {
+    const window = (service as any).buildFundDisplayDurationWindow(30, {
+      mode: 'extend',
+      currentVisibleFrom: '2026-06-18T06:00:00.000Z',
+      currentVisibleUntil: '2026-06-18T07:00:00.000Z',
+      now: new Date('2026-06-18T06:15:00.000Z'),
+    });
+
+    expect(window).toEqual({
+      approvalDurationMinutes: 30,
+      visibleFrom: '2026-06-18T06:00:00.000Z',
+      visibleUntil: '2026-06-18T07:30:00.000Z',
+    });
   });
 
   it('keeps legacy approved fund displays compatible without visibility dates', () => {
@@ -128,5 +135,59 @@ describe('ChurchService discipleship name matching', () => {
 
     expect(listOutbox).toHaveBeenCalledWith('church-1', filters);
     expect(csv).toContain('Recipient');
+  });
+
+  it('transactionally removes expired fund displays and their notifications', async () => {
+    const page = {
+      id: 'page-1',
+      churchId: 'church-1',
+      fundDisplays: [
+        {
+          id: 'expired-display',
+          approvalStatus: 'approved',
+          visibleUntil: '2000-01-01T00:00:00.000Z',
+        },
+        {
+          id: 'active-display',
+          approvalStatus: 'approved',
+          visibleUntil: '2999-01-01T00:00:00.000Z',
+        },
+      ],
+    };
+    const pageRepo = {
+      findOne: jest.fn().mockResolvedValue(page),
+      save: jest.fn().mockResolvedValue(page),
+    };
+    const notificationRepo = {
+      delete: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    const manager = {
+      getRepository: jest
+        .fn()
+        .mockReturnValueOnce(pageRepo)
+        .mockReturnValueOnce(notificationRepo),
+    };
+    (service as any).congregationPageRepo = {
+      find: jest.fn().mockResolvedValue([{ id: 'page-1' }]),
+    };
+    (service as any).dataSource = {
+      transaction: jest.fn((callback) => callback(manager)),
+    };
+
+    await service.cleanupExpiredFundDisplays();
+
+    expect(pageRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fundDisplays: [
+          expect.objectContaining({ id: 'active-display' }),
+        ],
+      }),
+    );
+    expect(notificationRepo.delete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        churchId: 'church-1',
+        entityType: 'congregation_fund_display',
+      }),
+    );
   });
 });

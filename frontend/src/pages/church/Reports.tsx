@@ -92,7 +92,7 @@ export default function ChurchReports() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="church-console-page reports-page space-y-6">
       <section className="panel p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -230,7 +230,7 @@ export default function ChurchReports() {
         <div className="panel p-6 text-stone-300">Loading report data...</div>
       ) : (
         <div className="space-y-6">
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+          <div className="reports-stat-grid grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             {[
               {
                 label: 'Contribution Count',
