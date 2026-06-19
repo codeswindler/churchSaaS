@@ -13,6 +13,9 @@ const compactLandscapeQuery = `${desktopLandscapeQuery}, ${touchTabletLandscapeQ
 const tabletDensityQuery =
   '(min-width: 960px) and (max-width: 1100px) and (orientation: landscape) and (hover: none) and (pointer: coarse) and (min-device-height: 600px)';
 
+const shortLandscapeTabletQuery =
+  '(min-width: 480px) and (max-width: 1366px) and (orientation: landscape) and (hover: none) and (pointer: coarse) and (max-height: 560px)';
+
 interface ElementSnapshot {
   display: string;
   visibility: string;
@@ -54,11 +57,14 @@ interface DiagnosticsReport {
   media: Record<string, boolean>;
   layout: {
     rootFontSize: string;
+    rootFontSizeExpected: string;
     bodyClientWidth: number;
     bodyScrollWidth: number;
     documentClientWidth: number;
     documentScrollWidth: number;
     hasHorizontalOverflow: boolean;
+    appShellPresent: boolean;
+    outsideAppShell: boolean;
     appShellGrid: ElementSnapshot | null;
     desktopSidebar: ElementSnapshot | null;
     mobileShellBar: ElementSnapshot | null;
@@ -66,6 +72,7 @@ interface DiagnosticsReport {
   queries: {
     compactLandscapeQuery: string;
     desktopLandscapeQuery: string;
+    shortLandscapeTabletQuery: string;
     touchTabletLandscapeQuery: string;
     tabletDensityQuery: string;
   };
@@ -108,6 +115,7 @@ function snapshotElement(selector: string): ElementSnapshot | null {
 }
 
 function classifyDevice() {
+  const isShortLandscapeTablet = mediaMatches(shortLandscapeTabletQuery);
   const isTabletDensity = mediaMatches(tabletDensityQuery);
   const isCompactLandscape = mediaMatches(compactLandscapeQuery);
   const isDesktopWide = mediaMatches('(min-width: 1280px)');
@@ -115,6 +123,10 @@ function classifyDevice() {
   const isLandscape = mediaMatches('(orientation: landscape)');
   const isTabletHeight = mediaMatches('(min-device-height: 600px)');
   const isPhoneWidth = mediaMatches('(max-width: 640px)');
+
+  if (isShortLandscapeTablet) {
+    return 'short-landscape-tablet-active';
+  }
 
   if (isTabletDensity) {
     return 'compact-tablet-density-active';
@@ -144,6 +156,10 @@ function collectDiagnostics(): DiagnosticsReport {
   const screenOrientation = window.screen.orientation;
   const rootStyle = window.getComputedStyle(document.documentElement);
   const documentElement = document.documentElement;
+  const appShellGrid = snapshotElement('.app-shell-grid');
+  const desktopSidebar = snapshotElement('.desktop-sidebar');
+  const mobileShellBar = snapshotElement('.mobile-shell-bar');
+  const appShellPresent = Boolean(appShellGrid);
 
   return {
     timestamp: new Date().toISOString(),
@@ -173,6 +189,7 @@ function collectDiagnostics(): DiagnosticsReport {
     media: {
       compactLandscape: mediaMatches(compactLandscapeQuery),
       desktopLandscape: mediaMatches(desktopLandscapeQuery),
+      shortLandscapeTablet: mediaMatches(shortLandscapeTabletQuery),
       touchTabletLandscape: mediaMatches(touchTabletLandscapeQuery),
       tabletDensity: mediaMatches(tabletDensityQuery),
       tailwindXlDesktop: mediaMatches('(min-width: 1280px)'),
@@ -184,6 +201,7 @@ function collectDiagnostics(): DiagnosticsReport {
       pointerFine: mediaMatches('(pointer: fine)'),
       anyPointerCoarse: mediaMatches('(any-pointer: coarse)'),
       anyPointerFine: mediaMatches('(any-pointer: fine)'),
+      maxHeight560: mediaMatches('(max-height: 560px)'),
       minDeviceHeight600: mediaMatches('(min-device-height: 600px)'),
       minWidth480: mediaMatches('(min-width: 480px)'),
       minWidth640: mediaMatches('(min-width: 640px)'),
@@ -192,6 +210,7 @@ function collectDiagnostics(): DiagnosticsReport {
     },
     layout: {
       rootFontSize: rootStyle.fontSize,
+      rootFontSizeExpected: '16px',
       bodyClientWidth: document.body.clientWidth,
       bodyScrollWidth: document.body.scrollWidth,
       documentClientWidth: documentElement.clientWidth,
@@ -199,13 +218,16 @@ function collectDiagnostics(): DiagnosticsReport {
       hasHorizontalOverflow:
         documentElement.scrollWidth > documentElement.clientWidth ||
         document.body.scrollWidth > document.body.clientWidth,
-      appShellGrid: snapshotElement('.app-shell-grid'),
-      desktopSidebar: snapshotElement('.desktop-sidebar'),
-      mobileShellBar: snapshotElement('.mobile-shell-bar'),
+      appShellPresent,
+      outsideAppShell: !appShellPresent,
+      appShellGrid,
+      desktopSidebar,
+      mobileShellBar,
     },
     queries: {
       compactLandscapeQuery,
       desktopLandscapeQuery,
+      shortLandscapeTabletQuery,
       touchTabletLandscapeQuery,
       tabletDensityQuery,
     },
@@ -268,6 +290,10 @@ function ReportBlock({ report }: { report: DiagnosticsReport }) {
           <p className="mt-2 text-lg font-semibold text-white">
             {report.viewport?.innerWidth} × {report.viewport?.innerHeight}
           </p>
+          <p className="mt-1 text-xs text-stone-400">
+            visual {Math.round(report.viewport?.visualViewportWidth || 0)} ×{' '}
+            {Math.round(report.viewport?.visualViewportHeight || 0)}
+          </p>
         </div>
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
           <p className="text-xs uppercase tracking-[0.25em] text-stone-400">Screen</p>
@@ -280,6 +306,21 @@ function ReportBlock({ report }: { report: DiagnosticsReport }) {
           <p className="mt-2 text-lg font-semibold text-white">
             {report.media?.pointerCoarse ? 'coarse' : 'not coarse'} /{' '}
             {report.media?.hoverNone ? 'no hover' : 'hover'}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+          <p className="text-xs uppercase tracking-[0.25em] text-stone-400">Shell</p>
+          <p className="mt-2 text-lg font-semibold text-white">
+            {report.layout.appShellPresent ? 'inside AppShell' : 'outside AppShell'}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+          <p className="text-xs uppercase tracking-[0.25em] text-stone-400">Root font</p>
+          <p className="mt-2 text-lg font-semibold text-white">
+            {report.layout.rootFontSize}
+          </p>
+          <p className="mt-1 text-xs text-stone-400">
+            expected {report.layout.rootFontSizeExpected}
           </p>
         </div>
       </div>
