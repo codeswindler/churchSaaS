@@ -693,7 +693,7 @@ export class ContributionsService {
     ]);
 
     const dailyTotals = rawDailyTotals.map((item: any) => ({
-      date: item.date,
+      date: this.formatNairobiDate(item.date),
       totalAmount: Number(item.totalAmount || 0),
       count: Number(item.count || 0),
     }));
