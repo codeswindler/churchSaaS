@@ -167,7 +167,24 @@
 
 html {
   scroll-behavior: smooth;
-  font-size: 100%;
+}
+
+@media (min-width: 1024px) {
+  html {
+    font-size: 90%;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1023px) {
+  html {
+    font-size: 94%;
+  }
+}
+
+@media (max-width: 640px) {
+  html {
+    font-size: 96%;
+  }
 }
 
 body {
@@ -400,6 +417,10 @@ textarea {
   border: 1px solid var(--input-border);
   background: var(--input-bg);
   color: #f8f5ef;
+}
+
+.input.input-leading-icon {
+  padding-left: 2.75rem;
 }
 
 .input:focus {
@@ -2266,301 +2287,14 @@ textarea {
   }
 }
 
-@media (min-width: 480px) and (max-width: 1366px) and (orientation: landscape) and (hover: none) and (pointer: coarse) and (max-height: 560px) {
-  .app-shell-background {
-    height: 100svh;
-    height: 100dvh;
-    min-height: 100svh !important;
-    min-height: 100dvh !important;
-    overflow: hidden;
-  }
-
-  .app-shell-grid {
-    grid-template-columns: 10.75rem minmax(0, 1fr) !important;
-    height: 100svh;
-    height: 100dvh;
-    min-height: 100svh !important;
-    min-height: 100dvh !important;
-    max-height: 100dvh;
-    align-items: stretch !important;
-    gap: 0.5rem !important;
-    overflow: hidden;
-    padding: 0.35rem !important;
-  }
-
-  .app-shell-grid > main {
-    height: 100%;
-    max-height: calc(100dvh - 0.7rem);
-    min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    padding-bottom: calc(0.45rem + env(safe-area-inset-bottom));
-    scrollbar-gutter: stable;
-  }
-
-  .desktop-sidebar {
-    top: 0.35rem;
-    height: calc(100dvh - 0.7rem);
-    max-height: calc(100dvh - 0.7rem);
-    gap: 0.45rem !important;
-    overscroll-behavior: contain;
-    padding: 0.5rem !important;
-  }
-
-  .desktop-sidebar > .space-y-4 > :not([hidden]) ~ :not([hidden]),
-  .desktop-sidebar nav.space-y-2 > :not([hidden]) ~ :not([hidden]),
-  .desktop-sidebar nav .space-y-1 > :not([hidden]) ~ :not([hidden]) {
-    margin-top: 0.25rem !important;
-  }
-
-  .desktop-sidebar h1 {
-    display: -webkit-box;
-    margin-top: 0.1rem;
-    overflow: hidden;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    font-size: 0.9rem;
-    line-height: 1.15;
-  }
-
-  .desktop-sidebar .sidebar-header-row {
-    gap: 0.25rem;
-  }
-
-  .desktop-sidebar .sidebar-header-row .brand-logo-wrap {
-    height: 1.65rem;
-    width: 1.65rem;
-  }
-
-  .desktop-sidebar .sidebar-header-actions {
-    gap: 0.18rem;
-  }
-
-  .desktop-sidebar .shell-icon-button-sm {
-    height: 1.55rem;
-    width: 1.55rem;
-    border-radius: 0.65rem;
-  }
-
-  .desktop-sidebar .sidebar-profile-button {
-    min-height: 2.6rem;
-    gap: 0.45rem;
-    border-radius: 0.8rem;
-    padding: 0.45rem !important;
-  }
-
-  .desktop-sidebar .profile-avatar {
-    height: 1.85rem;
-    width: 1.85rem;
-    font-size: 0.68rem;
-  }
-
-  .desktop-sidebar .sidebar-profile-button > span:nth-child(2) > span:first-child {
-    line-height: 1.12;
-  }
-
-  .desktop-sidebar .sidebar-profile-button > span:nth-child(2) > span:last-child {
-    font-size: 0.65rem;
-  }
-
-  .desktop-sidebar nav {
-    font-size: 0.84rem;
-  }
-
-  .desktop-sidebar nav > div > a {
-    min-height: 2.35rem;
-    gap: 0.5rem;
-    border-radius: 0.8rem;
-    padding: 0.48rem 0.58rem;
-  }
-
-  .desktop-sidebar nav > div > div {
-    margin-left: 0.9rem !important;
-    padding-left: 0.45rem !important;
-  }
-
-  .desktop-sidebar nav > div > div a {
-    padding: 0.35rem 0.5rem;
-  }
-
-  .desktop-sidebar .sidebar-logout-button {
-    height: 2.3rem;
-    width: 2.3rem;
-    border-radius: 0.85rem;
-  }
-
-  .shell-toolbar {
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    min-height: 2.35rem !important;
-    border-radius: 1rem;
-    padding: 0.38rem 0.55rem !important;
-  }
-
-  .shell-toolbar-chip {
-    min-height: 1.7rem !important;
-    padding: 0.28rem 0.55rem !important;
-    font-size: 0.68rem;
-    letter-spacing: 0.16em;
-  }
-
-  .shell-toolbar-actions {
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 0.35rem;
-  }
-
-  .shell-icon-button {
-    height: 2.3rem;
-    width: 2.3rem;
-    border-radius: 0.85rem;
-  }
-
-  .church-console-page > :not([hidden]) ~ :not([hidden]),
-  .church-console-page.space-y-5 > :not([hidden]) ~ :not([hidden]),
-  .church-console-page.space-y-6 > :not([hidden]) ~ :not([hidden]),
-  .messaging-page > section.space-y-5 > :not([hidden]) ~ :not([hidden]) {
-    margin-top: 0.55rem !important;
-  }
-
-  .church-console-page .panel.p-6,
-  .church-console-page .panel.p-5,
-  .church-console-page .panel.sm\:p-6,
-  .church-console-page .table-shell > .border-b {
-    padding: 0.7rem !important;
-  }
-
-  .church-console-page .gap-6,
-  .church-console-page .gap-5,
-  .church-console-page .gap-4 {
-    gap: 0.6rem;
-  }
-
-  .church-console-page h2.text-2xl,
-  .church-console-page h3.text-2xl {
-    font-size: 1.15rem;
-    line-height: 1.2;
-  }
-
-  .dashboard-stat-grid .stat-card {
-    min-height: 5.7rem !important;
-    padding: 0.62rem !important;
-  }
-
-  .dashboard-stat-grid .text-3xl {
-    font-size: 1.25rem !important;
-  }
-
-  .discipleship-stat-grid {
-    gap: 0.45rem !important;
-  }
-
-  .discipleship-stat-card {
-    min-height: 3.85rem !important;
-    padding: 0.5rem !important;
-  }
-
-  .discipleship-stat-card .text-xs {
-    font-size: 0.64rem;
-    letter-spacing: 0.13em;
-  }
-
-  .discipleship-stat-card .text-2xl {
-    margin-top: 0.2rem !important;
-    font-size: 1.05rem !important;
-  }
-
-  .discipleship-tabs button {
-    min-height: 2.15rem;
-    padding: 0.36rem 0.55rem;
-  }
-
-  .discipleship-attendance-workspace > .panel,
-  .discipleship-members-workspace > .panel,
-  .discipleship-members-workspace > aside {
-    max-height: calc(100dvh - 7.4rem);
-  }
-
-  .discipleship-member-picker {
-    max-height: calc(100dvh - 16rem);
-    min-height: 7.5rem;
-  }
-
-  .discipleship-chart-svg {
-    min-height: 7rem;
-  }
-
-  .fund-accounts-layout {
-    grid-template-columns: minmax(13rem, 0.72fr) minmax(0, 1.28fr) !important;
-  }
-
-  .fund-account-preview-panel {
-    top: 0.35rem;
-    max-height: calc(100dvh - 0.7rem);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-  }
-
-  .fund-account-preview-panel .sms-phone-preview__device {
-    max-width: 20rem !important;
-  }
-
-  .messaging-compose-layout {
-    grid-template-columns: minmax(0, 1.7fr) minmax(12rem, 0.75fr) !important;
-    gap: 0.7rem !important;
-  }
-
-  .messaging-compose-layout > :last-child {
-    top: 0.35rem;
-    max-height: calc(100dvh - 5.25rem);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-  }
-
-  .messaging-compose-layout .sms-phone-preview__device {
-    width: auto;
-    max-width: 100% !important;
-    height: min(24rem, calc(100dvh - 6rem));
-  }
-
-  .messaging-page textarea.min-h-44 {
-    min-height: 6.5rem;
-  }
-
-  .messaging-page textarea.min-h-\[320px\] {
-    min-height: 10rem;
-  }
-
-  .messaging-choice-grid {
-    gap: 0.45rem !important;
-  }
-
-  .messaging-choice-grid > button {
-    min-height: 3.65rem;
-    padding: 0.5rem !important;
-  }
-
-  .messaging-page .table-shell {
-    display: flex;
-    max-height: calc(100dvh - 8.2rem);
-    min-height: 0;
-    flex-direction: column;
-  }
-
-  .messaging-page .table-shell > .border-b {
-    flex: 0 0 auto;
-  }
-
-  .messaging-page .table-scroll-region {
-    min-height: 0;
-    flex: 1 1 auto;
-    overflow: auto;
-  }
-
-  .table-shell th,
-  .table-shell td {
-    padding: 0.52rem 0.58rem;
+/*
+ * This tablet exposes about 1014 CSS pixels at native zoom. Match the 75%
+ * browser-zoom density demonstrated during tablet QA while keeping Chrome at
+ * 100%, so the compact tablet breakpoints remain active.
+ */
+@media (min-width: 960px) and (max-width: 1100px) and (orientation: landscape) and (hover: none) and (pointer: coarse) and (min-device-height: 600px) {
+  html {
+    font-size: 67.5%;
   }
 }
 

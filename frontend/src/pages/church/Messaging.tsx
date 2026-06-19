@@ -22,6 +22,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useSearchParams } from 'react-router-dom';
 import SmsPhonePreview from '../../components/SmsPhonePreview';
+import { usePageActions } from '../../context/PageActionsContext';
 import api from '../../services/api';
 import {
   getGsm7SmsMetrics,
@@ -117,6 +118,7 @@ function normalizeWorkspace(value: string | null): Workspace {
 
 export default function ChurchMessaging() {
   const queryClient = useQueryClient();
+  const { setPageActions } = usePageActions();
   const messageTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [routeSearchParams, setRouteSearchParams] = useSearchParams();
   const activeWorkspace = normalizeWorkspace(routeSearchParams.get('tab'));
@@ -161,6 +163,35 @@ export default function ChurchMessaging() {
       ),
     [filters, outboxMode, outboxPage, selectedRecipient?.recipientKey],
   );
+  const outboxPageAction = useMemo(() => {
+    if (activeWorkspace !== 'outbox') {
+      return null;
+    }
+
+    return (
+      <button
+        className="btn-secondary justify-center whitespace-nowrap"
+        type="button"
+        onClick={() => {
+          setOutboxMode((current) =>
+            current === 'simple' ? 'detailed' : 'simple',
+          );
+          setSelectedRecipient(null);
+          setOutboxPage(1);
+        }}
+      >
+        {outboxMode === 'simple'
+          ? 'Detailed Outbox'
+          : 'Simple recipient search'}
+      </button>
+    );
+  }, [activeWorkspace, outboxMode]);
+
+  useEffect(() => {
+    setPageActions(outboxPageAction);
+    return () => setPageActions(null);
+  }, [outboxPageAction, setPageActions]);
+
   const messageMetrics = getGsm7SmsMetrics(form.message);
   const hasSelectedAudience =
     form.fundAccountIds.length > 0 ||
@@ -1603,23 +1634,6 @@ export default function ChurchMessaging() {
 
       {activeWorkspace === 'outbox' ? (
         <section className="space-y-5">
-          <div className="flex justify-end">
-            <button
-              className="btn-secondary justify-center"
-              type="button"
-              onClick={() => {
-                setOutboxMode((current) =>
-                  current === 'simple' ? 'detailed' : 'simple',
-                );
-                setSelectedRecipient(null);
-              }}
-            >
-              {outboxMode === 'simple'
-                ? 'Detailed Outbox'
-                : 'Simple recipient search'}
-            </button>
-          </div>
-
           {outboxMode === 'simple' ? (
             <section className="panel p-5 sm:p-6">
               <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
@@ -1642,7 +1656,7 @@ export default function ChurchMessaging() {
                     />
                     <input
                       aria-label="Search outbox recipients"
-                      className="input pl-11"
+                      className="input input-leading-icon"
                       placeholder="Enter at least 2 letters or phone digits"
                       value={recipientSearch}
                       onChange={(event) =>
@@ -1770,7 +1784,7 @@ export default function ChurchMessaging() {
                         size={17}
                       />
                       <input
-                        className="input pl-11"
+                        className="input input-leading-icon"
                         placeholder="Search recipient name or phone"
                         value={filters.search}
                         onChange={(event) =>

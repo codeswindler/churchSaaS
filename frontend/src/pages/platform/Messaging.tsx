@@ -486,7 +486,7 @@ export default function PlatformMessaging() {
                 size={16}
               />
               <input
-                className="input pl-11"
+                className="input input-leading-icon"
                 placeholder="Search churches or contacts"
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}

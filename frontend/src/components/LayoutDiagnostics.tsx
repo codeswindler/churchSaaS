@@ -124,12 +124,12 @@ function classifyDevice() {
   const isTabletHeight = mediaMatches('(min-device-height: 600px)');
   const isPhoneWidth = mediaMatches('(max-width: 640px)');
 
-  if (isShortLandscapeTablet) {
-    return 'short-landscape-tablet-active';
-  }
-
   if (isTabletDensity) {
     return 'compact-tablet-density-active';
+  }
+
+  if (isShortLandscapeTablet && isCompactLandscape) {
+    return 'compact-short-landscape-active';
   }
 
   if (isCompactLandscape) {
@@ -149,6 +149,22 @@ function classifyDevice() {
   }
 
   return 'compact-or-unknown-layout';
+}
+
+function expectedRootFontSize() {
+  if (mediaMatches(tabletDensityQuery)) {
+    return '10.8px (75% tablet density)';
+  }
+
+  if (mediaMatches('(min-width: 1024px)')) {
+    return '14.4px';
+  }
+
+  if (mediaMatches('(min-width: 641px)')) {
+    return '15.04px';
+  }
+
+  return '15.36px';
 }
 
 function collectDiagnostics(): DiagnosticsReport {
@@ -210,7 +226,7 @@ function collectDiagnostics(): DiagnosticsReport {
     },
     layout: {
       rootFontSize: rootStyle.fontSize,
-      rootFontSizeExpected: '16px',
+      rootFontSizeExpected: expectedRootFontSize(),
       bodyClientWidth: document.body.clientWidth,
       bodyScrollWidth: document.body.scrollWidth,
       documentClientWidth: documentElement.clientWidth,
@@ -372,31 +388,69 @@ export function LayoutDiagnosticsOverlay() {
   const location = useLocation();
   const enabled = new URLSearchParams(location.search).has('layoutDebug');
   const report = useDiagnosticsReport(enabled);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const formattedReport = useMemo(
+    () => (report ? JSON.stringify(report, null, 2) : ''),
+    [report],
+  );
 
   if (!enabled || !report) {
     return null;
   }
 
+  const copyReport = async () => {
+    try {
+      await navigator.clipboard.writeText(formattedReport);
+      toast.success('Layout report copied');
+    } catch {
+      toast.error('Copy failed. Open the full report to select it manually.');
+    }
+  };
+
   return (
-    <div className="fixed inset-x-3 bottom-3 z-[100000] max-h-[70vh] overflow-auto rounded-3xl border border-amber-200/30 bg-[#071812]/95 p-4 text-white shadow-2xl backdrop-blur lg:left-3 lg:right-auto lg:w-[32rem]">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
+    <div className="fixed inset-x-3 bottom-3 z-[100000] rounded-2xl border border-amber-200/30 bg-[#071812]/95 p-3 text-white shadow-2xl backdrop-blur sm:right-auto sm:w-[min(34rem,calc(100vw-1.5rem))]">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
           <p className="text-xs uppercase tracking-[0.25em] text-amber-200">
             Layout debug
           </p>
-          <h2 className="mt-1 text-lg font-bold">{report.classification}</h2>
+          <p className="mt-1 truncate text-sm font-semibold">
+            {report.classification} · {report.viewport.innerWidth} ×{' '}
+            {report.viewport.innerHeight} · root {report.layout.rootFontSize}
+          </p>
         </div>
-        <a
-          className="rounded-full border border-white/15 px-3 py-2 text-xs font-bold text-amber-100"
-          href="/layout-diagnostics"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Full page
-        </a>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            className="rounded-full border border-white/15 px-3 py-2 text-xs font-bold text-amber-100"
+            type="button"
+            onClick={copyReport}
+          >
+            Copy
+          </button>
+          <button
+            aria-expanded={isExpanded}
+            className="rounded-full border border-white/15 px-3 py-2 text-xs font-bold text-amber-100"
+            type="button"
+            onClick={() => setIsExpanded((current) => !current)}
+          >
+            {isExpanded ? 'Hide' : 'Details'}
+          </button>
+          <a
+            className="hidden rounded-full border border-white/15 px-3 py-2 text-xs font-bold text-amber-100 sm:inline-flex"
+            href="/layout-diagnostics"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Full page
+          </a>
+        </div>
       </div>
 
-      <ReportBlock report={report} />
+      {isExpanded ? (
+        <div className="mt-3 max-h-[62vh] overflow-auto border-t border-white/10 pt-3">
+          <ReportBlock report={report} />
+        </div>
+      ) : null}
     </div>
   );
 }
