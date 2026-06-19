@@ -22,6 +22,7 @@ type FundDisplayForm = {
   description: string;
   fundAccountId: string;
   startDate: string;
+  targetAmount: string;
   endMode: 'to_date' | 'static';
   endDate: string;
   isActive: boolean;
@@ -86,6 +87,7 @@ function createInitialForm(fundAccountId = ''): FundDisplayForm {
     description: '',
     fundAccountId,
     startDate: today(),
+    targetAmount: '',
     endMode: 'to_date',
     endDate: '',
     isActive: true,
@@ -275,6 +277,9 @@ export default function ChurchFundDisplays() {
       const durationMinutes = toDurationMinutes(formDuration);
       const payload = {
         ...form,
+        targetAmount: form.targetAmount.trim()
+          ? Number(form.targetAmount)
+          : null,
         endDate: form.endMode === 'static' ? form.endDate : null,
         ...(needsApprovalDuration ? { durationMinutes } : {}),
       };
@@ -374,6 +379,8 @@ export default function ChurchFundDisplays() {
       description: item.description || '',
       fundAccountId: item.fundAccountId || '',
       startDate: item.startDate || today(),
+      targetAmount:
+        Number(item.targetAmount || 0) > 0 ? String(item.targetAmount) : '',
       endMode: item.endMode === 'static' ? 'static' : 'to_date',
       endDate: item.endDate || '',
       isActive: item.isActive !== false,
@@ -503,6 +510,14 @@ export default function ChurchFundDisplays() {
                   <dd className="text-right text-white">
                     {item.startDate} -{' '}
                     {item.endMode === 'static' ? item.endDate : 'to date'}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt>Public target</dt>
+                  <dd className="text-right text-white">
+                    {Number(item.targetAmount || 0) > 0
+                      ? formatKes(item.targetAmount)
+                      : 'Open goal'}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-3">
@@ -694,6 +709,27 @@ export default function ChurchFundDisplays() {
                       }))
                     }
                   />
+                </div>
+                <div>
+                  <label className="label">Collection target (optional)</label>
+                  <input
+                    className="input"
+                    min="1"
+                    placeholder="e.g. 1000000"
+                    step="0.01"
+                    type="number"
+                    value={form.targetAmount}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        targetAmount: event.target.value,
+                      }))
+                    }
+                  />
+                  <p className="mt-2 text-xs text-stone-400">
+                    Shown publicly with progress, percentage, and amount
+                    remaining.
+                  </p>
                 </div>
                 <div>
                   <label className="label">Totals end</label>

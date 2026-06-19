@@ -98,6 +98,10 @@ export class MobileApprovalsService {
       startDate: display.startDate,
       endDate: display.endDate || null,
       endMode: display.endMode,
+      targetAmount:
+        Number(display.targetAmount || 0) > 0
+          ? Number(display.targetAmount)
+          : null,
       totalAmount: Number(display.totalAmount || 0),
       contributionCount: Number(display.contributionCount || 0),
       approvalDurationMinutes: display.approvalDurationMinutes || null,

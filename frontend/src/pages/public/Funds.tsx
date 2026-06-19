@@ -1,6 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Landmark } from 'lucide-react';
-import { useId } from 'react';
+import {
+  Activity,
+  ArrowLeft,
+  Goal,
+  Landmark,
+  TrendingUp,
+} from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import api from '../../services/api';
 
@@ -63,6 +69,239 @@ function niceChartMaximum(value: number) {
   const ceiling =
     normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
   return ceiling * magnitude;
+}
+
+function useAnimatedNumber(value: unknown, duration = 900) {
+  const target = Number(value || 0);
+  const displayedRef = useRef(0);
+  const [displayed, setDisplayed] = useState(0);
+
+  useEffect(() => {
+    const reducedMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches;
+    if (reducedMotion) {
+      displayedRef.current = target;
+      setDisplayed(target);
+      return undefined;
+    }
+
+    const from = displayedRef.current;
+    const startedAt = window.performance.now();
+    let frameId = 0;
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / duration);
+      const eased = 1 - (1 - progress) ** 3;
+      const next = from + (target - from) * eased;
+      displayedRef.current = next;
+      setDisplayed(next);
+      if (progress < 1) {
+        frameId = window.requestAnimationFrame(tick);
+      }
+    };
+
+    frameId = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [duration, target]);
+
+  return displayed;
+}
+
+function AnimatedMoney({ value }: { value: unknown }) {
+  const animatedValue = useAnimatedNumber(value);
+  return <>{formatMoney(Math.round(animatedValue))}</>;
+}
+
+function CampaignProgress({ display }: { display: any }) {
+  const todayKey = todayInNairobi();
+  const todayPoint = (display.trendByDate || []).find(
+    (point: any) => point.date === todayKey,
+  );
+  const todayAmount = Number(
+    display.todayAmount ?? todayPoint?.totalAmount ?? 0,
+  );
+  const todayCount = Number(
+    display.todayContributionCount ?? todayPoint?.count ?? 0,
+  );
+  const totalAmount = Number(display.totalAmount || 0);
+  const contributionCount = Number(display.contributionCount || 0);
+  const targetAmount =
+    Number(display.targetAmount || 0) > 0
+      ? Number(display.targetAmount)
+      : null;
+  const remainingAmount =
+    targetAmount === null
+      ? null
+      : Math.max(
+          0,
+          Number(
+            display.remainingAmount ?? targetAmount - totalAmount,
+          ),
+        );
+  const exceededAmount =
+    targetAmount === null ? 0 : Math.max(0, totalAmount - targetAmount);
+  const progressPercentage =
+    targetAmount === null
+      ? null
+      : Number(
+          display.progressPercentage ??
+            (totalAmount / targetAmount) * 100,
+        );
+  const animatedPercentage = useAnimatedNumber(progressPercentage || 0, 1100);
+  const [animateBar, setAnimateBar] = useState(false);
+
+  useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => setAnimateBar(true));
+    return () => window.cancelAnimationFrame(frameId);
+  }, []);
+
+  return (
+    <section className="mt-6" aria-label="Live collection progress">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="relative overflow-hidden rounded-3xl border border-[#2d9a83]/20 bg-[linear-gradient(145deg,_#e8f8f1,_#f7fffb)] p-5 shadow-sm">
+          <span className="absolute right-5 top-5 flex h-3 w-3">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-45" />
+            <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-600" />
+          </span>
+          <div className="flex items-center gap-2 text-[#1e6f67]">
+            <Activity size={17} />
+            <p className="text-xs font-bold uppercase tracking-[0.18em]">
+              Today
+            </p>
+          </div>
+          <p
+            aria-live="polite"
+            className="mt-3 text-3xl font-semibold text-[#183126]"
+          >
+            <AnimatedMoney value={todayAmount} />
+          </p>
+          <p className="mt-2 text-sm text-stone-600">
+            {todayCount.toLocaleString()}{' '}
+            {todayCount === 1 ? 'contribution' : 'contributions'} today
+          </p>
+          <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
+            Live · refreshes every 5 seconds
+          </p>
+        </div>
+
+        <div className="rounded-3xl border border-[#1e6f87]/15 bg-[linear-gradient(145deg,_#eef8fb,_#ffffff)] p-5 shadow-sm">
+          <div className="flex items-center gap-2 text-[#1e6f87]">
+            <TrendingUp size={17} />
+            <p className="text-xs font-bold uppercase tracking-[0.18em]">
+              Total collected
+            </p>
+          </div>
+          <p
+            aria-live="polite"
+            className="mt-3 text-3xl font-semibold text-[#183126]"
+          >
+            <AnimatedMoney value={totalAmount} />
+          </p>
+          <p className="mt-2 text-sm text-stone-600">
+            {contributionCount.toLocaleString()}{' '}
+            {contributionCount === 1 ? 'contribution' : 'contributions'} since{' '}
+            {formatChartDate(display.startDate)}
+          </p>
+          <p className="mt-3 text-xs text-stone-500">
+            Last activity {formatDate(display.lastContributionAt)}
+          </p>
+        </div>
+
+        <div className="rounded-3xl border border-amber-300/45 bg-[linear-gradient(145deg,_#fff7dc,_#fffdf7)] p-5 shadow-sm">
+          <div className="flex items-center gap-2 text-amber-800">
+            <Goal size={17} />
+            <p className="text-xs font-bold uppercase tracking-[0.18em]">
+              Collection target
+            </p>
+          </div>
+          <p className="mt-3 text-3xl font-semibold text-[#6f4714]">
+            {targetAmount === null ? 'Open goal' : formatMoney(targetAmount)}
+          </p>
+          <p className="mt-2 text-sm text-amber-900/70">
+            {targetAmount === null
+              ? 'No fixed target has been set for this display.'
+              : exceededAmount > 0
+                ? `${formatMoney(exceededAmount)} beyond the target`
+                : `${formatMoney(remainingAmount)} still to raise`}
+          </p>
+          <p className="mt-3 text-xs text-amber-900/55">
+            {targetAmount === null
+              ? 'Every contribution continues growing the fund.'
+              : totalAmount >= targetAmount
+                ? 'Target reached — thank you!'
+                : 'Together, every contribution moves us closer.'}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-3 overflow-hidden rounded-3xl border border-[#183126]/10 bg-[#173d34] p-5 text-white shadow-lg shadow-emerald-950/10 sm:p-6">
+        {targetAmount === null ? (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-200">
+                Campaign momentum
+              </p>
+              <h3 className="mt-2 text-2xl font-semibold">
+                The fund is growing live
+              </h3>
+              <p className="mt-2 text-sm text-emerald-50/75">
+                This fund has no fixed public target. Every contribution is
+                reflected here as the campaign grows.
+              </p>
+            </div>
+            <p className="text-3xl font-semibold text-amber-200">
+              <AnimatedMoney value={totalAmount} />
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-200">
+                  Campaign progress
+                </p>
+                <h3 className="mt-2 text-2xl font-semibold">
+                  {totalAmount >= targetAmount
+                    ? 'Target achieved'
+                    : `${formatMoney(remainingAmount)} to go`}
+                </h3>
+                <p className="mt-2 text-sm text-emerald-50/75">
+                  {formatMoney(totalAmount)} raised of {formatMoney(targetAmount)}
+                </p>
+              </div>
+              <p
+                aria-live="polite"
+                className="text-4xl font-semibold text-amber-200 sm:text-5xl"
+              >
+                {animatedPercentage.toFixed(1)}%
+              </p>
+            </div>
+            <div
+              aria-label={`${progressPercentage?.toFixed(1)} percent of target collected`}
+              aria-valuemax={100}
+              aria-valuemin={0}
+              aria-valuenow={Math.min(100, progressPercentage || 0)}
+              className="mt-5 h-5 overflow-hidden rounded-full border border-white/10 bg-black/25 p-1"
+              role="progressbar"
+            >
+              <div
+                className="relative h-full rounded-full bg-[linear-gradient(90deg,_#f3ba57,_#ffe5a2)] shadow-[0_0_22px_rgba(243,186,87,0.5)] transition-[width] duration-1000 ease-out"
+                style={{
+                  width: `${animateBar ? Math.min(100, progressPercentage || 0) : 0}%`,
+                }}
+              >
+                <span className="absolute inset-y-0 right-0 w-8 animate-pulse rounded-full bg-white/40 blur-sm" />
+              </div>
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-3 text-xs text-emerald-50/65">
+              <span>KES 0</span>
+              <span>{formatMoney(targetAmount)}</span>
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  );
 }
 
 function FundTrend({
@@ -517,32 +756,7 @@ export default function PublicFunds() {
                 ) : null}
               </div>
 
-              <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-3xl bg-[#edf7f3] p-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-stone-500">
-                    Current total
-                  </p>
-                  <p className="mt-2 text-3xl font-semibold">
-                    {formatMoney(display.totalAmount)}
-                  </p>
-                </div>
-                <div className="rounded-3xl bg-[#edf7f3] p-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-stone-500">
-                    Contributions
-                  </p>
-                  <p className="mt-2 text-3xl font-semibold">
-                    {Number(display.contributionCount || 0).toLocaleString()}
-                  </p>
-                </div>
-                <div className="rounded-3xl bg-[#edf7f3] p-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-stone-500">
-                    Last activity
-                  </p>
-                  <p className="mt-2 text-base font-semibold">
-                    {formatDate(display.lastContributionAt)}
-                  </p>
-                </div>
-              </div>
+              <CampaignProgress display={display} />
 
               <div className="mt-6">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

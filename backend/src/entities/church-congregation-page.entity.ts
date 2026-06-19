@@ -58,6 +58,7 @@ export interface CongregationFundDisplay {
   description?: string | null;
   fundAccountId: string;
   startDate: string;
+  targetAmount?: number | null;
   endMode?: 'to_date' | 'static' | null;
   endDate?: string | null;
   isActive?: boolean | null;

@@ -96,6 +96,32 @@ describe('ChurchService discipleship name matching', () => {
     ]);
   });
 
+  it('normalizes an optional positive fund display target', () => {
+    const normalized = (service as any).normalizeFundDisplays([
+      {
+        id: 'target-display',
+        fundAccountId: 'fund-1',
+        startDate: '2026-01-01',
+        targetAmount: '1500000.50',
+      },
+    ]);
+
+    expect(normalized[0]).toEqual(
+      expect.objectContaining({
+        targetAmount: 1500000.5,
+      }),
+    );
+    expect(() =>
+      (service as any).normalizeFundDisplays([
+        {
+          fundAccountId: 'fund-1',
+          startDate: '2026-01-01',
+          targetAmount: '-1',
+        },
+      ]),
+    ).toThrow('Fund display target must be a positive amount');
+  });
+
   it('marks non-priest fund display edits as pending', () => {
     const previous = {
       id: 'display-1',
@@ -125,6 +151,28 @@ describe('ChurchService discipleship name matching', () => {
         approvedByUserId: null,
       }),
     );
+  });
+
+  it('requires approval when a non-priest changes the public target', () => {
+    const previous = {
+      id: 'display-1',
+      fundAccountId: 'fund-1',
+      startDate: '2026-01-01',
+      targetAmount: 100000,
+      endMode: 'to_date',
+      isActive: true,
+      approvalStatus: 'approved',
+    };
+
+    const result = (service as any).applyFundDisplayApprovalState(
+      [previous],
+      [{ ...previous, targetAmount: 150000 }],
+      'admin-1',
+      false,
+    );
+
+    expect(result.pendingIds).toEqual(['display-1']);
+    expect(result.items[0].approvalStatus).toBe('pending');
   });
 
   it('uses the same outbox filters for CSV exports', async () => {

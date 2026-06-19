@@ -657,6 +657,22 @@ export class PublicController {
         startDate,
         endDate,
       );
+      const todayKey = this.formatNairobiDate(new Date());
+      const todayTrend = trendByDate.find(
+        (point: any) => point.date === todayKey,
+      );
+      const targetAmount =
+        Number(display.targetAmount || 0) > 0
+          ? Number(display.targetAmount)
+          : null;
+      const remainingAmount =
+        targetAmount === null
+          ? null
+          : Math.max(0, targetAmount - totals.totalAmount);
+      const progressPercentage =
+        targetAmount === null
+          ? null
+          : Number(((totals.totalAmount / targetAmount) * 100).toFixed(1));
 
       resolved.push({
         id: display.id,
@@ -666,6 +682,7 @@ export class PublicController {
         fundAccountName: fundAccount.name,
         fundAccountCode: fundAccount.code,
         startDate: display.startDate,
+        targetAmount,
         endMode,
         endDate: endMode === 'static' ? display.endDate || null : null,
         visibleFrom: display.visibleFrom || null,
@@ -673,6 +690,10 @@ export class PublicController {
         totalAmount: totals.totalAmount,
         contributionCount: totals.contributionCount,
         lastContributionAt: totals.lastContributionAt,
+        todayAmount: Number(todayTrend?.totalAmount || 0),
+        todayContributionCount: Number(todayTrend?.count || 0),
+        remainingAmount,
+        progressPercentage,
         trendByDate,
       });
     }

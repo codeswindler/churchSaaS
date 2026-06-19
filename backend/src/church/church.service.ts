@@ -4420,6 +4420,9 @@ export class ChurchService {
           description: this.normalizeOptionalText(item.description, 700),
           fundAccountId: this.normalizeOptionalText(item.fundAccountId, 36),
           startDate,
+          targetAmount: this.normalizeFundDisplayTargetAmount(
+            item.targetAmount,
+          ),
           endMode,
           endDate,
           isActive: item.isActive === false ? false : true,
@@ -4562,6 +4565,7 @@ export class ChurchService {
       description: display.description || null,
       fundAccountId: display.fundAccountId,
       startDate: display.startDate,
+      targetAmount: display.targetAmount || null,
       endMode: display.endMode || 'to_date',
       endDate: display.endMode === 'static' ? display.endDate || null : null,
       isActive: display.isActive !== false,
@@ -4582,6 +4586,25 @@ export class ChurchService {
       throw new BadRequestException('Invalid fund display visibility date');
     }
     return parsed.toISOString();
+  }
+
+  private normalizeFundDisplayTargetAmount(value: unknown) {
+    if (
+      value === undefined ||
+      value === null ||
+      `${value}`.trim().length === 0
+    ) {
+      return null;
+    }
+
+    const amount = Number(value);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException(
+        'Fund display target must be a positive amount',
+      );
+    }
+
+    return Number(amount.toFixed(2));
   }
 
   private normalizeFundDisplayDurationMinutes(value: unknown, required = true) {
