@@ -164,6 +164,7 @@ describe('MobileFundsService', () => {
         isActive: true,
         receiptTemplate: 'internal template',
         churchId: 'church-1',
+        createdAt: new Date('2025-11-02T08:30:00.000Z'),
       },
     ]);
 
@@ -182,6 +183,7 @@ describe('MobileFundsService', () => {
           description: 'Regular tithe contributions',
           displayOrder: 1,
           isActive: true,
+          createdAt: '2025-11-02T08:30:00.000Z',
         },
       ],
     });
