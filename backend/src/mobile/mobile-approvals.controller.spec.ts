@@ -6,6 +6,8 @@ describe('MobileApprovalsController', () => {
     markNotificationRead: jest.fn(),
     listFundDisplayApprovals: jest.fn(),
     reviewFundDisplay: jest.fn(),
+    updateFundDisplayDuration: jest.fn(),
+    cancelFundDisplay: jest.fn(),
   };
   const controller = new MobileApprovalsController(
     mobileApprovalsService as any,
@@ -77,6 +79,37 @@ describe('MobileApprovalsController', () => {
       'display-2',
       'reject',
       { note: 'Needs correction' },
+    );
+  });
+
+  it('changes duration and cancels displays within the authenticated church', async () => {
+    mobileApprovalsService.updateFundDisplayDuration.mockResolvedValue({
+      id: 'display-1',
+    });
+    mobileApprovalsService.cancelFundDisplay.mockResolvedValue({
+      id: 'display-2',
+      deleted: true,
+    });
+
+    await controller.updateFundDisplayDuration(request, 'display-1', {
+      durationMinutes: 1440,
+      mode: 'extend',
+      note: 'Keep this visible',
+      churchId: 'other-church',
+    });
+    await controller.cancelFundDisplay(request, 'display-2');
+
+    expect(
+      mobileApprovalsService.updateFundDisplayDuration,
+    ).toHaveBeenCalledWith('church-1', 'priest-1', 'display-1', {
+      durationMinutes: 1440,
+      mode: 'extend',
+      note: 'Keep this visible',
+    });
+    expect(mobileApprovalsService.cancelFundDisplay).toHaveBeenCalledWith(
+      'church-1',
+      'priest-1',
+      'display-2',
     );
   });
 });

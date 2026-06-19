@@ -6,6 +6,8 @@ describe('MobileApprovalsService', () => {
     markChurchNotificationRead: jest.fn(),
     listCongregationFundDisplays: jest.fn(),
     reviewCongregationFundDisplay: jest.fn(),
+    updateCongregationFundDisplayDuration: jest.fn(),
+    deleteCongregationFundDisplay: jest.fn(),
   };
   let service: MobileApprovalsService;
 
@@ -75,6 +77,7 @@ describe('MobileApprovalsService', () => {
         {
           id: 'display-1',
           title: 'Building fund',
+          description: 'not part of the mobile response',
           fundAccountId: 'fund-1',
           fundAccountName: 'Building',
           fundAccountCode: 'BUILD',
@@ -85,6 +88,10 @@ describe('MobileApprovalsService', () => {
           endMode: 'to_date',
           totalAmount: 1250,
           contributionCount: 4,
+          approvalDurationMinutes: null,
+          visibleFrom: null,
+          visibleUntil: null,
+          approvalNote: null,
           createdAt: '2026-06-18T10:00:00.000Z',
           createdByUserId: 'admin-1',
           updatedAt: '2026-06-18T11:00:00.000Z',
@@ -123,4 +130,63 @@ describe('MobileApprovalsService', () => {
       );
     },
   );
+
+  it('filters approved displays by their live display status', async () => {
+    churchService.listCongregationFundDisplays.mockResolvedValue([
+      {
+        id: 'active-display',
+        approvalStatus: 'approved',
+        displayStatus: 'active',
+      },
+      {
+        id: 'scheduled-display',
+        approvalStatus: 'approved',
+        displayStatus: 'scheduled',
+      },
+      {
+        id: 'pending-display',
+        approvalStatus: 'pending',
+        displayStatus: 'pending',
+      },
+    ]);
+
+    const result = await service.listFundDisplayApprovals('church-1', {
+      status: 'approved',
+      displayStatus: 'active',
+    });
+
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0].id).toBe('active-display');
+  });
+
+  it('delegates duration changes and cancellation with tenant identity', async () => {
+    churchService.updateCongregationFundDisplayDuration.mockResolvedValue({
+      id: 'display-1',
+    });
+    churchService.deleteCongregationFundDisplay.mockResolvedValue({
+      id: 'display-1',
+      deleted: true,
+    });
+
+    await service.updateFundDisplayDuration(
+      'church-1',
+      'priest-1',
+      'display-1',
+      { durationMinutes: 60, mode: 'replace', note: 'Updated' },
+    );
+    await service.cancelFundDisplay('church-1', 'priest-1', 'display-1');
+
+    expect(
+      churchService.updateCongregationFundDisplayDuration,
+    ).toHaveBeenCalledWith('church-1', 'priest-1', 'display-1', {
+      durationMinutes: 60,
+      mode: 'replace',
+      note: 'Updated',
+    });
+    expect(churchService.deleteCongregationFundDisplay).toHaveBeenCalledWith(
+      'church-1',
+      'priest-1',
+      'display-1',
+    );
+  });
 });

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -22,6 +23,7 @@ interface MobileApprovalRequest {
 interface MobileApprovalBody {
   [key: string]: unknown;
   durationMinutes?: number;
+  mode?: 'replace' | 'extend';
   note?: string;
 }
 
@@ -97,6 +99,36 @@ export class MobileApprovalsController {
       displayId,
       'reject',
       { note: body?.note },
+    );
+  }
+
+  @Post('fund-display-approvals/:displayId/duration')
+  updateFundDisplayDuration(
+    @Request() req: MobileApprovalRequest,
+    @Param('displayId') displayId: string,
+    @Body() body: MobileApprovalBody,
+  ) {
+    return this.mobileApprovalsService.updateFundDisplayDuration(
+      req.user.churchId,
+      req.user.id,
+      displayId,
+      {
+        durationMinutes: body?.durationMinutes,
+        mode: body?.mode,
+        note: body?.note,
+      },
+    );
+  }
+
+  @Delete('fund-display-approvals/:displayId')
+  cancelFundDisplay(
+    @Request() req: MobileApprovalRequest,
+    @Param('displayId') displayId: string,
+  ) {
+    return this.mobileApprovalsService.cancelFundDisplay(
+      req.user.churchId,
+      req.user.id,
+      displayId,
     );
   }
 }

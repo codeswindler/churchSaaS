@@ -25,10 +25,17 @@ export class MobileApprovalsService {
     const displays =
       await this.churchService.listCongregationFundDisplays(churchId);
     const status = `${query?.status || 'pending'}`.trim().toLowerCase();
-    const filtered =
+    const byApproval =
       status === 'all'
         ? displays
         : displays.filter((display) => display.approvalStatus === status);
+    const displayStatus = `${query?.displayStatus || ''}`.trim().toLowerCase();
+    const filtered = displayStatus
+      ? byApproval.filter(
+          (display) =>
+            `${display.displayStatus || ''}`.toLowerCase() === displayStatus,
+        )
+      : byApproval;
 
     return { data: filtered.map((display) => this.mapDisplay(display)) };
   }
@@ -52,10 +59,37 @@ export class MobileApprovalsService {
     );
   }
 
+  updateFundDisplayDuration(
+    churchId: string,
+    userId: string,
+    displayId: string,
+    options: {
+      durationMinutes?: number | string | null;
+      mode?: 'replace' | 'extend' | null;
+      note?: string | null;
+    },
+  ) {
+    return this.churchService.updateCongregationFundDisplayDuration(
+      churchId,
+      userId,
+      displayId,
+      options,
+    );
+  }
+
+  cancelFundDisplay(churchId: string, userId: string, displayId: string) {
+    return this.churchService.deleteCongregationFundDisplay(
+      churchId,
+      userId,
+      displayId,
+    );
+  }
+
   private mapDisplay(display: any) {
     return {
       id: display.id,
       title: display.title || null,
+      description: display.description || null,
       fundAccountId: display.fundAccountId,
       fundAccountName: display.fundAccountName,
       fundAccountCode: display.fundAccountCode || null,
@@ -66,6 +100,10 @@ export class MobileApprovalsService {
       endMode: display.endMode,
       totalAmount: Number(display.totalAmount || 0),
       contributionCount: Number(display.contributionCount || 0),
+      approvalDurationMinutes: display.approvalDurationMinutes || null,
+      visibleFrom: display.visibleFrom || null,
+      visibleUntil: display.visibleUntil || null,
+      approvalNote: display.approvalNote || null,
       createdAt: display.createdAt || null,
       createdByUserId:
         display.createdByUserId || display.requestedByUserId || null,
