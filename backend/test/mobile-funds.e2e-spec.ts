@@ -37,6 +37,7 @@ describe('Mobile funds API contracts (e2e)', () => {
   const secret = 'mobile-funds-contract-secret';
   const authService = { mobileFundsLogin: jest.fn() };
   const fundsService = {
+    getAnalysis: jest.fn(),
     getDashboard: jest.fn(),
     getSummary: jest.fn(),
     listTransactions: jest.fn(),
@@ -129,7 +130,6 @@ describe('Mobile funds API contracts (e2e)', () => {
         id: 'church-1',
         name: 'Test Church',
         slug: 'test-church',
-        billingModel: 'commission',
       },
     });
 
@@ -157,7 +157,6 @@ describe('Mobile funds API contracts (e2e)', () => {
         id: 'church-1',
         name: 'Test Church',
         slug: 'test-church',
-        billingModel: 'commission',
       },
     });
   });
@@ -175,9 +174,6 @@ describe('Mobile funds API contracts (e2e)', () => {
       totals: {
         totalReceived: 950,
         totalAmount: 950,
-        grossAmount: 1000,
-        commissionAmount: 50,
-        netAmount: 950,
         mpesaAmount: 950,
         cashAmount: 0,
         contributionCount: 1,
@@ -208,10 +204,7 @@ describe('Mobile funds API contracts (e2e)', () => {
       data: [
         {
           id: 'contribution-1',
-          amount: 100,
-          grossAmount: 100,
-          commissionAmount: 5,
-          netAmount: 95,
+          amount: 95,
           fundAccountId: 'fund-1',
           fundAccountName: 'Tithe',
           fundAccountCode: 'tithe',
@@ -237,6 +230,59 @@ describe('Mobile funds API contracts (e2e)', () => {
       expect.objectContaining({ search: 'Geoffrey', page: '1', limit: '25' }),
     );
     expect(response.body).toEqual(transactions);
+  });
+
+  it('returns calendar and contributor analysis scoped to the token church', async () => {
+    const analysis = {
+      church: { id: 'church-1', name: 'Test Church', slug: 'test-church' },
+      period: {
+        from: '2026-06-01',
+        to: '2026-06-30',
+        fundAccountId: null,
+        channel: null,
+        status: 'confirmed',
+        contributorId: null,
+      },
+      totals: {
+        totalReceived: 1250,
+        totalAmount: 1250,
+        mpesaAmount: 1250,
+        cashAmount: 0,
+        contributionCount: 4,
+      },
+      dailyTotals: [
+        { date: '2026-06-18', totalAmount: 1250, count: 4 },
+      ],
+      trendData: [{ date: '2026-06-18', totalAmount: 1250, count: 4 }],
+      fundAccountTotals: [],
+      contributorTotals: [
+        {
+          contributorId: 'giver-1',
+          contributorName: 'Grace',
+          phone: '254700000000',
+          totalAmount: 1250,
+          count: 4,
+        },
+      ],
+    };
+    fundsService.getAnalysis.mockResolvedValue(analysis);
+
+    const response = await request(app.getHttpServer())
+      .get(
+        '/api/mobile/funds/analysis?from=2026-06-01&to=2026-06-30&status=confirmed',
+      )
+      .set('Authorization', `Bearer ${signMobileToken()}`)
+      .expect(200);
+
+    expect(fundsService.getAnalysis).toHaveBeenCalledWith(
+      'church-1',
+      expect.objectContaining({
+        from: '2026-06-01',
+        to: '2026-06-30',
+        status: 'confirmed',
+      }),
+    );
+    expect(response.body).toEqual(analysis);
   });
 
   it('keeps the exact fundAccounts envelope and fields', async () => {

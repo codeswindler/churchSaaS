@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
@@ -31,6 +32,17 @@ export enum ContributionSourceType {
 }
 
 @Entity('contributions')
+@Index('IDX_contributions_church_status_date', [
+  'churchId',
+  'status',
+  'receivedAt',
+])
+@Index('IDX_contributions_church_fund_status_date', [
+  'churchId',
+  'fundAccountId',
+  'status',
+  'receivedAt',
+])
 export class Contribution {
   @PrimaryGeneratedColumn('uuid')
   id: string;

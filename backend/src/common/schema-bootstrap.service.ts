@@ -470,6 +470,26 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
             AND \`providerRequestId\` IS NOT NULL
             AND \`notes\` LIKE 'M-Pesa C2B confirmation%'
         `);
+        if (
+          !contributions.indices.some(
+            (index) =>
+              index.name === 'IDX_contributions_church_status_date',
+          )
+        ) {
+          await queryRunner.query(
+            'CREATE INDEX `IDX_contributions_church_status_date` ON `contributions` (`churchId`, `status`, `receivedAt`)',
+          );
+        }
+        if (
+          !contributions.indices.some(
+            (index) =>
+              index.name === 'IDX_contributions_church_fund_status_date',
+          )
+        ) {
+          await queryRunner.query(
+            'CREATE INDEX `IDX_contributions_church_fund_status_date` ON `contributions` (`churchId`, `fundAccountId`, `status`, `receivedAt`)',
+          );
+        }
       }
     } finally {
       await queryRunner.release();
@@ -686,10 +706,35 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
             \`updatedAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
             PRIMARY KEY (\`id\`),
             INDEX \`IDX_sms_outbox_church_created\` (\`churchId\`, \`createdAt\`),
+            INDEX \`IDX_sms_outbox_church_contributor_created\` (\`churchId\`, \`contributorId\`, \`createdAt\`),
+            INDEX \`IDX_sms_outbox_church_mobile_created\` (\`churchId\`, \`recipientMobile\`, \`createdAt\`),
             INDEX \`IDX_sms_outbox_provider_message\` (\`providerMessageId\`)
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `);
         this.logger.log('Created SMS outbox table.');
+      }
+      const currentOutbox = await queryRunner.getTable('sms_outbox');
+      if (
+        currentOutbox &&
+        !currentOutbox.indices.some(
+          (index) =>
+            index.name === 'IDX_sms_outbox_church_contributor_created',
+        )
+      ) {
+        await queryRunner.query(
+          'CREATE INDEX `IDX_sms_outbox_church_contributor_created` ON `sms_outbox` (`churchId`, `contributorId`, `createdAt`)',
+        );
+      }
+      if (
+        currentOutbox &&
+        !currentOutbox.indices.some(
+          (index) =>
+            index.name === 'IDX_sms_outbox_church_mobile_created',
+        )
+      ) {
+        await queryRunner.query(
+          'CREATE INDEX `IDX_sms_outbox_church_mobile_created` ON `sms_outbox` (`churchId`, `recipientMobile`, `createdAt`)',
+        );
       }
 
       const purchases = await queryRunner.getTable('sms_unit_purchases');

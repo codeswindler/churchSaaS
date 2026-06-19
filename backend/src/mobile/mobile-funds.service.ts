@@ -51,29 +51,44 @@ export class MobileFundsService {
     };
   }
 
+  async getAnalysis(churchId: string, query: any = {}) {
+    const [church, analysis] = await Promise.all([
+      this.churchRepo.findOne({ where: { id: churchId } }),
+      this.contributionsService.getChurchMobileAnalysis(churchId, query),
+    ]);
+    if (!church) {
+      throw new NotFoundException('Church not found');
+    }
+
+    return {
+      church: {
+        id: church.id,
+        name: church.name,
+        slug: church.slug,
+      },
+      period: this.buildPeriod(query),
+      totals: this.mapTotals(analysis.totals),
+      dailyTotals: analysis.dailyTotals || [],
+      trendData: analysis.trendData || [],
+      fundAccountTotals: analysis.fundAccountTotals || [],
+      contributorTotals: analysis.contributorTotals || [],
+    };
+  }
+
   async listTransactions(churchId: string, query: any = {}) {
-    const page = Math.max(Number(query.page || 1), 1);
-    const limit = Math.min(Math.max(Number(query.limit || 25), 1), 100);
     const filterQuery = {
       ...query,
       contributor: query.contributor || query.search || undefined,
+      page: Math.max(Number(query.page || 1), 1),
+      limit: Math.min(Math.max(Number(query.limit || 25), 1), 100),
     };
-    const allContributions =
-      await this.contributionsService.listChurchContributions(
-        churchId,
-        filterQuery,
-      );
-    const start = (page - 1) * limit;
-    const records = allContributions.slice(start, start + limit);
-
+    const result = await this.contributionsService.listChurchContributionsPage(
+      churchId,
+      filterQuery,
+    );
     return {
-      data: records.map((item) => this.mapContribution(item)),
-      pagination: {
-        page,
-        limit,
-        total: allContributions.length,
-        totalPages: Math.max(Math.ceil(allContributions.length / limit), 1),
-      },
+      data: result.items.map((item: any) => this.mapContribution(item)),
+      pagination: result.pagination,
     };
   }
 
@@ -104,31 +119,25 @@ export class MobileFundsService {
       fundAccountId: query.fundAccountId || null,
       channel: query.channel || null,
       status: query.status || null,
+      contributorId: query.contributorId || null,
     };
   }
 
   private mapTotals(totals: any) {
     return {
-      totalReceived: Number(totals?.netAmount ?? totals?.totalAmount ?? 0),
+      totalReceived: Number(totals?.totalAmount || 0),
       totalAmount: Number(totals?.totalAmount || 0),
-      grossAmount: Number(totals?.grossAmount || 0),
-      commissionAmount: Number(totals?.commissionAmount || 0),
-      netAmount: Number(totals?.netAmount ?? totals?.totalAmount ?? 0),
       mpesaAmount: Number(totals?.mpesaAmount || 0),
       cashAmount: Number(totals?.cashAmount || 0),
       contributionCount: Number(totals?.contributionCount || 0),
     };
   }
 
-  private mapContribution(item: Contribution) {
-    const grossAmount = Number(item.amount || 0);
-    const commissionAmount = Number(item.commissionAmount || 0);
+  private mapContribution(item: Contribution | any) {
     return {
       id: item.id,
-      amount: grossAmount,
-      grossAmount,
-      commissionAmount,
-      netAmount: Number((grossAmount - commissionAmount).toFixed(2)),
+      amount: Number(item.amount || 0),
+      contributorId: item.contributorId || null,
       fundAccountId: item.fundAccountId,
       fundAccountName: item.fundAccountName,
       fundAccountCode: item.fundAccount?.code || null,

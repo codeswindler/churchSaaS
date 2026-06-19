@@ -24,11 +24,12 @@ import {
   WalletCards,
   type LucideIcon,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { BrandLogo } from '../components/BrandLogo';
 import { CountdownBadge } from '../components/CountdownBadge';
+import { PageActionsProvider } from '../context/PageActionsContext';
 import api, {
   clearSession,
   getChurchUserPermissions,
@@ -278,6 +279,7 @@ export function AppShell({ userType }: AppShellProps) {
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [pageActions, setPageActions] = useState<ReactNode>(null);
   const [profileForm, setProfileForm] = useState({
     name: '',
     email: '',
@@ -690,7 +692,7 @@ export function AppShell({ userType }: AppShellProps) {
               </div>
 
               {userType === 'church' &&
-              subscription?.billingModel === 'subscription' ? (
+              subscription?.usesCountdown ? (
                 <CountdownBadge
                   status={subscription.status}
                   expiresAt={subscription.expiresAt}
@@ -703,11 +705,16 @@ export function AppShell({ userType }: AppShellProps) {
           ) : (
             <div className="shell-toolbar">
               <div className="shell-toolbar-chip">{currentPage.title}</div>
-              {notificationButton}
+              <div className="shell-toolbar-actions">
+                {pageActions}
+                {notificationButton}
+              </div>
             </div>
           )}
 
-          <Outlet />
+          <PageActionsProvider setPageActions={setPageActions}>
+            <Outlet />
+          </PageActionsProvider>
         </main>
       </div>
 

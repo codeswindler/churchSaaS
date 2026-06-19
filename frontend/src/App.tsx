@@ -30,6 +30,7 @@ import PlatformSenders from './pages/platform/Senders';
 import PlatformUsers from './pages/platform/Users';
 import PublicCongregation from './pages/public/Congregation';
 import PublicGive from './pages/public/Give';
+import PublicFunds from './pages/public/Funds';
 import { getPortalPath, getSession } from './services/api';
 
 function PublicEntry() {
@@ -59,6 +60,8 @@ export default function App() {
         <Route path="/layout-diagnostics" element={<LayoutDiagnosticsPage />} />
         <Route path="/c/:slug" element={<PublicCongregation />} />
         <Route path="/c/:slug/give" element={<PublicGive />} />
+        <Route path="/c/:slug/funds" element={<PublicFunds />} />
+        <Route path="/c/:slug/funds/:displayId" element={<PublicFunds />} />
         <Route path="/display/church-presentation" element={<PresentationDisplay />} />
 
         <Route

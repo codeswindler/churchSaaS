@@ -19,7 +19,10 @@ import {
   normalizeChurchRole,
   normalizeFeatureList,
 } from '../common/access-control';
-import { sanitizeChurchForTenant } from '../common/church.utils';
+import {
+  sanitizeChurchForTenant,
+  sanitizeSubscriptionForTenant,
+} from '../common/church.utils';
 import { getDefaultReceiptTemplateForFundCode } from '../common/receipt-templates';
 import { ContributionsService } from '../contributions/contributions.service';
 import {
@@ -136,6 +139,7 @@ export class ChurchService {
     string,
     Promise<any>
   >();
+  private readonly discipleshipLastSyncedAt = new Map<string, number>();
   private fundDisplayCleanupRunning = false;
 
   constructor(
@@ -188,10 +192,11 @@ export class ChurchService {
 
     const enabledFeatures = normalizeFeatureList(church.enabledFeatures);
     const financeEnabled = enabledFeatures.includes(ChurchFeature.FINANCE);
-    const subscription =
+    const rawSubscription =
       await this.churchSubscriptionsService.getChurchSubscriptionStatus(
         churchId,
       );
+    const subscription = sanitizeSubscriptionForTenant(rawSubscription);
 
     if (!financeEnabled) {
       return {
@@ -263,10 +268,17 @@ export class ChurchService {
   }
 
   async getDiscipleshipSummary(churchId: string) {
-    await this.runDiscipleshipTransactionSync(churchId);
+    this.triggerDiscipleshipTransactionSync(churchId);
     const today = this.getNairobiDateParts();
     const monthStart = `${today.date.slice(0, 8)}01`;
-    const [totalMembers, activeMembers, newThisMonth, groups, presentToday] =
+    const [
+      totalMembers,
+      activeMembers,
+      newThisMonth,
+      groups,
+      presentToday,
+      pendingMatches,
+    ] =
       await Promise.all([
         this.discipleshipMemberRepo.count({ where: { churchId } }),
         this.discipleshipMemberRepo.count({
@@ -282,6 +294,12 @@ export class ChurchService {
         }),
         this.discipleshipAttendanceRepo.count({
           where: { churchId, attendanceDate: today.date },
+        }),
+        this.discipleshipMatchCandidateRepo.count({
+          where: {
+            churchId,
+            status: DiscipleshipMatchCandidateStatus.PENDING,
+          },
         }),
       ]);
 
@@ -301,13 +319,15 @@ export class ChurchService {
         newThisMonth,
         activeGroups: groups,
         presentToday,
+        duplicateReviews: pendingMatches,
       },
       recentAttendance,
+      syncing: this.discipleshipTransactionSyncs.has(churchId),
     };
   }
 
   async listDiscipleshipGroups(churchId: string) {
-    await this.runDiscipleshipTransactionSync(churchId);
+    this.triggerDiscipleshipTransactionSync(churchId);
     const groups = await this.discipleshipGroupRepo.find({
       where: { churchId },
       order: { isActive: 'DESC', name: 'ASC' },
@@ -401,7 +421,9 @@ export class ChurchService {
   }
 
   async listDiscipleshipMembers(churchId: string, query: any = {}) {
-    await this.runDiscipleshipTransactionSync(churchId);
+    this.triggerDiscipleshipTransactionSync(churchId);
+    const page = Math.max(Number(query.page || 1), 1);
+    const limit = Math.min(Math.max(Number(query.limit || 25), 1), 100);
     const qb = this.discipleshipMemberRepo
       .createQueryBuilder('member')
       .where('member.churchId = :churchId', { churchId })
@@ -432,12 +454,31 @@ export class ChurchService {
       });
       const memberIds = memberships.map((item) => item.memberId);
       if (memberIds.length === 0) {
-        return [];
+        return {
+          items: [],
+          pagination: { page, limit, total: 0, totalPages: 1 },
+          syncing: this.discipleshipTransactionSyncs.has(churchId),
+        };
       }
       qb.andWhere('member.id IN (:...memberIds)', { memberIds });
     }
 
-    return this.withDiscipleshipMemberGroups(await qb.getMany());
+    const [members, total] = await qb
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+    return {
+      items: await this.withDiscipleshipMemberGroups(members, {
+        includeContributionSummary: false,
+      }),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(Math.ceil(total / limit), 1),
+      },
+      syncing: this.discipleshipTransactionSyncs.has(churchId),
+    };
   }
 
   async createDiscipleshipMember(
@@ -805,7 +846,7 @@ export class ChurchService {
   }
 
   async listDiscipleshipMatchCandidates(churchId: string) {
-    await this.runDiscipleshipTransactionSync(churchId);
+    this.triggerDiscipleshipTransactionSync(churchId);
     return this.discipleshipMatchCandidateRepo.find({
       where: {
         churchId,
@@ -817,7 +858,7 @@ export class ChurchService {
   }
 
   async listDiscipleshipDuplicateMemberClusters(churchId: string) {
-    await this.runDiscipleshipTransactionSync(churchId);
+    this.triggerDiscipleshipTransactionSync(churchId);
     const members = await this.discipleshipMemberRepo.find({
       where: { churchId },
       order: { createdAt: 'ASC' },
@@ -1031,7 +1072,7 @@ export class ChurchService {
         : null) || this.sortDiscipleshipMergeCandidates(members)[0];
     const duplicates = members.filter((member) => member.id !== canonical.id);
     await this.mergeDiscipleshipMemberRecords(churchId, canonical, duplicates);
-    await this.runDiscipleshipTransactionSync(churchId);
+    await this.runDiscipleshipTransactionSync(churchId, true);
     return {
       review,
       merged: true,
@@ -1112,7 +1153,7 @@ export class ChurchService {
     );
     candidate.status = DiscipleshipMatchCandidateStatus.CONFIRMED;
     await this.discipleshipMatchCandidateRepo.save(candidate);
-    await this.runDiscipleshipTransactionSync(churchId);
+    await this.runDiscipleshipTransactionSync(churchId, true);
     return candidate;
   }
 
@@ -1210,7 +1251,7 @@ export class ChurchService {
       }
     }
 
-    await this.runDiscipleshipTransactionSync(churchId);
+    await this.runDiscipleshipTransactionSync(churchId, true);
     return {
       totalRows: matrix.length - 1,
       matched,
@@ -1221,7 +1262,7 @@ export class ChurchService {
   }
 
   async listDiscipleshipAttendance(churchId: string, query: any = {}) {
-    await this.runDiscipleshipTransactionSync(churchId);
+    this.triggerDiscipleshipTransactionSync(churchId);
     const qb = this.discipleshipAttendanceRepo
       .createQueryBuilder('attendance')
       .leftJoinAndSelect('attendance.member', 'member')
@@ -1257,14 +1298,63 @@ export class ChurchService {
   }
 
   async getDiscipleshipMember(churchId: string, memberId: string) {
-    await this.runDiscipleshipTransactionSync(churchId);
+    this.triggerDiscipleshipTransactionSync(churchId);
     const member = await this.discipleshipMemberRepo.findOne({
       where: { id: memberId, churchId },
     });
     if (!member) {
       throw new NotFoundException('Discipleship member not found');
     }
-    return (await this.withDiscipleshipMemberGroups([member]))[0];
+    const detailed = (await this.withDiscipleshipMemberGroups([member]))[0];
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    const ninetyDayDate = this.getNairobiDateParts(
+      ninetyDaysAgo.toISOString(),
+    ).date;
+    const [latestAttendance, attendanceCount90Days] = await Promise.all([
+      this.discipleshipAttendanceRepo.findOne({
+        where: { churchId, memberId },
+        order: { attendanceDate: 'DESC', createdAt: 'DESC' },
+      }),
+      this.discipleshipAttendanceRepo
+        .createQueryBuilder('attendance')
+        .where('attendance.churchId = :churchId', { churchId })
+        .andWhere('attendance.memberId = :memberId', { memberId })
+        .andWhere('attendance.attendanceDate >= :ninetyDayDate', {
+          ninetyDayDate,
+        })
+        .getCount(),
+    ]);
+    const contributionDates = detailed.contributionSummary?.dates || [];
+    const oldestContribution =
+      contributionDates.length > 0
+        ? contributionDates[contributionDates.length - 1]?.date
+        : null;
+    return {
+      ...detailed,
+      contributionSummary: {
+        ...detailed.contributionSummary,
+        dates: contributionDates.slice(0, 12),
+        contributions: (
+          detailed.contributionSummary?.contributions || []
+        ).slice(0, 25),
+      },
+      activitySummary: {
+        enrollmentDate: detailed.enrollmentDate || null,
+        firstContributionAt: oldestContribution,
+        latestContributionAt:
+          detailed.contributionSummary?.latestContributionAt || null,
+        contributionCount:
+          detailed.contributionSummary?.contributionCount || 0,
+        contributionTotal:
+          detailed.contributionSummary?.totalAmount || 0,
+        latestAttendanceAt: latestAttendance?.attendanceDate || null,
+        attendanceCount90Days,
+        averageAttendancePerMonth: Number(
+          (attendanceCount90Days / 3).toFixed(1),
+        ),
+      },
+    };
   }
 
   async markDiscipleshipAttendance(
@@ -1349,8 +1439,10 @@ export class ChurchService {
   }
 
   async getSubscriptionStatus(churchId: string) {
-    return this.churchSubscriptionsService.getChurchSubscriptionStatus(
-      churchId,
+    return sanitizeSubscriptionForTenant(
+      await this.churchSubscriptionsService.getChurchSubscriptionStatus(
+        churchId,
+      ),
     );
   }
 
@@ -1576,7 +1668,10 @@ export class ChurchService {
   }
 
   async listContributions(churchId: string, query: any) {
-    return this.contributionsService.listChurchContributions(churchId, query);
+    return this.contributionsService.listChurchContributionsPage(
+      churchId,
+      query,
+    );
   }
 
   async createManualContribution(churchId: string, userId: string, body: any) {
@@ -1726,6 +1821,10 @@ export class ChurchService {
     return this.smsService.listOutbox(churchId, query);
   }
 
+  async listSmsOutboxRecipients(churchId: string, query: any = {}) {
+    return this.smsService.listOutboxRecipients(churchId, query);
+  }
+
   async fetchSmsDeliveryReport(churchId: string, messageId: string) {
     return this.smsService.fetchOutboxDeliveryReport(churchId, messageId);
   }
@@ -1739,7 +1838,7 @@ export class ChurchService {
   }
 
   async exportSmsOutboxCsv(churchId: string, query: any = {}) {
-    const rows = await this.smsService.listOutbox(churchId, query);
+    const rows = await this.smsService.listOutboxRows(churchId, query);
     const header = [
       'Date',
       'Recipient',
@@ -2749,21 +2848,59 @@ export class ChurchService {
     );
   }
 
-  private async runDiscipleshipTransactionSync(churchId: string) {
+  private triggerDiscipleshipTransactionSync(churchId: string) {
+    void this.runDiscipleshipTransactionSync(churchId).catch((error: any) => {
+      this.logger.warn(
+        `Discipleship background sync failed for church=${churchId}: ${error?.message || error}`,
+      );
+    });
+  }
+
+  private async runDiscipleshipTransactionSync(
+    churchId: string,
+    force = false,
+  ) {
     const existing = this.discipleshipTransactionSyncs.get(churchId);
     if (existing) {
       return existing;
     }
+    const lastSyncedAt = this.discipleshipLastSyncedAt.get(churchId) || 0;
+    if (!force && Date.now() - lastSyncedAt < 60_000) {
+      return null;
+    }
 
     const sync = this.syncTransactionalDiscipleshipMembersUnsafe(
       churchId,
-    ).finally(() => {
-      if (this.discipleshipTransactionSyncs.get(churchId) === sync) {
-        this.discipleshipTransactionSyncs.delete(churchId);
-      }
-    });
+    )
+      .then((result) => {
+        this.discipleshipLastSyncedAt.set(churchId, Date.now());
+        return result;
+      })
+      .finally(() => {
+        if (this.discipleshipTransactionSyncs.get(churchId) === sync) {
+          this.discipleshipTransactionSyncs.delete(churchId);
+        }
+      });
     this.discipleshipTransactionSyncs.set(churchId, sync);
     return sync;
+  }
+
+  @Interval(60_000)
+  async syncRecentDiscipleshipTransactions() {
+    const cutoff = new Date(Date.now() - 2 * 60_000);
+    const rows = await this.contributionRepo
+      .createQueryBuilder('contribution')
+      .select('DISTINCT contribution.churchId', 'churchId')
+      .where('contribution.status = :status', {
+        status: ContributionStatus.CONFIRMED,
+      })
+      .andWhere('contribution.updatedAt >= :cutoff', { cutoff })
+      .getRawMany();
+    rows.forEach((row) => {
+      if (row.churchId) {
+        this.triggerDiscipleshipTransactionSync(row.churchId);
+      }
+    });
   }
 
   private async syncTransactionalDiscipleshipMembersUnsafe(churchId: string) {
@@ -4546,8 +4683,6 @@ export class ChurchService {
         )
       : {
           totalAmount: 0,
-          grossAmount: 0,
-          commissionAmount: 0,
           contributionCount: 0,
           lastContributionAt: null,
         };
@@ -4625,8 +4760,6 @@ export class ChurchService {
     const commissionAmount = Number(raw?.commissionAmount || 0);
     return {
       totalAmount: Number((grossAmount - commissionAmount).toFixed(2)),
-      grossAmount,
-      commissionAmount,
       contributionCount: Number(raw?.contributionCount || 0),
       lastContributionAt: raw?.lastContributionAt || null,
     };
@@ -5008,7 +5141,10 @@ export class ChurchService {
     }
   }
 
-  private async withDiscipleshipMemberGroups(members: DiscipleshipMember[]) {
+  private async withDiscipleshipMemberGroups(
+    members: DiscipleshipMember[],
+    options: { includeContributionSummary?: boolean } = {},
+  ) {
     if (members.length === 0) {
       return [];
     }
@@ -5053,7 +5189,9 @@ export class ChurchService {
       linksByMemberId.set(link.memberId, items);
     });
     const contributionSummaryByMemberId =
-      await this.getDiscipleshipContributionSummaries(members);
+      options.includeContributionSummary === false
+        ? new Map<string, any>()
+        : await this.getDiscipleshipContributionSummaries(members);
 
     return members.map((member) => ({
       ...member,
@@ -5066,13 +5204,19 @@ export class ChurchService {
       pendingMatchCount: pendingMatches.filter(
         (candidate) => candidate.candidateMemberId === member.id,
       ).length,
-      contributionSummary: contributionSummaryByMemberId.get(member.id) || {
-        totalAmount: 0,
-        contributionCount: 0,
-        latestContributionAt: null,
-        dates: [],
-        contributions: [],
-      },
+      ...(options.includeContributionSummary === false
+        ? {}
+        : {
+            contributionSummary: contributionSummaryByMemberId.get(
+              member.id,
+            ) || {
+              totalAmount: 0,
+              contributionCount: 0,
+              latestContributionAt: null,
+              dates: [],
+              contributions: [],
+            },
+          }),
     }));
   }
 

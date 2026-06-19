@@ -132,12 +132,35 @@ export default function ChurchMessaging() {
   const [selectedAddressBookId, setSelectedAddressBookId] = useState('');
   const [filters, setFilters] = useState(initialOutboxFilters);
   const [isOutboxFiltersOpen, setIsOutboxFiltersOpen] = useState(false);
+  const [outboxMode, setOutboxMode] = useState<'simple' | 'detailed'>(
+    'simple',
+  );
+  const [recipientSearch, setRecipientSearch] = useState('');
+  const [debouncedRecipientSearch, setDebouncedRecipientSearch] = useState('');
+  const [selectedRecipient, setSelectedRecipient] = useState<any | null>(null);
+  const [outboxPage, setOutboxPage] = useState(1);
   const [selectedOutboxMessage, setSelectedOutboxMessage] =
     useState<any | null>(null);
   const [paymentPhone, setPaymentPhone] = useState('');
   const [activePurchase, setActivePurchase] = useState<any | null>(null);
   const [sendCountdown, setSendCountdown] = useState<number | null>(null);
-  const queryString = useMemo(() => toQueryString(filters), [filters]);
+  const queryString = useMemo(
+    () =>
+      toQueryString(
+        outboxMode === 'detailed'
+          ? {
+              ...filters,
+              page: String(outboxPage),
+              limit: '50',
+            }
+          : {
+              page: String(outboxPage),
+              limit: '25',
+              recipientKey: selectedRecipient?.recipientKey || '',
+            },
+      ),
+    [filters, outboxMode, outboxPage, selectedRecipient?.recipientKey],
+  );
   const messageMetrics = getGsm7SmsMetrics(form.message);
   const hasSelectedAudience =
     form.fundAccountIds.length > 0 ||
@@ -164,6 +187,19 @@ export default function ChurchMessaging() {
   const selectedOutboxMetrics = selectedOutboxMessage
     ? getGsm7SmsMetrics(selectedOutboxMessage.messageBody || '')
     : null;
+
+  useEffect(() => {
+    const search = recipientSearch.trim();
+    if (search.length < 2) {
+      setDebouncedRecipientSearch('');
+      return;
+    }
+    const timeout = window.setTimeout(
+      () => setDebouncedRecipientSearch(search),
+      250,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [recipientSearch]);
 
   const { data: messagingConfig, isLoading: messagingConfigLoading } = useQuery({
     queryKey: ['church-messaging-config'],
@@ -197,8 +233,28 @@ export default function ChurchMessaging() {
         .then((response) => response.data),
   });
 
+  const { data: recipientResults = [], isFetching: recipientsLoading } =
+    useQuery<any[]>({
+      queryKey: ['church-sms-outbox-recipients', debouncedRecipientSearch],
+      enabled:
+        activeWorkspace === 'outbox' &&
+        outboxMode === 'simple' &&
+        debouncedRecipientSearch.length >= 2,
+      queryFn: () =>
+        api
+          .get(
+            `/church/messaging/outbox/recipients?search=${encodeURIComponent(
+              debouncedRecipientSearch,
+            )}`,
+          )
+          .then((response) => response.data),
+    });
+
   const { data: outbox, isLoading } = useQuery({
     queryKey: ['church-sms-outbox', queryString],
+    enabled:
+      activeWorkspace === 'outbox' &&
+      (outboxMode === 'detailed' || Boolean(selectedRecipient?.recipientKey)),
     queryFn: () =>
       api
         .get(`/church/messaging/outbox${queryString ? `?${queryString}` : ''}`)
@@ -231,7 +287,8 @@ export default function ChurchMessaging() {
   );
   const defaultShortcode =
     messagingConfig?.defaultSmsShortcode || shortcodes[0] || '';
-  const outboxRows = outbox || [];
+  const outboxRows = outbox?.items || [];
+  const outboxPagination = outbox?.pagination;
   const books = addressBooks || [];
   const messagePreview = renderSmsPreviewPlaceholders(form.message);
   const selectedBook =
@@ -261,6 +318,19 @@ export default function ChurchMessaging() {
       }));
     }
   }, [selectedBook?.id, uploadForm.addressBookId]);
+
+  useEffect(() => {
+    setOutboxPage(1);
+  }, [
+    filters.deliveryStatus,
+    filters.from,
+    filters.search,
+    filters.sendStatus,
+    filters.to,
+    filters.type,
+    outboxMode,
+    selectedRecipient?.recipientKey,
+  ]);
 
   const createPurchaseMutation = useMutation({
     mutationFn: async (payload: typeof quotePayload & { payerPhone: string }) => {
@@ -898,7 +968,7 @@ export default function ChurchMessaging() {
 
               <div className="lg:col-span-2">
                 <label className="label">Fund account contributors</label>
-                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                <div className="messaging-choice-grid grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                   {fundAccounts.map((fundAccount: any) => {
                     const isSelected = form.fundAccountIds.includes(
                       fundAccount.id,
@@ -933,7 +1003,7 @@ export default function ChurchMessaging() {
 
               <div className="lg:col-span-2">
                 <label className="label">Address book groups</label>
-                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                <div className="messaging-choice-grid grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                   {books.map((book: any) => {
                     const isSelected = form.addressBookIds.includes(book.id);
                     return (
@@ -1533,243 +1603,400 @@ export default function ChurchMessaging() {
 
       {activeWorkspace === 'outbox' ? (
         <section className="space-y-5">
-          <section className="panel p-5 sm:p-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div className="flex items-start gap-3">
-                <SlidersHorizontal className="mt-1 text-amber-200" size={18} />
-                <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-                  Outbox Filters
-                </p>
-                <h3 className="mt-2 text-2xl font-semibold text-white">
-                  Review provider and delivery activity
-                </h3>
-                </div>
-              </div>
-              <div className="flex w-full flex-col gap-2 sm:flex-row lg:max-w-xl">
-                <div className="relative min-w-0 flex-1">
-                  <Search
-                    className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-stone-400"
-                    size={17}
-                  />
-                  <input
-                    aria-label="Search outbox recipients"
-                    className="input pl-11"
-                    placeholder="Search recipient name or phone"
-                    value={filters.search}
-                    onChange={(event) =>
-                      setFilters((current) => ({
-                        ...current,
-                        search: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <button
-                  aria-expanded={isOutboxFiltersOpen}
-                  className="btn-secondary justify-center"
-                  type="button"
-                  onClick={() => setIsOutboxFiltersOpen((current) => !current)}
-                >
-                  <SlidersHorizontal size={16} />
-                  More filters
-                  <ChevronDown
-                    className={`transition ${isOutboxFiltersOpen ? 'rotate-180' : ''}`}
-                    size={16}
-                  />
-                </button>
-              </div>
-            </div>
+          <div className="flex justify-end">
+            <button
+              className="btn-secondary justify-center"
+              type="button"
+              onClick={() => {
+                setOutboxMode((current) =>
+                  current === 'simple' ? 'detailed' : 'simple',
+                );
+                setSelectedRecipient(null);
+              }}
+            >
+              {outboxMode === 'simple'
+                ? 'Detailed Outbox'
+                : 'Simple recipient search'}
+            </button>
+          </div>
 
-            {isOutboxFiltersOpen ? (
-            <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-              <div>
-                <label className="label">From</label>
-                <input
-                  className="input"
-                  type="date"
-                  value={filters.from}
-                  onChange={(event) =>
-                    setFilters((current) => ({
-                      ...current,
-                      from: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-              <div>
-                <label className="label">To</label>
-                <input
-                  className="input"
-                  type="date"
-                  value={filters.to}
-                  onChange={(event) =>
-                    setFilters((current) => ({
-                      ...current,
-                      to: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-              <div>
-                <label className="label">Type</label>
-                <select
-                  className="input"
-                  value={filters.type}
-                  onChange={(event) =>
-                    setFilters((current) => ({
-                      ...current,
-                      type: event.target.value,
-                    }))
-                  }
-                >
-                  <option value="">All</option>
-                  <option value="receipt">Receipts</option>
-                  <option value="bulk">Bulk</option>
-                </select>
-              </div>
-              <div>
-                <label className="label">Provider status</label>
-                <select
-                  className="input"
-                  value={filters.sendStatus}
-                  onChange={(event) =>
-                    setFilters((current) => ({
-                      ...current,
-                      sendStatus: event.target.value,
-                    }))
-                  }
-                >
-                  <option value="">All</option>
-                  <option value="accepted">Accepted</option>
-                  <option value="failed">Failed</option>
-                  <option value="pending">Pending</option>
-                </select>
-              </div>
-              <div>
-                <label className="label">Delivery status</label>
-                <select
-                  className="input"
-                  value={filters.deliveryStatus}
-                  onChange={(event) =>
-                    setFilters((current) => ({
-                      ...current,
-                      deliveryStatus: event.target.value,
-                    }))
-                  }
-                >
-                  <option value="">All</option>
-                  <option value="pending">Pending</option>
-                  <option value="delivered">Delivered</option>
-                  <option value="failed">Failed</option>
-                  <option value="unknown">Unknown</option>
-                </select>
-              </div>
-            </div>
-            ) : null}
-          </section>
+          {outboxMode === 'simple' ? (
+            <section className="panel p-5 sm:p-6">
+              <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+                SMS Outbox
+              </p>
+              <h3 className="mt-2 text-2xl font-semibold text-white">
+                Find a recipient
+              </h3>
+              <p className="mt-2 text-sm text-stone-300">
+                Search by name or phone, then review that person&apos;s message
+                history and delivery state.
+              </p>
 
-          <section className="table-shell">
-            <div className="flex flex-col gap-4 border-b border-white/10 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-                  SMS Outbox
-                </p>
-                <h3 className="mt-2 text-2xl font-semibold text-white">
-                  Provider and delivery status
-                </h3>
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <button
-                  className="btn-secondary justify-center"
-                  disabled={refreshDeliveryReportsMutation.isPending}
-                  type="button"
-                  onClick={() => refreshDeliveryReportsMutation.mutate()}
-                >
-                  <RotateCcw size={16} />
-                  {refreshDeliveryReportsMutation.isPending
-                    ? 'Checking reports...'
-                    : 'Refresh delivery reports'}
-                </button>
-                <button
-                  className="btn-secondary justify-center"
-                  type="button"
-                  onClick={downloadOutbox}
-                >
-                  <Download size={16} />
-                  Download CSV
-                </button>
-              </div>
-            </div>
-
-            {isLoading ? (
-              <div className="p-6 text-stone-300">Loading outbox...</div>
-            ) : (
-              <div className="table-scroll-region">
-                <table className="mobile-card-table">
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>Recipient</th>
-                      <th>Type</th>
-                      <th>Units</th>
-                      <th>Provider</th>
-                      <th>Delivery</th>
-                      <th>Message</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {outboxRows.map((item: any) => (
-                      <tr key={item.id}>
-                        <td className="mono text-xs" data-label="Date">
-                          {new Date(item.createdAt).toLocaleString()}
-                        </td>
-                        <td data-label="Recipient">
-                          <div className="font-medium text-white">
-                            {item.recipientName ||
-                              item.contributor?.name ||
-                              'Recipient'}
+              {!selectedRecipient ? (
+                <>
+                  <div className="relative mt-5">
+                    <Search
+                      className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-stone-400"
+                      size={17}
+                    />
+                    <input
+                      aria-label="Search outbox recipients"
+                      className="input pl-11"
+                      placeholder="Enter at least 2 letters or phone digits"
+                      value={recipientSearch}
+                      onChange={(event) =>
+                        setRecipientSearch(event.target.value)
+                      }
+                    />
+                  </div>
+                  <div className="mt-4 space-y-2">
+                    {recipientsLoading ? (
+                      <p className="rounded-2xl border border-white/10 p-4 text-sm text-stone-300">
+                        Searching recipients...
+                      </p>
+                    ) : recipientSearch.trim().length < 2 ? (
+                      <p className="rounded-2xl border border-white/10 p-4 text-sm text-stone-400">
+                        Type a name or phone number to begin.
+                      </p>
+                    ) : recipientResults.length === 0 ? (
+                      <p className="rounded-2xl border border-white/10 p-4 text-sm text-stone-300">
+                        No matching recipients found.
+                      </p>
+                    ) : (
+                      recipientResults.map((recipient: any) => (
+                        <button
+                          key={recipient.recipientKey}
+                          className="flex w-full items-center justify-between gap-4 rounded-2xl border border-white/10 bg-black/10 p-4 text-left transition hover:bg-white/5"
+                          type="button"
+                          onClick={() => setSelectedRecipient(recipient)}
+                        >
+                          <span>
+                            <strong className="block text-white">
+                              {recipient.recipientName}
+                            </strong>
+                            <span className="mt-1 block text-xs text-stone-400">
+                              {recipient.isHashedRecipient
+                                ? 'Safaricom recipient'
+                                : recipient.recipientMobile || 'No phone shown'}
+                            </span>
+                          </span>
+                          <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-stone-300">
+                            {recipient.messageCount} messages
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-white/10 bg-black/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <strong className="text-white">
+                        {selectedRecipient.recipientName}
+                      </strong>
+                      <p className="mt-1 text-xs text-stone-400">
+                        {selectedRecipient.recipientMobile ||
+                          'Safaricom recipient'}
+                      </p>
+                    </div>
+                    <button
+                      className="btn-secondary px-4 py-2"
+                      type="button"
+                      onClick={() => setSelectedRecipient(null)}
+                    >
+                      Search another person
+                    </button>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {isLoading ? (
+                      <p className="text-sm text-stone-300">
+                        Loading messages...
+                      </p>
+                    ) : outboxRows.length === 0 ? (
+                      <p className="text-sm text-stone-300">
+                        No messages found for this recipient.
+                      </p>
+                    ) : (
+                      outboxRows.map((item: any) => (
+                        <article
+                          key={item.id}
+                          className="rounded-2xl border border-white/10 bg-black/10 p-4"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-xs text-stone-400">
+                              {new Date(item.createdAt).toLocaleString()}
+                            </span>
+                            <span className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold text-stone-200">
+                              {item.deliveryDescription ||
+                                item.deliveryStatus ||
+                                item.sendStatus}
+                            </span>
                           </div>
-                          <div className="text-xs text-stone-400">
-                            {item.isHashedRecipient
-                              ? 'Hashed Safaricom recipient'
-                              : item.recipientMobile}
-                          </div>
-                        </td>
-                        <td data-label="Type">{item.messageType}</td>
-                        <td data-label="Units">{item.estimatedUnits}</td>
-                        <td data-label="Provider">
-                          {item.providerDescription || item.sendStatus}
-                        </td>
-                        <td data-label="Delivery">
-                          {item.deliveryDescription || item.deliveryStatus}
-                        </td>
-                        <td className="max-w-md truncate" data-label="Message">
-                          {item.messageBody}
-                        </td>
-                        <td data-label="Actions">
+                          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-stone-100">
+                            {item.messageBody}
+                          </p>
                           <button
-                            className="btn-secondary px-3 py-2"
+                            className="mt-3 text-xs font-semibold text-amber-100"
                             type="button"
                             onClick={() => setSelectedOutboxMessage(item)}
                           >
-                            <Eye size={14} />
-                            Details
+                            View technical details
                           </button>
-                        </td>
-                      </tr>
+                        </article>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+            </section>
+          ) : (
+            <>
+              <section className="panel p-5 sm:p-6">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+                      Detailed Outbox
+                    </p>
+                    <h3 className="mt-2 text-2xl font-semibold text-white">
+                      Provider and delivery activity
+                    </h3>
+                  </div>
+                  <div className="flex w-full flex-col gap-2 sm:flex-row lg:max-w-xl">
+                    <div className="relative min-w-0 flex-1">
+                      <Search
+                        className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-stone-400"
+                        size={17}
+                      />
+                      <input
+                        className="input pl-11"
+                        placeholder="Search recipient name or phone"
+                        value={filters.search}
+                        onChange={(event) =>
+                          setFilters((current) => ({
+                            ...current,
+                            search: event.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <button
+                      aria-expanded={isOutboxFiltersOpen}
+                      className="btn-secondary justify-center"
+                      type="button"
+                      onClick={() =>
+                        setIsOutboxFiltersOpen((current) => !current)
+                      }
+                    >
+                      <SlidersHorizontal size={16} />
+                      More filters
+                      <ChevronDown
+                        className={`transition ${isOutboxFiltersOpen ? 'rotate-180' : ''}`}
+                        size={16}
+                      />
+                    </button>
+                  </div>
+                </div>
+                {isOutboxFiltersOpen ? (
+                  <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                    {[
+                      ['from', 'From'],
+                      ['to', 'To'],
+                    ].map(([key, label]) => (
+                      <div key={key}>
+                        <label className="label">{label}</label>
+                        <input
+                          className="input"
+                          type="date"
+                          value={filters[key as 'from' | 'to']}
+                          onChange={(event) =>
+                            setFilters((current) => ({
+                              ...current,
+                              [key]: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
                     ))}
-                    {outboxRows.length === 0 ? (
-                      <tr>
-                        <td colSpan={8}>No SMS outbox records found.</td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
+                    <div>
+                      <label className="label">Type</label>
+                      <select
+                        className="input"
+                        value={filters.type}
+                        onChange={(event) =>
+                          setFilters((current) => ({
+                            ...current,
+                            type: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">All</option>
+                        <option value="receipt">Receipts</option>
+                        <option value="bulk">Bulk</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">Provider status</label>
+                      <select
+                        className="input"
+                        value={filters.sendStatus}
+                        onChange={(event) =>
+                          setFilters((current) => ({
+                            ...current,
+                            sendStatus: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">All</option>
+                        <option value="accepted">Accepted</option>
+                        <option value="failed">Failed</option>
+                        <option value="pending">Pending</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">Delivery status</label>
+                      <select
+                        className="input"
+                        value={filters.deliveryStatus}
+                        onChange={(event) =>
+                          setFilters((current) => ({
+                            ...current,
+                            deliveryStatus: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">All</option>
+                        <option value="pending">Pending</option>
+                        <option value="delivered">Delivered</option>
+                        <option value="failed">Failed</option>
+                        <option value="unknown">Unknown</option>
+                      </select>
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+
+              <section className="table-shell">
+                <div className="flex flex-col gap-4 border-b border-white/10 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+                  <h3 className="text-xl font-semibold text-white">
+                    Provider and delivery status
+                  </h3>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <button
+                      className="btn-secondary justify-center"
+                      disabled={refreshDeliveryReportsMutation.isPending}
+                      type="button"
+                      onClick={() => refreshDeliveryReportsMutation.mutate()}
+                    >
+                      <RotateCcw size={16} />
+                      Refresh reports
+                    </button>
+                    <button
+                      className="btn-secondary justify-center"
+                      type="button"
+                      onClick={downloadOutbox}
+                    >
+                      <Download size={16} />
+                      Download CSV
+                    </button>
+                  </div>
+                </div>
+                {isLoading ? (
+                  <div className="p-6 text-stone-300">Loading outbox...</div>
+                ) : (
+                  <div className="table-scroll-region">
+                    <table className="mobile-card-table">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Recipient</th>
+                          <th>Type</th>
+                          <th>Units</th>
+                          <th>Provider</th>
+                          <th>Delivery</th>
+                          <th>Message</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {outboxRows.map((item: any) => (
+                          <tr key={item.id}>
+                            <td className="mono text-xs" data-label="Date">
+                              {new Date(item.createdAt).toLocaleString()}
+                            </td>
+                            <td data-label="Recipient">
+                              {item.recipientName ||
+                                item.contributor?.name ||
+                                'Recipient'}
+                            </td>
+                            <td data-label="Type">{item.messageType}</td>
+                            <td data-label="Units">{item.estimatedUnits}</td>
+                            <td data-label="Provider">
+                              {item.providerDescription || item.sendStatus}
+                            </td>
+                            <td data-label="Delivery">
+                              {item.deliveryDescription ||
+                                item.deliveryStatus}
+                            </td>
+                            <td
+                              className="max-w-md truncate"
+                              data-label="Message"
+                            >
+                              {item.messageBody}
+                            </td>
+                            <td data-label="Actions">
+                              <button
+                                className="btn-secondary px-3 py-2"
+                                type="button"
+                                onClick={() =>
+                                  setSelectedOutboxMessage(item)
+                                }
+                              >
+                                <Eye size={14} />
+                                Details
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            </>
+          )}
+
+          {outboxPagination &&
+          (outboxMode === 'detailed' || selectedRecipient) ? (
+            <div className="flex items-center justify-between gap-3 text-sm text-stone-300">
+              <span>
+                Page {outboxPagination.page} of {outboxPagination.totalPages}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  className="btn-secondary px-4 py-2"
+                  disabled={outboxPagination.page <= 1}
+                  type="button"
+                  onClick={() =>
+                    setOutboxPage((current) => Math.max(1, current - 1))
+                  }
+                >
+                  Previous
+                </button>
+                <button
+                  className="btn-secondary px-4 py-2"
+                  disabled={
+                    outboxPagination.page >= outboxPagination.totalPages
+                  }
+                  type="button"
+                  onClick={() => setOutboxPage((current) => current + 1)}
+                >
+                  Next
+                </button>
               </div>
-            )}
-          </section>
+            </div>
+          ) : null}
         </section>
       ) : null}
 

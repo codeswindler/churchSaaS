@@ -240,10 +240,7 @@ export default function ChurchReports() {
               {
                 label: 'Total Collections',
                 value: `KES ${Number(data?.totals?.totalAmount || 0).toLocaleString()}`,
-                hint:
-                  Number(data?.totals?.commissionAmount || 0) > 0
-                    ? `After KES ${Number(data?.totals?.commissionAmount || 0).toLocaleString()} commission`
-                    : 'Net confirmed collections',
+                hint: 'Confirmed collections',
                 to: buildLedgerPath(),
               },
               {

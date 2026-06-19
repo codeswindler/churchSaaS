@@ -938,6 +938,73 @@ export class SmsService {
   }
 
   async listOutbox(churchId: string, query: any = {}) {
+    const page = Math.max(Number(query.page || 1), 1);
+    const limit = Math.min(Math.max(Number(query.limit || 50), 1), 100);
+    const qb = this.buildOutboxQuery(churchId, query);
+    const [items, total] = await qb
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+    return {
+      items,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(Math.ceil(total / limit), 1),
+      },
+    };
+  }
+
+  async listOutboxRows(churchId: string, query: any = {}) {
+    return this.buildOutboxQuery(churchId, query).getMany();
+  }
+
+  async listOutboxRecipients(churchId: string, query: any = {}) {
+    const search = `${query.search || ''}`.trim();
+    if (search.length < 2) {
+      return [];
+    }
+    const rows = await this.smsOutboxRepo
+      .createQueryBuilder('message')
+      .leftJoin('message.contributor', 'contributor')
+      .select('message.contributorId', 'contributorId')
+      .addSelect('message.recipientMobile', 'recipientMobile')
+      .addSelect(
+        "COALESCE(MAX(message.recipientName), MAX(contributor.name), 'Recipient')",
+        'recipientName',
+      )
+      .addSelect('COUNT(message.id)', 'messageCount')
+      .addSelect('MAX(message.createdAt)', 'lastMessageAt')
+      .where('message.churchId = :churchId', { churchId })
+      .andWhere(
+        '(message.recipientName LIKE :search OR contributor.name LIKE :search OR message.recipientMobile LIKE :search)',
+        { search: `%${search}%` },
+      )
+      .groupBy('message.contributorId')
+      .addGroupBy('message.recipientMobile')
+      .orderBy('lastMessageAt', 'DESC')
+      .limit(10)
+      .getRawMany();
+
+    return rows.map((row: any) => ({
+      recipientKey: this.encodeOutboxRecipientKey(
+        row.contributorId
+          ? { type: 'contributor', value: row.contributorId }
+          : { type: 'mobile', value: row.recipientMobile },
+      ),
+      recipientName: row.recipientName || 'Recipient',
+      recipientMobile:
+        `${row.recipientMobile || ''}`.length >= 32
+          ? null
+          : row.recipientMobile || null,
+      isHashedRecipient: `${row.recipientMobile || ''}`.length >= 32,
+      messageCount: Number(row.messageCount || 0),
+      lastMessageAt: row.lastMessageAt || null,
+    }));
+  }
+
+  private buildOutboxQuery(churchId: string, query: any = {}) {
     const qb = this.smsOutboxRepo
       .createQueryBuilder('message')
       .leftJoinAndSelect('message.contributor', 'contributor')
@@ -969,8 +1036,52 @@ export class SmsService {
         { search: `%${`${query.search}`.trim()}%` },
       );
     }
+    if (query.recipientKey) {
+      const recipient = this.decodeOutboxRecipientKey(query.recipientKey);
+      if (recipient.type === 'contributor') {
+        qb.andWhere('message.contributorId = :recipientContributorId', {
+          recipientContributorId: recipient.value,
+        });
+      } else {
+        qb.andWhere('message.recipientMobile = :recipientMobile', {
+          recipientMobile: recipient.value,
+        });
+      }
+    }
 
-    return qb.getMany();
+    return qb;
+  }
+
+  private encodeOutboxRecipientKey(input: {
+    type: 'contributor' | 'mobile';
+    value: string;
+  }) {
+    return Buffer.from(`${input.type}:${input.value}`, 'utf8').toString(
+      'base64url',
+    );
+  }
+
+  private decodeOutboxRecipientKey(value: unknown) {
+    try {
+      const decoded = Buffer.from(`${value || ''}`, 'base64url').toString(
+        'utf8',
+      );
+      const separator = decoded.indexOf(':');
+      const type = decoded.slice(0, separator);
+      const recipientValue = decoded.slice(separator + 1);
+      if (
+        (type !== 'contributor' && type !== 'mobile') ||
+        !recipientValue
+      ) {
+        throw new Error('Invalid recipient key');
+      }
+      return {
+        type: type as 'contributor' | 'mobile',
+        value: recipientValue,
+      };
+    } catch {
+      throw new BadRequestException('Invalid outbox recipient');
+    }
   }
 
   async getSmsUsageSummary(churchId?: string, query: any = {}) {

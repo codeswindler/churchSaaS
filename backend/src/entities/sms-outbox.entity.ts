@@ -34,6 +34,16 @@ export enum SmsDeliveryStatus {
 
 @Entity('sms_outbox')
 @Index(['churchId', 'createdAt'])
+@Index('IDX_sms_outbox_church_contributor_created', [
+  'churchId',
+  'contributorId',
+  'createdAt',
+])
+@Index('IDX_sms_outbox_church_mobile_created', [
+  'churchId',
+  'recipientMobile',
+  'createdAt',
+])
 @Index(['providerMessageId'])
 export class SmsOutbox {
   @PrimaryGeneratedColumn('uuid')

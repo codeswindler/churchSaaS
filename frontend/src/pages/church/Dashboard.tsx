@@ -3,6 +3,7 @@ import { CalendarRange, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CountdownBadge } from '../../components/CountdownBadge';
+import { usePageActions } from '../../context/PageActionsContext';
 import api from '../../services/api';
 
 const initialDashboardFilters = {
@@ -600,6 +601,7 @@ function FundSplitChart({
 }
 
 export default function ChurchDashboard() {
+  const { setPageActions } = usePageActions();
   const [filters, setFilters] = useState<DashboardFilters>(
     initialDashboardFilters,
   );
@@ -621,6 +623,28 @@ export default function ChurchDashboard() {
     () => aggregateTrendData(trendByDate, trendGranularity),
     [trendByDate, trendGranularity],
   );
+  const activeFilterCount = Object.values(filters).filter(Boolean).length;
+  const filterAction = useMemo(
+    () => (
+      <button
+        aria-label="Filter dashboard period"
+        aria-expanded={isFilterOpen}
+        className="shell-icon-button dashboard-filter-button"
+        type="button"
+        onClick={() => setIsFilterOpen((current) => !current)}
+      >
+        <CalendarRange size={17} />
+        {activeFilterCount > 0 ? (
+          <span className="dashboard-action-count">{activeFilterCount}</span>
+        ) : null}
+      </button>
+    ),
+    [activeFilterCount, isFilterOpen],
+  );
+  useEffect(() => {
+    setPageActions(filterAction);
+    return () => setPageActions(null);
+  }, [filterAction, setPageActions]);
 
   if (isLoading) {
     return <div className="panel p-6 text-stone-300">Loading dashboard...</div>;
@@ -629,9 +653,7 @@ export default function ChurchDashboard() {
   const totals = data?.reportSummary?.totals || {};
   const accountKpis = data?.reportSummary?.accountKpis || [];
   const financeEnabled = data?.financeEnabled !== false;
-  const usesSubscriptionBilling =
-    data?.subscription?.billingModel === 'subscription';
-  const activeFilterCount = Object.values(filters).filter(Boolean).length;
+  const usesSubscriptionBilling = data?.subscription?.usesCountdown === true;
   const buildLedgerPath = (overrides: Partial<DashboardFilters> = {}) => {
     const params = new URLSearchParams({
       ...filters,
@@ -656,10 +678,7 @@ export default function ChurchDashboard() {
     {
       label: 'Total Collections',
       value: `KES ${Number(totals.totalAmount || 0).toLocaleString()}`,
-      hint:
-        Number(totals.commissionAmount || 0) > 0
-          ? `After KES ${Number(totals.commissionAmount || 0).toLocaleString()} commission`
-          : 'Net confirmed collections',
+      hint: 'Confirmed collections',
       to: buildLedgerPath(),
     },
     {
@@ -713,24 +732,6 @@ export default function ChurchDashboard() {
   return (
     <div className="church-console-page dashboard-page space-y-6">
       <section className="dashboard-kpi-section relative">
-        <div className="mb-3 flex justify-end">
-          <button
-            aria-label="Filter dashboard period"
-            aria-expanded={isFilterOpen}
-            className="btn-secondary dashboard-filter-button justify-center"
-            type="button"
-            onClick={() => setIsFilterOpen((current) => !current)}
-          >
-            <CalendarRange size={17} />
-            <span className="dashboard-filter-label">Filter period</span>
-            {activeFilterCount > 0 ? (
-              <span className="grid h-6 min-w-6 place-items-center rounded-full bg-amber-200 px-1 text-xs font-bold text-stone-950">
-                {activeFilterCount}
-              </span>
-            ) : null}
-          </button>
-        </div>
-
         {isFilterOpen ? (
           <div className="panel dashboard-filter-popover absolute right-0 top-12 z-30 w-full max-w-3xl p-4 shadow-2xl">
             <div className="flex items-center justify-between gap-3">

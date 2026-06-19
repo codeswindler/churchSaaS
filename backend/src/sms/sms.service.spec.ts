@@ -7,7 +7,9 @@ describe('SmsService outbox filtering', () => {
       where: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
-      getMany: jest.fn().mockResolvedValue([]),
+      skip: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
     };
     const service = Object.create(SmsService.prototype) as SmsService;
     (service as any).smsOutboxRepo = {
@@ -24,5 +26,6 @@ describe('SmsService outbox filtering', () => {
       '(message.recipientName LIKE :search OR contributor.name LIKE :search OR message.recipientMobile LIKE :search)',
       { search: '%Geoffrey%' },
     );
+    expect(queryBuilder.take).toHaveBeenCalledWith(50);
   });
 });

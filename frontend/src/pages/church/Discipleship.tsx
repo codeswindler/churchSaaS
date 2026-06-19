@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  AlertTriangle,
   CalendarCheck2,
   CheckCircle2,
   ChevronDown,
@@ -73,6 +72,16 @@ interface DiscipleshipMember {
       paymentReference?: string | null;
       channel?: string | null;
     }[];
+  };
+  activitySummary?: {
+    enrollmentDate?: string | null;
+    firstContributionAt?: string | null;
+    latestContributionAt?: string | null;
+    contributionCount: number;
+    contributionTotal: number;
+    latestAttendanceAt?: string | null;
+    attendanceCount90Days: number;
+    averageAttendancePerMonth: number;
   };
 }
 
@@ -160,6 +169,42 @@ function formatYesNo(value: boolean | null | undefined) {
     return 'No';
   }
   return 'Not set';
+}
+
+function MemberActivitySummary({
+  member,
+}: {
+  member: DiscipleshipMember;
+}) {
+  const activity = member.activitySummary;
+  if (!activity) {
+    return null;
+  }
+  const items = [
+    ['Enrolled', activity.enrollmentDate || 'Not set'],
+    ['First contribution', activity.firstContributionAt || 'None'],
+    ['Latest contribution', activity.latestContributionAt || 'None'],
+    ['Contribution total', formatKes(activity.contributionTotal)],
+    ['Contribution entries', activity.contributionCount],
+    ['Last attendance', activity.latestAttendanceAt || 'None'],
+    ['Attendance · 90 days', activity.attendanceCount90Days],
+    ['Average / month', activity.averageAttendancePerMonth],
+  ];
+  return (
+    <div className="member-activity-summary grid gap-2 sm:grid-cols-2">
+      {items.map(([label, value]) => (
+        <div
+          key={label}
+          className="rounded-2xl border border-white/10 bg-black/10 p-3"
+        >
+          <p className="text-[10px] uppercase tracking-[0.16em] text-stone-400">
+            {label}
+          </p>
+          <p className="mt-1 text-sm font-semibold text-white">{value}</p>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 type ProgressChartItem = {
@@ -407,7 +452,11 @@ export default function ChurchDiscipleship() {
   const [activeTab, setActiveTab] = useState<DiscipleshipTab>('attendance');
   const [memberSearch, setMemberSearch] = useState('');
   const [memberGroupFilter, setMemberGroupFilter] = useState('');
+  const [memberPage, setMemberPage] = useState(1);
   const [selectedMemberId, setSelectedMemberId] = useState('');
+  const [reviewDataEnabled, setReviewDataEnabled] = useState(false);
+  const [duplicateReviewRequested, setDuplicateReviewRequested] =
+    useState(false);
   const [isAttendanceTypeOpen, setIsAttendanceTypeOpen] = useState(false);
   const [attendanceForm, setAttendanceForm] = useState<{
     attendanceDate: string;
@@ -455,22 +504,41 @@ export default function ChurchDiscipleship() {
   const memberQuery = buildQuery({
     search: memberSearch.trim(),
     groupId: memberGroupFilter,
+    page: String(memberPage),
+    limit: '25',
   });
-  const { data: members = [], isLoading: membersLoading } = useQuery<
-    DiscipleshipMember[]
-  >({
+  const { data: memberPageData, isLoading: membersLoading } = useQuery<{
+    items: DiscipleshipMember[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+    syncing?: boolean;
+  }>({
     queryKey: [
       'discipleship-members',
       memberSearch.trim(),
       memberGroupFilter,
+      memberPage,
     ],
     queryFn: () =>
       api
         .get(`/church/discipleship/members${memberQuery}`)
         .then((response) => response.data),
+    refetchInterval: (query) =>
+      query.state.data?.syncing ? 2_000 : false,
   });
+  const members = memberPageData?.items || [];
+  const memberPagination = memberPageData?.pagination;
+  useEffect(() => {
+    setMemberPage(1);
+  }, [memberGroupFilter, memberSearch]);
+
   const { data: attendance = [] } = useQuery<DiscipleshipAttendance[]>({
     queryKey: ['discipleship-attendance'],
+    enabled: activeTab === 'attendance',
     queryFn: () =>
       api
         .get('/church/discipleship/attendance')
@@ -481,6 +549,7 @@ export default function ChurchDiscipleship() {
     DiscipleshipMatchCandidate[]
   >({
     queryKey: ['discipleship-matches'],
+    enabled: reviewDataEnabled,
     queryFn: () =>
       api
         .get('/church/discipleship/matches')
@@ -490,6 +559,7 @@ export default function ChurchDiscipleship() {
     DiscipleshipDuplicateCluster[]
   >({
     queryKey: ['discipleship-duplicate-members'],
+    enabled: reviewDataEnabled,
     queryFn: () =>
       api
         .get('/church/discipleship/duplicate-members')
@@ -519,13 +589,26 @@ export default function ChurchDiscipleship() {
     () => members.find((member) => member.id === selectedMemberId),
     [members, selectedMemberId],
   );
-  const panelMember = selectedMember || members[0] || null;
-  const panelMemberAttendance = useMemo(() => {
-    if (!panelMember) {
-      return [];
-    }
-    return attendance.filter((item) => item.member?.id === panelMember.id);
-  }, [attendance, panelMember]);
+  const panelMemberBase = selectedMember || members[0] || null;
+  const { data: panelMemberDetail } = useQuery<DiscipleshipMember>({
+    queryKey: ['discipleship-panel-member-detail', panelMemberBase?.id],
+    enabled: Boolean(panelMemberBase?.id),
+    queryFn: () =>
+      api
+        .get(`/church/discipleship/members/${panelMemberBase?.id}`)
+        .then((response) => response.data),
+  });
+  const panelMember = panelMemberDetail || panelMemberBase;
+  const { data: panelMemberAttendance = [] } = useQuery<
+    DiscipleshipAttendance[]
+  >({
+    queryKey: ['discipleship-panel-member-attendance', panelMemberBase?.id],
+    enabled: Boolean(panelMemberBase?.id),
+    queryFn: () =>
+      api
+        .get(`/church/discipleship/attendance?memberId=${panelMemberBase?.id}`)
+        .then((response) => response.data),
+  });
   const duplicateReviewCluster = useMemo(
     () =>
       duplicateClusters.find(
@@ -533,6 +616,25 @@ export default function ChurchDiscipleship() {
       ) || null,
     [duplicateClusters, duplicateReviewClusterId],
   );
+  useEffect(() => {
+    if (!duplicateReviewRequested || !reviewDataEnabled) {
+      return;
+    }
+    if (duplicateClusters.length > 0) {
+      setDuplicateReviewRequested(false);
+      openDuplicateReview(duplicateClusters[0]);
+      return;
+    }
+    if (matchCandidates.length > 0) {
+      setDuplicateReviewRequested(false);
+      setActiveTab('members');
+    }
+  }, [
+    duplicateClusters,
+    duplicateReviewRequested,
+    matchCandidates.length,
+    reviewDataEnabled,
+  ]);
 
   const refreshDiscipleship = () => {
     queryClient.invalidateQueries({ queryKey: ['discipleship-summary'] });
@@ -828,6 +930,13 @@ export default function ChurchDiscipleship() {
     ['Active', summary?.totals?.activeMembers ?? 0],
     ['Groups', summary?.totals?.activeGroups ?? 0],
     ['Present today', summary?.totals?.presentToday ?? 0],
+    [
+      'Duplicate reviews',
+      duplicateClusters.length +
+        matchCandidates.length ||
+        summary?.totals?.duplicateReviews ||
+        0,
+    ],
   ];
   const activeGroups = groups.filter((group) => group.isActive !== false);
   const attendanceTypeLabel =
@@ -964,14 +1073,34 @@ export default function ChurchDiscipleship() {
   return (
     <div className="space-y-4 discipleship-page">
       <section className="discipleship-stat-grid grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {statCards.map(([label, value]) => (
-          <div key={label} className="panel p-4 discipleship-stat-card">
+        {statCards.map(([label, value]) => {
+          const isDuplicateReview = label === 'Duplicate reviews';
+          const content = (
+            <>
             <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
               {label}
             </p>
             <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
-          </div>
-        ))}
+            </>
+          );
+          return isDuplicateReview ? (
+            <button
+              key={label}
+              className="panel p-4 text-left discipleship-stat-card transition hover:border-amber-200/35 hover:bg-amber-200/10"
+              type="button"
+              onClick={() => {
+                setReviewDataEnabled(true);
+                setDuplicateReviewRequested(true);
+              }}
+            >
+              {content}
+            </button>
+          ) : (
+            <div key={label} className="panel p-4 discipleship-stat-card">
+              {content}
+            </div>
+          );
+        })}
       </section>
 
       <section className="panel discipleship-tabs p-3">
@@ -997,42 +1126,6 @@ export default function ChurchDiscipleship() {
           })}
         </div>
       </section>
-
-      {duplicateClusters.length > 0 ? (
-        <section className="rounded-3xl border border-amber-200/30 bg-amber-200/10 p-4 sm:p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex gap-3">
-              <span className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-amber-200/30 bg-amber-200/15 text-amber-100">
-                <AlertTriangle size={19} />
-              </span>
-              <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-amber-100">
-                  Duplicate records found
-                </p>
-                <h3 className="mt-1 text-lg font-semibold text-white">
-                  {duplicateClusters.length} possible duplicate group
-                  {duplicateClusters.length === 1 ? '' : 's'} need review
-                </h3>
-                <p className="mt-1 text-sm text-stone-300">
-                  {duplicateClusters[0].members
-                    .map((member) => member.fullName)
-                    .slice(0, 4)
-                    .join(', ')}
-                  {duplicateClusters[0].members.length > 4 ? ', ...' : ''}
-                </p>
-              </div>
-            </div>
-            <button
-              className="btn-primary justify-center"
-              type="button"
-              onClick={() => openDuplicateReview(duplicateClusters[0])}
-            >
-              <GitMerge size={17} />
-              Review details
-            </button>
-          </div>
-        </section>
-      ) : null}
 
       {activeTab === 'attendance' && (
         <section className="discipleship-attendance-workspace grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
@@ -1268,6 +1361,9 @@ export default function ChurchDiscipleship() {
                   {(panelMember.groups || []).map((group) => group.name).join(', ') ||
                     'No group assigned'}
                 </p>
+                <div className="mt-4">
+                  <MemberActivitySummary member={panelMember} />
+                </div>
               </div>
             ) : null}
             <div className="mt-5 rounded-3xl bg-white/[0.045] p-4">
@@ -1512,6 +1608,36 @@ export default function ChurchDiscipleship() {
               ))
             )}
           </div>
+          {memberPagination ? (
+            <div className="flex items-center justify-between gap-3 border-t border-white/10 p-3 text-xs text-stone-400">
+              <span>
+                {memberPagination.total.toLocaleString()} members · page{' '}
+                {memberPagination.page} of {memberPagination.totalPages}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  className="btn-secondary px-3 py-2"
+                  disabled={memberPagination.page <= 1}
+                  type="button"
+                  onClick={() =>
+                    setMemberPage((current) => Math.max(1, current - 1))
+                  }
+                >
+                  Previous
+                </button>
+                <button
+                  className="btn-secondary px-3 py-2"
+                  disabled={
+                    memberPagination.page >= memberPagination.totalPages
+                  }
+                  type="button"
+                  onClick={() => setMemberPage((current) => current + 1)}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <aside className="space-y-4">
@@ -1561,6 +1687,7 @@ export default function ChurchDiscipleship() {
                   {(panelMember.groups || []).map((group) => group.name).join(', ') ||
                     'No group assigned'}
                 </p>
+                <MemberActivitySummary member={panelMember} />
                 <div>
                   <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
                     Attendance chart

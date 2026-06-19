@@ -31,6 +31,7 @@ export default function ChurchContributions() {
     contributor: searchParams.get('contributor') || '',
   });
   const [filters, setFilters] = useState(readFiltersFromSearch);
+  const [page, setPage] = useState(1);
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false);
   const [manualForm, setManualForm] = useState(initialManualForm);
   const contributorNameRef = useRef<HTMLInputElement | null>(null);
@@ -59,8 +60,21 @@ export default function ChurchContributions() {
         params.set(key, value);
       }
     });
+    params.set('page', String(page));
+    params.set('limit', '50');
     return params.toString();
-  }, [filters]);
+  }, [filters, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [
+    filters.channel,
+    filters.contributor,
+    filters.from,
+    filters.fundAccountId,
+    filters.status,
+    filters.to,
+  ]);
 
   const { data: fundAccounts } = useQuery({
     queryKey: ['church-fund-accounts'],
@@ -168,7 +182,8 @@ export default function ChurchContributions() {
   };
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
-  const contributionRows = contributions || [];
+  const contributionRows = contributions?.items || [];
+  const pagination = contributions?.pagination;
   const contributorSummary = useMemo(
     () => ({
       count: contributionRows.length,
@@ -400,8 +415,9 @@ export default function ChurchContributions() {
         {isLoading ? (
           <div className="p-6 text-stone-300">Loading contributions...</div>
         ) : (
-          <div className="table-scroll-region">
-            <table className="mobile-card-table">
+          <>
+            <div className="table-scroll-region">
+              <table className="mobile-card-table">
               <thead>
                 <tr>
                   <th>Date</th>
@@ -459,8 +475,35 @@ export default function ChurchContributions() {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+            {pagination ? (
+              <div className="flex items-center justify-between gap-3 border-t border-white/10 px-5 py-4 text-sm text-stone-300">
+                <span>
+                  Page {pagination.page} of {pagination.totalPages} ·{' '}
+                  {Number(pagination.total || 0).toLocaleString()} records
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    className="btn-secondary px-4 py-2"
+                    disabled={pagination.page <= 1}
+                    type="button"
+                    onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    className="btn-secondary px-4 py-2"
+                    disabled={pagination.page >= pagination.totalPages}
+                    type="button"
+                    onClick={() => setPage((current) => current + 1)}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </>
         )}
       </section>
 

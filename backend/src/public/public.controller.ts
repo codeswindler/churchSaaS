@@ -71,6 +71,11 @@ const DEFAULT_CONGREGATION_GALLERY_IMAGES = [
 
 @Controller('public')
 export class PublicController {
+  private readonly publicFundDisplayCache = new Map<
+    string,
+    { expiresAt: number; value: any }
+  >();
+
   constructor(
     @InjectRepository(Church)
     private readonly churchRepo: Repository<Church>,
@@ -193,10 +198,7 @@ export class PublicController {
       },
       page: {
         ...basePage,
-        fundDisplays: await this.resolvePublicFundDisplays(
-          church.id,
-          basePage.fundDisplays || [],
-        ),
+        fundDisplays: [],
       },
       givingUrl: `/c/${church.slug}/give`,
     };
@@ -204,6 +206,31 @@ export class PublicController {
 
   @Get('churches/:slug/congregation/fund-displays')
   async getCongregationFundDisplays(@Param('slug') slug: string) {
+    return this.getPublicFundDisplays(slug);
+  }
+
+  @Get('churches/:slug/fund-displays')
+  async getPublicFundDisplays(@Param('slug') slug: string) {
+    return this.resolvePublicFundDisplayPage(slug);
+  }
+
+  @Get('churches/:slug/fund-displays/:displayId')
+  async getPublicFundDisplay(
+    @Param('slug') slug: string,
+    @Param('displayId') displayId: string,
+  ) {
+    return this.resolvePublicFundDisplayPage(slug, displayId);
+  }
+
+  private async resolvePublicFundDisplayPage(
+    slug: string,
+    displayId?: string,
+  ) {
+    const cacheKey = `${slug}:${displayId || 'all'}`;
+    const cached = this.publicFundDisplayCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.value;
+    }
     const church = await this.churchRepo.findOne({ where: { slug } });
     if (!church || church.status !== ChurchStatus.ACTIVE) {
       throw new NotFoundException('Church not found');
@@ -213,13 +240,31 @@ export class PublicController {
       where: { churchId: church.id },
     });
 
-    return {
-      fundDisplays: await this.resolvePublicFundDisplays(
+    const fundDisplays = await this.resolvePublicFundDisplays(
         church.id,
         page?.fundDisplays || [],
-      ),
+      );
+    const selectedDisplays = displayId
+      ? fundDisplays.filter((display: any) => display.id === displayId)
+      : fundDisplays;
+    if (displayId && selectedDisplays.length === 0) {
+      throw new NotFoundException('Fund display not found');
+    }
+    const value = {
+      church: {
+        id: church.id,
+        name: church.name,
+        slug: church.slug,
+        logoUrl: church.logoUrl,
+      },
+      fundDisplays: selectedDisplays,
       updatedAt: new Date().toISOString(),
     };
+    this.publicFundDisplayCache.set(cacheKey, {
+      expiresAt: Date.now() + 4_000,
+      value,
+    });
+    return value;
   }
 
   @Post('churches/:slug/contributions/mpesa')
@@ -606,6 +651,12 @@ export class PublicController {
         startDate,
         endDate,
       );
+      const trendByDate = await this.getFundDisplayTrend(
+        churchId,
+        fundAccount.id,
+        startDate,
+        endDate,
+      );
 
       resolved.push({
         id: display.id,
@@ -622,6 +673,7 @@ export class PublicController {
         totalAmount: totals.totalAmount,
         contributionCount: totals.contributionCount,
         lastContributionAt: totals.lastContributionAt,
+        trendByDate,
       });
     }
 
@@ -670,11 +722,70 @@ export class PublicController {
     const commissionAmount = Number(raw?.commissionAmount || 0);
     return {
       totalAmount: Number((grossAmount - commissionAmount).toFixed(2)),
-      grossAmount,
-      commissionAmount,
       contributionCount: Number(raw?.contributionCount || 0),
       lastContributionAt: raw?.lastContributionAt || null,
     };
+  }
+
+  private async getFundDisplayTrend(
+    churchId: string,
+    fundAccountId: string,
+    startDate: Date,
+    endDate: Date | null,
+  ) {
+    const qb = this.contributionRepo
+      .createQueryBuilder('contribution')
+      .select(
+        'DATE(COALESCE(contribution.receivedAt, contribution.createdAt))',
+        'date',
+      )
+      .addSelect(
+        'COALESCE(SUM(contribution.amount - COALESCE(contribution.commissionAmount, 0)), 0)',
+        'totalAmount',
+      )
+      .addSelect('COUNT(contribution.id)', 'count')
+      .where('contribution.churchId = :churchId', { churchId })
+      .andWhere('contribution.fundAccountId = :fundAccountId', {
+        fundAccountId,
+      })
+      .andWhere('contribution.status = :status', {
+        status: ContributionStatus.CONFIRMED,
+      })
+      .andWhere(
+        'COALESCE(contribution.receivedAt, contribution.createdAt) >= :startDate',
+        { startDate },
+      )
+      .groupBy(
+        'DATE(COALESCE(contribution.receivedAt, contribution.createdAt))',
+      )
+      .orderBy('date', 'ASC');
+
+    if (endDate) {
+      qb.andWhere(
+        'COALESCE(contribution.receivedAt, contribution.createdAt) <= :endDate',
+        { endDate },
+      );
+    }
+    const rows = await qb.getRawMany();
+    return rows.map((row: any) => ({
+      date: this.formatNairobiDate(row.date),
+      totalAmount: Number(row.totalAmount || 0),
+      count: Number(row.count || 0),
+    }));
+  }
+
+  private formatNairobiDate(value: unknown) {
+    if (!value) return '';
+    const date = value instanceof Date ? value : new Date(`${value}`);
+    if (Number.isNaN(date.getTime())) {
+      return `${value}`.slice(0, 10);
+    }
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Africa/Nairobi',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
   }
 
   private parseDateBoundary(value: string, boundary: 'start' | 'end') {

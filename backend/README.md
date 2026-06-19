@@ -36,6 +36,7 @@ NestJS backend for the multi-tenant church management business system.
 - `POST /api/mobile/auth/login`
 - `GET /api/mobile/funds/dashboard`
 - `GET /api/mobile/funds/summary`
+- `GET /api/mobile/funds/analysis`
 - `GET /api/mobile/funds/transactions`
 - `GET /api/mobile/funds/fund-accounts`
 - `GET /api/mobile/notifications`

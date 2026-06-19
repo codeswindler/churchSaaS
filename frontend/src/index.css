@@ -592,7 +592,8 @@ textarea {
 .sms-phone-preview__status {
   display: flex;
   justify-content: space-between;
-  padding: 1.08rem 1.5rem 0.62rem;
+  min-height: 3rem;
+  padding: 1.15rem 1.5rem 0.72rem;
   color: #111827;
   font-size: 0.72rem;
   font-weight: 800;
@@ -603,7 +604,7 @@ textarea {
   grid-template-columns: 2rem minmax(0, 1fr) 2rem;
   align-items: center;
   gap: 0.45rem;
-  padding: 0.7rem 1.2rem 0.9rem;
+  padding: 0.95rem 1.2rem 0.9rem;
   border-bottom: 1px solid rgba(15, 23, 42, 0.08);
   background: rgba(248, 250, 252, 0.94);
   text-align: center;
@@ -2013,6 +2014,20 @@ textarea {
     padding: 0.65rem;
   }
 
+  .desktop-sidebar .sidebar-profile-button > span:nth-child(2) > span:first-child {
+    display: -webkit-box;
+    overflow: hidden;
+    white-space: normal;
+    text-overflow: clip;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-height: 1.2;
+  }
+
+  .desktop-sidebar .sidebar-profile-button > span:last-child {
+    display: none;
+  }
+
   .desktop-sidebar nav {
     font-size: 0.9rem;
   }
@@ -2062,8 +2077,8 @@ textarea {
   }
 
   .dashboard-stat-grid .stat-card {
-    min-height: 9rem !important;
-    padding: 1rem;
+    min-height: 6.8rem !important;
+    padding: 0.8rem !important;
   }
 
   .dashboard-stat-grid .text-3xl {
@@ -2086,8 +2101,23 @@ textarea {
     grid-column: span 4 / span 4 !important;
   }
 
+  .dashboard-split-panel,
+  .fund-split-layout,
+  .fund-split-layout > * {
+    min-width: 0;
+  }
+
+  .fund-split-layout {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .fund-split-pie {
+    height: 10rem !important;
+    width: 10rem !important;
+  }
+
   .fund-accounts-layout {
-    grid-template-columns: minmax(0, 1fr) 15.5rem !important;
+    grid-template-columns: minmax(15rem, 0.72fr) minmax(22rem, 1.28fr) !important;
     align-items: start !important;
   }
 
@@ -2099,11 +2129,11 @@ textarea {
 
   .fund-account-preview-panel .sms-phone-preview__device,
   .messaging-compose-layout .sms-phone-preview__device {
-    max-width: 15rem !important;
+    max-width: 22rem !important;
   }
 
   .messaging-compose-layout {
-    grid-template-columns: minmax(0, 1fr) 15rem !important;
+    grid-template-columns: minmax(0, 1.5fr) minmax(22rem, 1fr) !important;
     align-items: start !important;
     gap: 1rem !important;
   }
@@ -2111,6 +2141,15 @@ textarea {
   .messaging-compose-layout > :last-child {
     position: sticky;
     top: 0.75rem;
+  }
+
+  .messaging-choice-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .messaging-choice-grid > button {
+    min-height: 4.25rem;
+    padding: 0.65rem !important;
   }
 
   .contribution-list-header {
@@ -2185,7 +2224,17 @@ textarea {
   }
 
   .discipleship-stat-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  }
+
+  .discipleship-stat-card {
+    min-height: 4.8rem !important;
+    padding: 0.72rem !important;
+  }
+
+  .discipleship-stat-card .text-2xl {
+    margin-top: 0.35rem !important;
+    font-size: 1.25rem !important;
   }
 
   .discipleship-tabs > div {
@@ -2198,7 +2247,7 @@ textarea {
   }
 
   .discipleship-attendance-workspace {
-    grid-template-columns: minmax(0, 1.45fr) minmax(16rem, 0.8fr) !important;
+    grid-template-columns: minmax(22rem, 0.82fr) minmax(0, 1.18fr) !important;
     align-items: start !important;
   }
 
@@ -2219,7 +2268,7 @@ textarea {
   }
 
   .discipleship-members-workspace {
-    grid-template-columns: minmax(0, 1.35fr) minmax(16rem, 0.65fr) !important;
+    grid-template-columns: minmax(20rem, 0.78fr) minmax(0, 1.22fr) !important;
     align-items: start !important;
   }
 
@@ -2231,18 +2280,6 @@ textarea {
   .users-page .table-shell,
   .contributions-page .table-shell {
     overflow: hidden;
-  }
-}
-
-/*
- * Some Android tablets expose roughly 1014 CSS pixels at 100% page zoom and
- * 1352 CSS pixels at 75%. Match the comfortable 75% physical density at the
- * native zoom without affecting pointer-based laptops or double-scaling an
- * already zoomed-out tablet.
- */
-@media (min-width: 960px) and (max-width: 1100px) and (orientation: landscape) and (hover: none) and (pointer: coarse) and (min-device-height: 600px) {
-  html {
-    font-size: 67.5%;
   }
 }
 
@@ -2320,6 +2357,31 @@ select.input-compact option:checked {
   @apply inline-flex items-center rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-stone-300;
   border: 1px solid var(--toolbar-border);
   background: rgba(255, 255, 255, 0.03);
+}
+
+.shell-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dashboard-action-count {
+  position: absolute;
+  right: -0.25rem;
+  top: -0.25rem;
+  display: grid;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  place-items: center;
+  border-radius: 999px;
+  background: #fde68a;
+  color: #1c1917;
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+
+.dashboard-filter-button {
+  position: relative;
 }
 
 .shell-icon-button {

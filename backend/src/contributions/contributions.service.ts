@@ -460,6 +460,10 @@ export class ContributionsService {
   }
 
   async listChurchContributions(churchId: string, query: any = {}) {
+    const filterQuery = await this.resolveContributionFilterQuery(
+      churchId,
+      query,
+    );
     const qb = this.contributionRepo
       .createQueryBuilder('contribution')
       .leftJoinAndSelect('contribution.contributor', 'contributor')
@@ -469,160 +473,243 @@ export class ContributionsService {
       .orderBy('contribution.receivedAt', 'DESC')
       .addOrderBy('contribution.createdAt', 'DESC');
 
-    const filterQuery = { ...query };
-    if (query.fundAccountId) {
-      const fundAccount = await this.fundAccountRepo.findOne({
-        where: { id: query.fundAccountId, churchId },
-      });
-      filterQuery.includeUnassignedFallback = fundAccount?.code === 'general';
-    }
-
     this.applyContributionFilters(qb, filterQuery);
     return qb.getMany();
   }
 
+  async listChurchContributionsPage(churchId: string, query: any = {}) {
+    const page = Math.max(Number(query.page || 1), 1);
+    const limit = Math.min(Math.max(Number(query.limit || 50), 1), 100);
+    const filterQuery = await this.resolveContributionFilterQuery(
+      churchId,
+      query,
+    );
+    const church = await this.churchRepo.findOne({ where: { id: churchId } });
+    if (!church) {
+      throw new NotFoundException('Church not found');
+    }
+
+    const qb = this.contributionRepo
+      .createQueryBuilder('contribution')
+      .leftJoinAndSelect('contribution.contributor', 'contributor')
+      .leftJoinAndSelect('contribution.fundAccount', 'fundAccount')
+      .leftJoinAndSelect('contribution.enteredByUser', 'enteredByUser')
+      .where('contribution.churchId = :churchId', { churchId })
+      .orderBy('contribution.receivedAt', 'DESC')
+      .addOrderBy('contribution.createdAt', 'DESC');
+    this.applyContributionFilters(qb, filterQuery);
+
+    const [records, total] = await qb
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      items: records.map((item) =>
+        this.mapContributionForChurchUser(item, church),
+      ),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(Math.ceil(total / limit), 1),
+      },
+    };
+  }
+
   async getChurchReportSummary(churchId: string, query: any = {}) {
-    const [church, contributions] = await Promise.all([
+    const church = await this.churchRepo.findOne({ where: { id: churchId } });
+    if (!church) {
+      throw new NotFoundException('Church not found');
+    }
+    const filterQuery = await this.resolveContributionFilterQuery(
+      churchId,
+      query,
+    );
+    const commissionExpression = this.getCommissionSqlExpression(church);
+    const netExpression = `(contribution.amount - (${commissionExpression}))`;
+
+    const baseQb = this.contributionRepo
+      .createQueryBuilder('contribution')
+      .leftJoin('contribution.contributor', 'contributor')
+      .leftJoin('contribution.fundAccount', 'fundAccount')
+      .where('contribution.churchId = :churchId', { churchId });
+    this.applyContributionFilters(baseQb, filterQuery);
+    baseQb.andWhere('contribution.status = :confirmedStatus', {
+      confirmedStatus: ContributionStatus.CONFIRMED,
+    });
+
+    const totalsQb = baseQb
+      .clone()
+      .select('COUNT(contribution.id)', 'contributionCount')
+      .addSelect(`COALESCE(SUM(${netExpression}), 0)`, 'totalAmount')
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN contribution.channel = :mpesaChannel THEN ${netExpression} ELSE 0 END), 0)`,
+        'mpesaAmount',
+      )
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN contribution.channel = :cashChannel THEN ${netExpression} ELSE 0 END), 0)`,
+        'cashAmount',
+      )
+      .setParameters({
+        commissionRate: Number(church.commissionRatePct || 0),
+        mpesaChannel: ContributionChannel.MPESA,
+        cashChannel: ContributionChannel.MANUAL_CASH,
+      });
+
+    const byFundQb = baseQb
+      .clone()
+      .select('contribution.fundAccountId', 'fundAccountId')
+      .addSelect(
+        "COALESCE(fundAccount.name, contribution.fundAccountName, 'General')",
+        'fundAccountName',
+      )
+      .addSelect(
+        "COALESCE(fundAccount.code, CASE WHEN contribution.fundAccountId IS NULL THEN 'general' ELSE NULL END)",
+        'code',
+      )
+      .addSelect(`COALESCE(SUM(${netExpression}), 0)`, 'totalAmount')
+      .addSelect('COUNT(contribution.id)', 'count')
+      .groupBy('contribution.fundAccountId')
+      .addGroupBy('fundAccount.name')
+      .addGroupBy('fundAccount.code')
+      .addGroupBy('contribution.fundAccountName')
+      .setParameter('commissionRate', Number(church.commissionRatePct || 0));
+
+    const trendQb = baseQb
+      .clone()
+      .select(
+        'DATE(COALESCE(contribution.receivedAt, contribution.createdAt))',
+        'date',
+      )
+      .addSelect(`COALESCE(SUM(${netExpression}), 0)`, 'totalAmount')
+      .addSelect('COUNT(contribution.id)', 'count')
+      .groupBy(
+        'DATE(COALESCE(contribution.receivedAt, contribution.createdAt))',
+      )
+      .orderBy('date', 'ASC')
+      .setParameter('commissionRate', Number(church.commissionRatePct || 0));
+
+    const recentQb = this.contributionRepo
+      .createQueryBuilder('contribution')
+      .leftJoinAndSelect('contribution.contributor', 'contributor')
+      .leftJoinAndSelect('contribution.fundAccount', 'fundAccount')
+      .leftJoinAndSelect('contribution.enteredByUser', 'enteredByUser')
+      .where('contribution.churchId = :churchId', { churchId })
+      .orderBy('contribution.receivedAt', 'DESC')
+      .addOrderBy('contribution.createdAt', 'DESC')
+      .take(10);
+    this.applyContributionFilters(recentQb, filterQuery);
+
+    const [rawTotals, rawByFundAccount, rawTrendByDate, recentContributions] =
+      await Promise.all([
+        totalsQb.getRawOne(),
+        byFundQb.getRawMany(),
+        trendQb.getRawMany(),
+        recentQb.getMany(),
+      ]);
+    return {
+      totals: {
+        contributionCount: Number(rawTotals?.contributionCount || 0),
+        totalAmount: Number(rawTotals?.totalAmount || 0),
+        mpesaAmount: Number(rawTotals?.mpesaAmount || 0),
+        cashAmount: Number(rawTotals?.cashAmount || 0),
+      },
+      byFundAccount: rawByFundAccount
+        .map((item: any) => ({
+          fundAccountId: item.fundAccountId || null,
+          fundAccountName: item.fundAccountName || 'General',
+          code: item.code || null,
+          totalAmount: Number(item.totalAmount || 0),
+          count: Number(item.count || 0),
+        }))
+        .sort((a, b) => b.totalAmount - a.totalAmount),
+      trendByDate: rawTrendByDate.map((item: any) => ({
+        date: this.formatNairobiDate(item.date),
+        totalAmount: Number(item.totalAmount || 0),
+        count: Number(item.count || 0),
+      })),
+      recentContributions: recentContributions.map((item) =>
+        this.mapContributionForChurchUser(item, church),
+      ),
+    };
+  }
+
+  async getChurchMobileAnalysis(churchId: string, query: any = {}) {
+    const [church, summary] = await Promise.all([
       this.churchRepo.findOne({ where: { id: churchId } }),
-      this.listChurchContributions(churchId, query),
+      this.getChurchReportSummary(churchId, query),
     ]);
     if (!church) {
       throw new NotFoundException('Church not found');
     }
-    const confirmed = contributions.filter(
-      (item) => item.status === ContributionStatus.CONFIRMED,
-    );
 
-    const grossAmount = confirmed.reduce(
-      (sum, item) => sum + Number(item.amount || 0),
-      0,
+    const filterQuery = await this.resolveContributionFilterQuery(
+      churchId,
+      query,
     );
-    const commissionAmount = confirmed.reduce(
-      (sum, item) => sum + this.getContributionCommissionAmount(item, church),
-      0,
-    );
-    const netAmount = Number((grossAmount - commissionAmount).toFixed(2));
-    const mpesaAmount = confirmed
-      .filter((item) => item.channel === ContributionChannel.MPESA)
-      .reduce(
-        (sum, item) =>
-          sum +
-          (Number(item.amount || 0) -
-            this.getContributionCommissionAmount(item, church)),
-        0,
-      );
-    const cashAmount = confirmed
-      .filter((item) => item.channel === ContributionChannel.MANUAL_CASH)
-      .reduce(
-        (sum, item) =>
-          sum +
-          (Number(item.amount || 0) -
-            this.getContributionCommissionAmount(item, church)),
-        0,
-      );
+    const commissionExpression = this.getCommissionSqlExpression(church);
+    const netExpression = `(contribution.amount - (${commissionExpression}))`;
+    const kenyaDateExpression =
+      "DATE(CONVERT_TZ(COALESCE(contribution.receivedAt, contribution.createdAt), '+00:00', '+03:00'))";
+    const contributorNameExpression =
+      "COALESCE(contributor.name, contribution.payerName, 'Anonymous giver')";
 
-    const byFundAccount = confirmed.reduce(
-      (acc, item) => {
-        const isUnassignedFallback = !item.fundAccountId;
-        const key = item.fundAccountId || 'general-fallback';
-        if (!acc[key]) {
-          acc[key] = {
-            fundAccountId: item.fundAccountId,
-            fundAccountName: isUnassignedFallback
-              ? 'General'
-              : item.fundAccountName,
-            code:
-              item.fundAccount?.code ||
-              (isUnassignedFallback ? 'general' : null),
-            totalAmount: 0,
-            grossAmount: 0,
-            commissionAmount: 0,
-            netAmount: 0,
-            count: 0,
-          };
-        }
-        const gross = Number(item.amount || 0);
-        const commission = this.getContributionCommissionAmount(item, church);
-        const net = gross - commission;
-        acc[key].grossAmount += gross;
-        acc[key].commissionAmount += commission;
-        acc[key].netAmount += net;
-        acc[key].totalAmount += net;
-        acc[key].count += 1;
-        return acc;
-      },
-      {} as Record<
-        string,
-        {
-          fundAccountId: string | null;
-          fundAccountName: string;
-          code: string | null;
-          totalAmount: number;
-          grossAmount: number;
-          commissionAmount: number;
-          netAmount: number;
-          count: number;
-        }
-      >,
-    );
+    const baseQb = this.contributionRepo
+      .createQueryBuilder('contribution')
+      .leftJoin('contribution.contributor', 'contributor')
+      .leftJoin('contribution.fundAccount', 'fundAccount')
+      .where('contribution.churchId = :churchId', { churchId });
+    this.applyContributionFilters(baseQb, filterQuery);
+    baseQb.andWhere('contribution.status = :confirmedStatus', {
+      confirmedStatus: ContributionStatus.CONFIRMED,
+    });
 
-    const trendByDate = confirmed.reduce(
-      (acc, item) => {
-        const date = new Date(item.receivedAt || item.createdAt)
-          .toISOString()
-          .slice(0, 10);
+    const dailyQb = baseQb
+      .clone()
+      .select(kenyaDateExpression, 'date')
+      .addSelect(`COALESCE(SUM(${netExpression}), 0)`, 'totalAmount')
+      .addSelect('COUNT(contribution.id)', 'count')
+      .groupBy(kenyaDateExpression)
+      .orderBy('date', 'ASC')
+      .setParameter('commissionRate', Number(church.commissionRatePct || 0));
 
-        if (!acc[date]) {
-          acc[date] = {
-            date,
-            totalAmount: 0,
-            grossAmount: 0,
-            commissionAmount: 0,
-            netAmount: 0,
-            count: 0,
-          };
-        }
+    const contributorQb = baseQb
+      .clone()
+      .select('contribution.contributorId', 'contributorId')
+      .addSelect(contributorNameExpression, 'contributorName')
+      .addSelect('contributor.phone', 'phone')
+      .addSelect(`COALESCE(SUM(${netExpression}), 0)`, 'totalAmount')
+      .addSelect('COUNT(contribution.id)', 'count')
+      .groupBy('contribution.contributorId')
+      .addGroupBy(contributorNameExpression)
+      .addGroupBy('contributor.phone')
+      .orderBy('totalAmount', 'DESC')
+      .setParameter('commissionRate', Number(church.commissionRatePct || 0));
 
-        const gross = Number(item.amount || 0);
-        const commission = this.getContributionCommissionAmount(item, church);
-        const net = gross - commission;
-        acc[date].grossAmount += gross;
-        acc[date].commissionAmount += commission;
-        acc[date].netAmount += net;
-        acc[date].totalAmount += net;
-        acc[date].count += 1;
-        return acc;
-      },
-      {} as Record<
-        string,
-        {
-          date: string;
-          totalAmount: number;
-          grossAmount: number;
-          commissionAmount: number;
-          netAmount: number;
-          count: number;
-        }
-      >,
-    );
+    const [rawDailyTotals, rawContributorTotals] = await Promise.all([
+      dailyQb.getRawMany(),
+      contributorQb.getRawMany(),
+    ]);
+
+    const dailyTotals = rawDailyTotals.map((item: any) => ({
+      date: item.date,
+      totalAmount: Number(item.totalAmount || 0),
+      count: Number(item.count || 0),
+    }));
 
     return {
-      totals: {
-        contributionCount: confirmed.length,
-        totalAmount: netAmount,
-        grossAmount,
-        commissionAmount,
-        netAmount,
-        mpesaAmount: Number(mpesaAmount.toFixed(2)),
-        cashAmount: Number(cashAmount.toFixed(2)),
-      },
-      byFundAccount: Object.values(byFundAccount).sort(
-        (a, b) => b.totalAmount - a.totalAmount,
-      ),
-      trendByDate: Object.values(trendByDate).sort((a, b) =>
-        a.date.localeCompare(b.date),
-      ),
-      recentContributions: contributions.slice(0, 10),
+      totals: summary.totals,
+      dailyTotals,
+      trendData: dailyTotals,
+      fundAccountTotals: summary.byFundAccount || [],
+      contributorTotals: rawContributorTotals.map((item: any) => ({
+        contributorId: item.contributorId || null,
+        contributorName: item.contributorName || 'Anonymous giver',
+        phone: item.phone || null,
+        totalAmount: Number(item.totalAmount || 0),
+        count: Number(item.count || 0),
+      })),
     };
   }
 
@@ -673,7 +760,7 @@ export class ContributionsService {
         item.fundAccountName,
         item.channel,
         item.status,
-        Number(item.amount || 0).toFixed(2),
+        this.getContributionCreditedAmount(item, church).toFixed(2),
         item.paymentReference || '',
         item.notes || '',
       ]),
@@ -1146,6 +1233,85 @@ export class ContributionsService {
     ).commissionAmount;
   }
 
+  private getContributionCreditedAmount(
+    contribution: Contribution,
+    church: Church | null,
+  ) {
+    return Number(
+      (
+        Number(contribution.amount || 0) -
+        this.getContributionCommissionAmount(contribution, church)
+      ).toFixed(2),
+    );
+  }
+
+  private mapContributionForChurchUser(
+    contribution: Contribution,
+    church: Church,
+  ) {
+    return {
+      id: contribution.id,
+      churchId: contribution.churchId,
+      contributorId: contribution.contributorId,
+      contributor: contribution.contributor,
+      fundAccountId: contribution.fundAccountId,
+      fundAccount: contribution.fundAccount,
+      enteredByUserId: contribution.enteredByUserId,
+      enteredByUser: contribution.enteredByUser,
+      fundAccountName: contribution.fundAccountName,
+      amount: this.getContributionCreditedAmount(contribution, church),
+      channel: contribution.channel,
+      status: contribution.status,
+      sourceType: contribution.sourceType,
+      paymentReference: contribution.paymentReference,
+      payerName: contribution.payerName,
+      notes: contribution.notes,
+      receivedAt: contribution.receivedAt,
+      receiptMessageSent: contribution.receiptMessageSent,
+      receiptSentAt: contribution.receiptSentAt,
+      receiptDeliveryStatus: contribution.receiptDeliveryStatus,
+      createdAt: contribution.createdAt,
+      updatedAt: contribution.updatedAt,
+    };
+  }
+
+  private getCommissionSqlExpression(church: Church) {
+    const billingModel =
+      church.billingModel ||
+      (Number(church.commissionRatePct || 0) > 0
+        ? ChurchBillingModel.COMMISSION
+        : ChurchBillingModel.SUBSCRIPTION);
+    if (billingModel !== ChurchBillingModel.COMMISSION) {
+      return '0';
+    }
+    return `CASE WHEN contribution.channel = '${ContributionChannel.MPESA}' THEN COALESCE(contribution.commissionAmount, CEILING((contribution.amount * :commissionRate) / 100)) ELSE 0 END`;
+  }
+
+  private async resolveContributionFilterQuery(churchId: string, query: any) {
+    const filterQuery = { ...query };
+    if (query.fundAccountId) {
+      const fundAccount = await this.fundAccountRepo.findOne({
+        where: { id: query.fundAccountId, churchId },
+      });
+      filterQuery.includeUnassignedFallback = fundAccount?.code === 'general';
+    }
+    return filterQuery;
+  }
+
+  private formatNairobiDate(value: unknown) {
+    if (!value) return '';
+    const date = value instanceof Date ? value : new Date(`${value}`);
+    if (Number.isNaN(date.getTime())) {
+      return `${value}`.slice(0, 10);
+    }
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Africa/Nairobi',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
+  }
+
   private applyCommissionFields(
     contribution: Contribution,
     church: Church | null,
@@ -1215,6 +1381,12 @@ export class ContributionsService {
           fundAccountId: query.fundAccountId,
         });
       }
+    }
+
+    if (query.contributorId) {
+      qb.andWhere('contribution.contributorId = :contributorId', {
+        contributorId: query.contributorId,
+      });
     }
 
     if (query.channel) {

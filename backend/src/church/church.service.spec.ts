@@ -128,13 +128,13 @@ describe('ChurchService discipleship name matching', () => {
   });
 
   it('uses the same outbox filters for CSV exports', async () => {
-    const listOutbox = jest.fn().mockResolvedValue([]);
-    (service as any).smsService = { listOutbox };
+    const listOutboxRows = jest.fn().mockResolvedValue([]);
+    (service as any).smsService = { listOutboxRows };
     const filters = { search: 'Geoffrey', deliveryStatus: 'delivered' };
 
     const csv = await service.exportSmsOutboxCsv('church-1', filters);
 
-    expect(listOutbox).toHaveBeenCalledWith('church-1', filters);
+    expect(listOutboxRows).toHaveBeenCalledWith('church-1', filters);
     expect(csv).toContain('Recipient');
   });
 

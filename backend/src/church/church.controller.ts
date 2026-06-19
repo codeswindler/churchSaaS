@@ -615,6 +615,16 @@ export class ChurchController {
     return this.churchService.listSmsOutbox(req.user.churchId, query);
   }
 
+  @Get('messaging/outbox/recipients')
+  @Permissions(ChurchPermission.OUTBOX_VIEW)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
+  listSmsOutboxRecipients(@Request() req: any, @Query() query: any) {
+    return this.churchService.listSmsOutboxRecipients(
+      req.user.churchId,
+      query,
+    );
+  }
+
   @Post('messaging/outbox/delivery-refresh')
   @Permissions(ChurchPermission.OUTBOX_VIEW)
   @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)

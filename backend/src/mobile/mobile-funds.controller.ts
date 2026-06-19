@@ -18,6 +18,11 @@ export class MobileFundsController {
     return this.mobileFundsService.getSummary(req.user.churchId, query);
   }
 
+  @Get('analysis')
+  getAnalysis(@Request() req: any, @Query() query: any) {
+    return this.mobileFundsService.getAnalysis(req.user.churchId, query);
+  }
+
   @Get('transactions')
   listTransactions(@Request() req: any, @Query() query: any) {
     return this.mobileFundsService.listTransactions(req.user.churchId, query);

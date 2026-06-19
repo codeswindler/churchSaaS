@@ -27,7 +27,6 @@ export interface ChurchIdentity {
   address?: string | null;
   notes?: string | null;
   status?: string | null;
-  billingModel?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -47,9 +46,38 @@ export function sanitizeChurchForTenant(church: ChurchIdentity | null) {
     address: church.address ?? null,
     notes: church.notes ?? null,
     status: church.status ?? null,
-    billingModel: church.billingModel ?? null,
     createdAt: church.createdAt,
     updatedAt: church.updatedAt,
+  };
+}
+
+export function sanitizeSubscriptionForTenant(subscription: any) {
+  if (!subscription) {
+    return null;
+  }
+  const usesCountdown = subscription.billingModel === 'subscription';
+  if (!usesCountdown) {
+    return {
+      id: null,
+      startsAt: null,
+      expiresAt: null,
+      graceEndsAt: null,
+      status: 'active',
+      countdown: null,
+      usesCountdown: false,
+    };
+  }
+  return {
+    id: subscription.id ?? null,
+    startsAt: subscription.startsAt ?? null,
+    expiresAt: subscription.expiresAt ?? null,
+    graceEndsAt: subscription.graceEndsAt ?? null,
+    planCode: subscription.planCode ?? null,
+    planName: subscription.planName ?? null,
+    notes: subscription.notes ?? null,
+    status: subscription.status,
+    countdown: subscription.countdown ?? null,
+    usesCountdown: true,
   };
 }
 

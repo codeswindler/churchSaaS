@@ -70,22 +70,6 @@ function isCurrentVerseDate(value?: string | null) {
   return !date || date >= getTodayInputDate();
 }
 
-function formatMoney(value: unknown) {
-  return `KES ${Number(value || 0).toLocaleString('en-KE', {
-    maximumFractionDigits: 0,
-  })}`;
-}
-
-function formatDateRange(item: any) {
-  const start = formatDate(item.startDate);
-  const end =
-    item.endMode === 'static' && item.endDate
-      ? formatDate(item.endDate)
-      : 'to date';
-
-  return [start, end].filter(Boolean).join(' - ');
-}
-
 export default function PublicCongregation() {
   const { slug = '' } = useParams();
   const [activeVerseIndex, setActiveVerseIndex] = useState(0);
@@ -101,22 +85,6 @@ export default function PublicCongregation() {
         .then((response) => response.data),
     enabled: Boolean(slug),
   });
-  const hasOngoingFundDisplay = Boolean(
-    data?.page?.fundDisplays?.some(
-      (display: any) => display?.endMode !== 'static',
-    ),
-  );
-  const { data: liveFundDisplayData } = useQuery({
-    queryKey: ['public-congregation-fund-displays', slug],
-    queryFn: () =>
-      api
-        .get(`/public/churches/${slug}/congregation/fund-displays`)
-        .then((response) => response.data),
-    enabled: Boolean(slug) && hasOngoingFundDisplay,
-    refetchInterval: 5_000,
-    refetchIntervalInBackground: true,
-  });
-
   useEffect(() => {
     localStorage.setItem(PUBLIC_THEME_STORAGE_KEY, publicTheme);
   }, [publicTheme]);
@@ -151,8 +119,6 @@ export default function PublicCongregation() {
   const events = page.events || [];
   const programs = page.massPrograms || [];
   const sermons = page.sermons || [];
-  const fundDisplays =
-    liveFundDisplayData?.fundDisplays || page.fundDisplays || [];
   const gallery = (page.galleryImages || []).filter(
     (image: any) => image?.imageUrl && image.isActive !== false,
   );
@@ -527,59 +493,6 @@ export default function PublicCongregation() {
             </div>
           </div>
         </section>
-
-        {fundDisplays.length > 0 ? (
-          <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
-            <div className={panelClass}>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <p className={sectionEyebrowClass}>
-                    Giving Updates
-                  </p>
-                  <h2 className="mt-3 text-3xl font-semibold">
-                    Fund collections
-                  </h2>
-                </div>
-                <Link
-                  className={actionButtonClass}
-                  to={`/c/${slug}/give`}
-                >
-                  <HeartHandshake size={16} />
-                  Give
-                </Link>
-              </div>
-
-              <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {fundDisplays.map((display: any, index: number) => (
-                  <article
-                    className={itemCardClass}
-                    key={display.id || index}
-                  >
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#1e6f87]">
-                      {formatDateRange(display)}
-                    </p>
-                    <h3 className="mt-3 text-xl font-semibold">
-                      {display.title || display.fundAccountName}
-                    </h3>
-                    <p className="mt-4 text-3xl font-semibold">
-                      {formatMoney(display.totalAmount)}
-                    </p>
-                    <p className={`mt-1 text-sm ${mutedTextClass}`}>
-                      {Number(display.contributionCount || 0).toLocaleString()}{' '}
-                      confirmed contribution
-                      {Number(display.contributionCount || 0) === 1 ? '' : 's'}
-                    </p>
-                    {display.description ? (
-                      <p className={`mt-4 text-sm leading-6 ${mutedTextClass}`}>
-                        {display.description}
-                      </p>
-                    ) : null}
-                  </article>
-                ))}
-              </div>
-            </div>
-          </section>
-        ) : null}
 
         <section className="mx-auto grid max-w-7xl gap-6 px-4 pb-12 sm:px-6 lg:grid-cols-[1fr_0.8fr] lg:px-8">
           <div className={panelClass}>

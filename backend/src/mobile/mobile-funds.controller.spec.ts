@@ -2,11 +2,29 @@ import { MobileFundsController } from './mobile-funds.controller';
 
 describe('MobileFundsController', () => {
   const mobileFundsService = {
+    getAnalysis: jest.fn(),
     listFundAccounts: jest.fn(),
   };
   const controller = new MobileFundsController(mobileFundsService as any);
 
   beforeEach(() => jest.clearAllMocks());
+
+  it('returns analysis scoped to the authenticated church', async () => {
+    mobileFundsService.getAnalysis.mockResolvedValue({
+      dailyTotals: [],
+      contributorTotals: [],
+    });
+
+    await controller.getAnalysis(
+      { user: { churchId: 'church-1' } },
+      { from: '2026-06-01', to: '2026-06-30' },
+    );
+
+    expect(mobileFundsService.getAnalysis).toHaveBeenCalledWith('church-1', {
+      from: '2026-06-01',
+      to: '2026-06-30',
+    });
+  });
 
   it('returns the documented fundAccounts envelope for the authenticated church', async () => {
     mobileFundsService.listFundAccounts.mockResolvedValue({

@@ -16,7 +16,10 @@ import {
   normalizeChurchRole,
   resolveChurchPermissions,
 } from '../common/access-control';
-import { sanitizeChurchForTenant } from '../common/church.utils';
+import {
+  sanitizeChurchForTenant,
+  sanitizeSubscriptionForTenant,
+} from '../common/church.utils';
 import { ChurchStatus } from '../entities/church.entity';
 import { ChurchUser, ChurchUserRole } from '../entities/church-user.entity';
 import {
@@ -191,7 +194,6 @@ export class AuthService {
         id: user.church.id,
         name: user.church.name,
         slug: user.church.slug,
-        billingModel: user.church.billingModel,
       },
     };
   }
@@ -228,7 +230,7 @@ export class AuthService {
       ...result,
       userType: 'church',
       church: sanitizeChurchForTenant(churchUser.church),
-      subscription,
+      subscription: sanitizeSubscriptionForTenant(subscription),
       ...access,
     };
   }
@@ -293,7 +295,7 @@ export class AuthService {
       ...result,
       userType: 'church',
       church: sanitizeChurchForTenant(churchUser.church),
-      subscription,
+      subscription: sanitizeSubscriptionForTenant(subscription),
       ...access,
     };
   }
@@ -451,9 +453,8 @@ export class AuthService {
         id: authenticatedUser.church.id,
         name: authenticatedUser.church.name,
         slug: authenticatedUser.church.slug,
-        billingModel: authenticatedUser.church.billingModel,
       },
-      subscription,
+      subscription: sanitizeSubscriptionForTenant(subscription),
     });
   }
 

@@ -3,7 +3,9 @@ import {
   CalendarClock,
   CheckCircle2,
   Clock3,
+  Copy,
   Edit3,
+  ExternalLink,
   Eye,
   Plus,
   Trash2,
@@ -184,6 +186,9 @@ export default function ChurchFundDisplays() {
   const session = getSession();
   const isPriest =
     session?.user?.role === 'priest' || session?.user?.role === 'church_admin';
+  const publicFundsPath = session?.church?.slug
+    ? `/c/${session.church.slug}/funds`
+    : '';
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedReviewId = searchParams.get('review');
   const openedReviewId = useRef<string | null>(null);
@@ -385,6 +390,13 @@ export default function ChurchFundDisplays() {
 
   const editorNeedsDuration =
     isPriest && (!editorItem || editorItem.approvalStatus !== 'approved');
+  const copyPublicLink = async (path: string) => {
+    if (!path) return;
+    const url =
+      typeof window === 'undefined' ? path : `${window.location.origin}${path}`;
+    await navigator.clipboard?.writeText(url);
+    toast.success('Public fund link copied');
+  };
 
   return (
     <div className="church-console-page fund-displays-page space-y-5">
@@ -398,20 +410,43 @@ export default function ChurchFundDisplays() {
               Approved fund displays
             </h3>
             <p className="mt-2 max-w-3xl text-sm text-stone-300">
-              Control which net collection totals appear publicly. Approval
+              Control which collection totals appear publicly. Approval
               starts a countdown, and the display is removed automatically when
               time runs out.
             </p>
           </div>
-          <button
-            className="btn-primary justify-center"
-            disabled={activeFundAccounts.length === 0}
-            type="button"
-            onClick={openCreate}
-          >
-            <Plus size={17} />
-            Add fund display
-          </button>
+          <div className="flex flex-wrap gap-2">
+            {publicFundsPath ? (
+              <>
+                <a
+                  className="btn-secondary justify-center"
+                  href={publicFundsPath}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  <ExternalLink size={16} />
+                  Preview
+                </a>
+                <button
+                  className="btn-secondary justify-center"
+                  type="button"
+                  onClick={() => copyPublicLink(publicFundsPath)}
+                >
+                  <Copy size={16} />
+                  Copy link
+                </button>
+              </>
+            ) : null}
+            <button
+              className="btn-primary justify-center"
+              disabled={activeFundAccounts.length === 0}
+              type="button"
+              onClick={openCreate}
+            >
+              <Plus size={17} />
+              Add fund display
+            </button>
+          </div>
         </div>
       </section>
 
@@ -446,7 +481,7 @@ export default function ChurchFundDisplays() {
               <div className="mt-5 grid grid-cols-2 gap-3">
                 <div className="rounded-2xl border border-white/10 bg-black/10 p-3">
                   <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
-                    Net total
+                    Total
                   </p>
                   <p className="mt-2 text-xl font-semibold text-white">
                     {formatKes(item.totalAmount)}
@@ -505,6 +540,31 @@ export default function ChurchFundDisplays() {
               </dl>
 
               <div className="mt-5 flex flex-wrap gap-2">
+                {publicFundsPath &&
+                item.approvalStatus === 'approved' &&
+                item.displayStatus === 'active' ? (
+                  <>
+                    <a
+                      className="btn-secondary px-3 py-2"
+                      href={`${publicFundsPath}/${item.id}`}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      <ExternalLink size={16} />
+                      Preview
+                    </a>
+                    <button
+                      aria-label={`Copy public link for ${item.title || item.fundAccountName}`}
+                      className="btn-secondary px-3 py-2"
+                      type="button"
+                      onClick={() =>
+                        copyPublicLink(`${publicFundsPath}/${item.id}`)
+                      }
+                    >
+                      <Copy size={16} />
+                    </button>
+                  </>
+                ) : null}
                 {isPriest && item.approvalStatus === 'pending' ? (
                   <button
                     className="btn-primary px-3 py-2"
