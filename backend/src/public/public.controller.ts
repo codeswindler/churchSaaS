@@ -661,10 +661,29 @@ export class PublicController {
       const todayTrend = trendByDate.find(
         (point: any) => point.date === todayKey,
       );
+      const monthPrefix = todayKey.slice(0, 7);
+      const monthTrend = trendByDate.filter((point: any) =>
+        `${point.date || ''}`.startsWith(monthPrefix),
+      );
+      const monthAmount = Number(
+        monthTrend
+          .reduce(
+            (sum: number, point: any) =>
+              sum + Number(point.totalAmount || 0),
+            0,
+          )
+          .toFixed(2),
+      );
+      const monthContributionCount = monthTrend.reduce(
+        (sum: number, point: any) => sum + Number(point.count || 0),
+        0,
+      );
       const targetAmount =
-        Number(display.targetAmount || 0) > 0
-          ? Number(display.targetAmount)
-          : null;
+        Number(fundAccount.targetAmount || 0) > 0
+          ? Number(fundAccount.targetAmount)
+          : Number(display.targetAmount || 0) > 0
+            ? Number(display.targetAmount)
+            : null;
       const remainingAmount =
         targetAmount === null
           ? null
@@ -692,6 +711,8 @@ export class PublicController {
         lastContributionAt: totals.lastContributionAt,
         todayAmount: Number(todayTrend?.totalAmount || 0),
         todayContributionCount: Number(todayTrend?.count || 0),
+        monthAmount,
+        monthContributionCount,
         remainingAmount,
         progressPercentage,
         trendByDate,

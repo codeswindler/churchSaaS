@@ -42,6 +42,9 @@ export class FundAccount {
   @Column({ type: 'int', default: 0 })
   displayOrder: number;
 
+  @Column({ type: 'decimal', precision: 14, scale: 2, nullable: true })
+  targetAmount: number | null;
+
   @Column({ type: 'text' })
   receiptTemplate: string;
 

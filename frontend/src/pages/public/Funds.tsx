@@ -179,8 +179,9 @@ function CampaignProgress({ display }: { display: any }) {
             {todayCount.toLocaleString()}{' '}
             {todayCount === 1 ? 'contribution' : 'contributions'} today
           </p>
-          <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
-            Live · refreshes every 5 seconds
+          <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-600/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-600" />
+            Live
           </p>
         </div>
 
@@ -219,7 +220,7 @@ function CampaignProgress({ display }: { display: any }) {
           </p>
           <p className="mt-2 text-sm text-amber-900/70">
             {targetAmount === null
-              ? 'No fixed target has been set for this display.'
+              ? 'No fixed target has been set for this fund account.'
               : exceededAmount > 0
                 ? `${formatMoney(exceededAmount)} beyond the target`
                 : `${formatMoney(remainingAmount)} still to raise`}
@@ -308,10 +309,22 @@ function FundTrend({
   points,
   startDate,
   endDate,
+  todayAmount = 0,
+  todayCount = 0,
+  monthAmount = 0,
+  monthCount = 0,
+  totalAmount = 0,
+  totalCount = 0,
 }: {
   points: Array<{ date: string; totalAmount: number; count: number }>;
   startDate?: string | null;
   endDate?: string | null;
+  todayAmount?: number;
+  todayCount?: number;
+  monthAmount?: number;
+  monthCount?: number;
+  totalAmount?: number;
+  totalCount?: number;
 }) {
   const gradientId = `fund-trend-${useId().replace(/:/g, '')}`;
 
@@ -406,36 +419,41 @@ function FundTrend({
       <div className="grid gap-2 sm:grid-cols-3">
         <div className="rounded-2xl border border-white/80 bg-white/70 px-4 py-3">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-500">
-            Recent giving
+            Today
           </p>
           <p className="mt-1 text-xl font-semibold text-[#183126]">
-            {formatMoney(chartTotal)}
+            {formatMoney(todayAmount)}
           </p>
           <p className="mt-1 text-xs text-stone-500">
-            {formatChartDate(dailyPoints[0].date)} –{' '}
-            {formatChartDate(dailyPoints[dailyPoints.length - 1].date)}
+            {Number(todayCount || 0).toLocaleString()}{' '}
+            {Number(todayCount || 0) === 1 ? 'gift' : 'gifts'} today
           </p>
         </div>
         <div className="rounded-2xl border border-amber-200/70 bg-amber-50/80 px-4 py-3">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-800/70">
-            Strongest day
+            This month
           </p>
           <p className="mt-1 text-xl font-semibold text-[#7a4b12]">
-            {formatMoney(strongestPoint.totalAmount)}
+            {formatMoney(monthAmount)}
           </p>
           <p className="mt-1 text-xs text-amber-800/70">
-            {formatChartDate(strongestPoint.date)}
+            {Number(monthCount || 0).toLocaleString()}{' '}
+            {Number(monthCount || 0) === 1 ? 'gift' : 'gifts'} this month
           </p>
         </div>
         <div className="rounded-2xl border border-white/80 bg-white/70 px-4 py-3">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-500">
-            Gifts in view
+            Total collected
           </p>
           <p className="mt-1 text-xl font-semibold text-[#183126]">
-            {chartCount.toLocaleString()}
+            {formatMoney(totalAmount || chartTotal)}
           </p>
           <p className="mt-1 text-xs text-stone-500">
-            Average {formatMoney(Math.round(averageAmount))} per day
+            {Number(totalCount || chartCount).toLocaleString()}{' '}
+            {Number(totalCount || chartCount) === 1
+              ? 'contribution'
+              : 'contributions'}{' '}
+            since {formatChartDate(startDate || dailyPoints[0].date)}
           </p>
         </div>
       </div>
@@ -774,6 +792,12 @@ export default function PublicFunds() {
                   }
                   points={display.trendByDate || []}
                   startDate={display.startDate}
+                  todayAmount={Number(display.todayAmount || 0)}
+                  todayCount={Number(display.todayContributionCount || 0)}
+                  monthAmount={Number(display.monthAmount || 0)}
+                  monthCount={Number(display.monthContributionCount || 0)}
+                  totalAmount={Number(display.totalAmount || 0)}
+                  totalCount={Number(display.contributionCount || 0)}
                 />
               </div>
             </article>

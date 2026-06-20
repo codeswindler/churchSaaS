@@ -31,6 +31,7 @@ const initialForm = {
   code: '',
   description: '',
   displayOrder: 0,
+  targetAmount: '',
   isActive: true,
   receiptTemplate: FUND_RECEIPT_TEMPLATE_PREFIX,
 };
@@ -39,6 +40,12 @@ const RECEIPT_TEMPLATE_LIMIT = 459;
 
 function isGeneralFundAccount(account: any) {
   return `${account?.code || account?.name || ''}`.trim().toLowerCase() === 'general';
+}
+
+function formatKes(value: unknown) {
+  return `KES ${Number(value || 0).toLocaleString('en-KE', {
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function getReceiptTemplatePrefix(account: any) {
@@ -121,6 +128,9 @@ export default function ChurchFundAccounts() {
       const receiptPrefix = getReceiptTemplatePrefix(form);
       const payload = {
         ...form,
+        targetAmount: `${form.targetAmount || ''}`.trim()
+          ? Number(form.targetAmount)
+          : null,
         receiptTemplate: buildReceiptTemplate(
           getReceiptExtraMessage(form.receiptTemplate, receiptPrefix),
           receiptPrefix,
@@ -210,6 +220,8 @@ export default function ChurchFundAccounts() {
       code: item.code,
       description: item.description || '',
       displayOrder: item.displayOrder || 0,
+      targetAmount:
+        Number(item.targetAmount || 0) > 0 ? String(item.targetAmount) : '',
       isActive: item.isActive,
       receiptTemplate: item.receiptTemplate || initialForm.receiptTemplate,
     });
@@ -267,6 +279,12 @@ export default function ChurchFundAccounts() {
                       <div className="text-xs text-stone-400">
                         {item.description || 'No description'}
                       </div>
+                      <div className="mt-1 text-xs text-amber-100/80">
+                        Target:{' '}
+                        {Number(item.targetAmount || 0) > 0
+                          ? formatKes(item.targetAmount)
+                          : 'Open goal'}
+                      </div>
                     </td>
                     <td data-label="Actions">
                       <button
@@ -306,7 +324,7 @@ export default function ChurchFundAccounts() {
       {isEditorOpen ? (
         <div className="modal-backdrop" role="presentation" onClick={closeEditor}>
           <div className="modal-shell" onClick={(event) => event.stopPropagation()}>
-            <section className="panel modal-card church-details-modal-card p-5 sm:p-6">
+            <section className="panel modal-card church-details-modal-card fund-account-editor-modal p-5 sm:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
@@ -335,13 +353,13 @@ export default function ChurchFundAccounts() {
               </div>
 
               <form
-                className="mt-6 space-y-4"
+                className="fund-account-editor-form mt-6 space-y-4"
                 onSubmit={(event) => {
                   event.preventDefault();
                   saveMutation.mutate();
                 }}
               >
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="fund-account-editor-basics grid gap-4 md:grid-cols-2">
                   {[
                     ['name', 'Name'],
                     ['code', 'Code'],
@@ -366,10 +384,31 @@ export default function ChurchFundAccounts() {
                       />
                     </div>
                   ))}
+                  <div className="md:col-span-2">
+                    <label className="label">Collection target (optional)</label>
+                    <input
+                      className="input"
+                      min="1"
+                      placeholder="e.g. 146000000"
+                      step="0.01"
+                      type="number"
+                      value={form.targetAmount}
+                      onChange={(event) =>
+                        setForm((current: any) => ({
+                          ...current,
+                          targetAmount: event.target.value,
+                        }))
+                      }
+                    />
+                    <p className="mt-2 text-xs text-stone-400">
+                      Used by public fund displays for this account to show
+                      target, amount remaining, and progress.
+                    </p>
+                  </div>
                 </div>
 
-                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] xl:items-start">
-                  <section className="rounded-3xl border border-white/10 bg-black/10 p-5">
+                <div className="fund-account-editor-content grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] xl:items-start">
+                  <section className="fund-account-editor-receipt rounded-3xl border border-white/10 bg-black/10 p-5">
                     <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
                       Receipt Template
                     </p>
@@ -428,7 +467,7 @@ export default function ChurchFundAccounts() {
                     </div>
                   </section>
 
-                  <div className="xl:sticky xl:top-5">
+                  <div className="fund-account-editor-preview xl:sticky xl:top-5">
                     <SmsPhonePreview
                       message={formPreviewMessage}
                       sender="Church SMS"

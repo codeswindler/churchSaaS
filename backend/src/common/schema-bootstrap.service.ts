@@ -11,6 +11,7 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
     await this.ensureChurchCredentialColumns();
     await this.ensurePlatformSmsConfigTable();
     await this.ensureRevenueAndAccessColumns();
+    await this.ensureFundAccountColumns();
     await this.ensureClientEnquiryTable();
     await this.ensureSmsMessagingTables();
     await this.ensureSmsSenderTables();
@@ -491,6 +492,25 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
           );
         }
       }
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  private async ensureFundAccountColumns() {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+
+    try {
+      const fundAccounts = await queryRunner.getTable('fund_accounts');
+      if (!fundAccounts || fundAccounts.findColumnByName('targetAmount')) {
+        return;
+      }
+
+      await queryRunner.query(
+        'ALTER TABLE `fund_accounts` ADD COLUMN `targetAmount` decimal(14,2) NULL AFTER `displayOrder`',
+      );
+      this.logger.log('Added optional public target to fund accounts.');
     } finally {
       await queryRunner.release();
     }

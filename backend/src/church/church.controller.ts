@@ -73,6 +73,7 @@ export class ChurchController {
       req.user.churchId,
       req.user.id,
       body,
+      req.user.role,
     );
   }
 
@@ -109,6 +110,7 @@ export class ChurchController {
       req.user.churchId,
       req.user.id,
       file,
+      req.user.role,
     );
   }
 
@@ -188,6 +190,7 @@ export class ChurchController {
     return this.churchService.getDiscipleshipMember(
       req.user.churchId,
       memberId,
+      req.user.role,
     );
   }
 
@@ -203,6 +206,7 @@ export class ChurchController {
       req.user.churchId,
       memberId,
       body,
+      req.user.role,
     );
   }
 

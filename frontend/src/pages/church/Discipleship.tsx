@@ -21,7 +21,7 @@ import {
   useState,
 } from 'react';
 import toast from 'react-hot-toast';
-import api from '../../services/api';
+import api, { getSession } from '../../services/api';
 
 type DiscipleshipTab = 'attendance' | 'members';
 type MemberDetailSection = 'attendance' | 'contributions';
@@ -77,8 +77,8 @@ interface DiscipleshipMember {
     enrollmentDate?: string | null;
     firstContributionAt?: string | null;
     latestContributionAt?: string | null;
-    contributionCount: number;
-    contributionTotal: number;
+    contributionCount?: number;
+    contributionTotal?: number;
     latestAttendanceAt?: string | null;
     attendanceCount90Days: number;
     averageAttendancePerMonth: number;
@@ -173,23 +173,31 @@ function formatYesNo(value: boolean | null | undefined) {
 
 function MemberActivitySummary({
   member,
+  showContributions,
 }: {
   member: DiscipleshipMember;
+  showContributions: boolean;
 }) {
   const activity = member.activitySummary;
   if (!activity) {
     return null;
   }
-  const items = [
+  const items: [string, string | number][] = [
     ['Enrolled', activity.enrollmentDate || 'Not set'],
-    ['First contribution', activity.firstContributionAt || 'None'],
-    ['Latest contribution', activity.latestContributionAt || 'None'],
-    ['Contribution total', formatKes(activity.contributionTotal)],
-    ['Contribution entries', activity.contributionCount],
     ['Last attendance', activity.latestAttendanceAt || 'None'],
     ['Attendance · 90 days', activity.attendanceCount90Days],
     ['Average / month', activity.averageAttendancePerMonth],
   ];
+  if (showContributions) {
+    items.splice(
+      1,
+      0,
+      ['First contribution', activity.firstContributionAt || 'None'],
+      ['Latest contribution', activity.latestContributionAt || 'None'],
+      ['Contribution total', formatKes(activity.contributionTotal)],
+      ['Contribution entries', activity.contributionCount || 0],
+    );
+  }
   return (
     <div className="member-activity-summary grid gap-2 sm:grid-cols-2">
       {items.map(([label, value]) => (
@@ -203,6 +211,47 @@ function MemberActivitySummary({
           <p className="mt-1 text-sm font-semibold text-white">{value}</p>
         </div>
       ))}
+    </div>
+  );
+}
+
+function MemberBioSummary({ member }: { member: DiscipleshipMember }) {
+  const fields = [
+    ['Phone', member.phone || 'Not captured'],
+    ['Email', member.email || 'Not captured'],
+    ['Gender', member.gender || 'Not set'],
+    ['Enrolled', member.enrollmentDate || 'Not set'],
+    ['First time in church', formatYesNo(member.isFirstTimeAtChurch)],
+    [
+      'Community / church role',
+      member.hasChurchRole
+        ? member.churchRoleNotes || 'Yes'
+        : formatYesNo(member.hasChurchRole),
+    ],
+  ];
+  return (
+    <div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {fields.map(([label, value]) => (
+          <div key={label}>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
+              {label}
+            </p>
+            <p className="mt-1 break-words text-sm font-semibold text-white">
+              {value}
+            </p>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-sm text-stone-300">
+        <span className="text-stone-400">Groups:</span>{' '}
+        {(member.groups || []).map((group) => group.name).join(', ') ||
+          'No group assigned'}
+      </p>
+      <p className="mt-3 text-sm text-stone-300">
+        <span className="text-stone-400">Bio notes:</span>{' '}
+        {member.notes || 'No notes recorded'}
+      </p>
     </div>
   );
 }
@@ -421,6 +470,7 @@ function createMemberForm() {
   return {
     fullName: '',
     phone: '',
+    email: '',
     gender: '',
     enrollmentDate: '',
     isFirstTimeAtChurch: null as boolean | null,
@@ -449,6 +499,10 @@ const discipleshipTabs: {
 
 export default function ChurchDiscipleship() {
   const queryClient = useQueryClient();
+  const session = getSession();
+  const isPriest =
+    session?.user?.role === 'priest' ||
+    session?.user?.role === 'church_admin';
   const [activeTab, setActiveTab] = useState<DiscipleshipTab>('attendance');
   const [memberSearch, setMemberSearch] = useState('');
   const [memberGroupFilter, setMemberGroupFilter] = useState('');
@@ -493,7 +547,28 @@ export default function ChurchDiscipleship() {
     queryKey: ['discipleship-summary'],
     queryFn: () =>
       api.get('/church/discipleship/summary').then((response) => response.data),
+    refetchInterval: (query) =>
+      query.state.data?.syncing ? 2_000 : false,
   });
+  useEffect(() => {
+    if (summary?.syncing !== false) {
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: ['discipleship-members'] });
+    queryClient.invalidateQueries({ queryKey: ['discipleship-member-detail'] });
+    queryClient.invalidateQueries({
+      queryKey: ['discipleship-panel-member-detail'],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ['discipleship-member-attendance'],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ['discipleship-panel-member-attendance'],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ['discipleship-duplicate-members'],
+    });
+  }, [queryClient, summary?.syncing]);
 
   const { data: groups = [] } = useQuery<DiscipleshipGroup[]>({
     queryKey: ['discipleship-groups'],
@@ -646,6 +721,15 @@ export default function ChurchDiscipleship() {
       queryKey: ['discipleship-duplicate-members'],
     });
     queryClient.invalidateQueries({ queryKey: ['discipleship-member-detail'] });
+    queryClient.invalidateQueries({
+      queryKey: ['discipleship-panel-member-detail'],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ['discipleship-member-attendance'],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ['discipleship-panel-member-attendance'],
+    });
   };
 
   const memberMutation = useMutation({
@@ -653,6 +737,7 @@ export default function ChurchDiscipleship() {
       const payload = {
         fullName: memberForm.fullName,
         phone: memberForm.phone,
+        email: memberForm.email,
         gender: memberForm.gender,
         enrollmentDate: memberForm.isFirstTimeAtChurch
           ? memberForm.enrollmentDate || getNairobiToday()
@@ -838,6 +923,7 @@ export default function ChurchDiscipleship() {
         ? {
             fullName: member.fullName || '',
             phone: member.phone || '',
+            email: member.email || '',
             gender: member.gender || '',
             enrollmentDate: member.enrollmentDate || '',
             isFirstTimeAtChurch: member.isFirstTimeAtChurch ?? null,
@@ -932,10 +1018,7 @@ export default function ChurchDiscipleship() {
     ['Present today', summary?.totals?.presentToday ?? 0],
     [
       'Duplicate reviews',
-      duplicateClusters.length +
-        matchCandidates.length ||
-        summary?.totals?.duplicateReviews ||
-        0,
+      summary?.totals?.duplicateReviews || 0,
     ],
   ];
   const activeGroups = groups.filter((group) => group.isActive !== false);
@@ -1035,8 +1118,9 @@ export default function ChurchDiscipleship() {
     selectedDuplicateMembers.find((member) => member.isManual)?.id ||
     selectedDuplicateMembers[0]?.id ||
     null;
+  const visibleDetailSection = isPriest ? detailSection : 'attendance';
   const detailStatCards =
-    detailSection === 'attendance'
+    visibleDetailSection === 'attendance'
       ? [
           ['Attendance marks', memberAttendanceSummary.total],
           ['Groups attended', memberAttendanceSummary.groupsAttended],
@@ -1066,7 +1150,7 @@ export default function ChurchDiscipleship() {
     memberId: string,
     section: MemberDetailSection,
   ) => {
-    setDetailSection(section);
+    setDetailSection(isPriest ? section : 'attendance');
     setDetailMemberId(memberId);
   };
 
@@ -1339,30 +1423,12 @@ export default function ChurchDiscipleship() {
             </h3>
             {panelMember ? (
               <div className="mt-4 rounded-2xl bg-white/[0.04] p-4">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
-                      Phone
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-white">
-                      {panelMember.phone || 'Not captured'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
-                      Gender
-                    </p>
-                    <p className="mt-1 text-sm font-semibold capitalize text-white">
-                      {panelMember.gender || 'Not set'}
-                    </p>
-                  </div>
-                </div>
-                <p className="mt-3 text-sm text-stone-300">
-                  {(panelMember.groups || []).map((group) => group.name).join(', ') ||
-                    'No group assigned'}
-                </p>
+                <MemberBioSummary member={panelMember} />
                 <div className="mt-4">
-                  <MemberActivitySummary member={panelMember} />
+                  <MemberActivitySummary
+                    member={panelMember}
+                    showContributions={isPriest}
+                  />
                 </div>
               </div>
             ) : null}
@@ -1382,22 +1448,24 @@ export default function ChurchDiscipleship() {
                 valueLabel="marks"
               />
             </div>
-            <div className="mt-5 rounded-3xl bg-white/[0.045] p-4">
-              <p className="text-xs uppercase tracking-[0.2em] text-stone-400">
-                Giving chart
-              </p>
-              <ProgressChart
-                emptyLabel="No linked contributions for this member."
-                items={panelContributionChart}
-                mode="line"
-                onViewDetails={
-                  panelMember
-                    ? () => openMemberDetails(panelMember.id, 'contributions')
-                    : undefined
-                }
-                valueLabel="KES"
-              />
-            </div>
+            {isPriest ? (
+              <div className="mt-5 rounded-3xl bg-white/[0.045] p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-stone-400">
+                  Giving chart
+                </p>
+                <ProgressChart
+                  emptyLabel="No linked contributions for this member."
+                  items={panelContributionChart}
+                  mode="line"
+                  onViewDetails={
+                    panelMember
+                      ? () => openMemberDetails(panelMember.id, 'contributions')
+                      : undefined
+                  }
+                  valueLabel="KES"
+                />
+              </div>
+            ) : null}
           </div>
         </section>
       )}
@@ -1664,30 +1732,13 @@ export default function ChurchDiscipleship() {
             </div>
             {panelMember ? (
               <div className="mt-4 space-y-4 text-base text-stone-300">
-                <div className="grid gap-2 rounded-2xl bg-black/10 p-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                  <p>
-                    <span className="block text-xs uppercase tracking-[0.18em] text-stone-400">
-                      Phone
-                    </span>
-                    <span className="font-semibold text-white">
-                      {panelMember.phone || 'Not captured'}
-                    </span>
-                  </p>
-                  <p>
-                    <span className="block text-xs uppercase tracking-[0.18em] text-stone-400">
-                      Gender
-                    </span>
-                    <span className="font-semibold capitalize text-white">
-                      {panelMember.gender || 'Not set'}
-                    </span>
-                  </p>
+                <div className="rounded-2xl bg-black/10 p-3">
+                  <MemberBioSummary member={panelMember} />
                 </div>
-                <p>
-                  <span className="text-stone-400">Groups:</span>{' '}
-                  {(panelMember.groups || []).map((group) => group.name).join(', ') ||
-                    'No group assigned'}
-                </p>
-                <MemberActivitySummary member={panelMember} />
+                <MemberActivitySummary
+                  member={panelMember}
+                  showContributions={isPriest}
+                />
                 <div>
                   <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
                     Attendance chart
@@ -1702,20 +1753,22 @@ export default function ChurchDiscipleship() {
                     valueLabel="marks"
                   />
                 </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
-                    Giving chart
-                  </p>
-                  <ProgressChart
-                    emptyLabel="No linked contribution pattern."
-                    items={panelContributionChart}
-                    mode="line"
-                    onViewDetails={() =>
-                      openMemberDetails(panelMember.id, 'contributions')
-                    }
-                    valueLabel="KES"
-                  />
-                </div>
+                {isPriest ? (
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
+                      Giving chart
+                    </p>
+                    <ProgressChart
+                      emptyLabel="No linked contribution pattern."
+                      items={panelContributionChart}
+                      mode="line"
+                      onViewDetails={() =>
+                        openMemberDetails(panelMember.id, 'contributions')
+                      }
+                      valueLabel="KES"
+                    />
+                  </div>
+                ) : null}
               </div>
             ) : (
               <p className="mt-4 text-sm text-stone-300">
@@ -1845,6 +1898,22 @@ export default function ChurchDiscipleship() {
                         setMemberForm((current) => ({
                           ...current,
                           phone: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
+                      Email address (optional)
+                    </span>
+                    <input
+                      className="input"
+                      type="email"
+                      value={memberForm.email}
+                      onChange={(event) =>
+                        setMemberForm((current) => ({
+                          ...current,
+                          email: event.target.value,
                         }))
                       }
                     />
@@ -2017,6 +2086,22 @@ export default function ChurchDiscipleship() {
                       />
                     </label>
                   ) : null}
+                  <label className="mt-5 block space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
+                      Member bio notes (optional)
+                    </span>
+                    <textarea
+                      className="input min-h-24"
+                      placeholder="Record pastoral, family, ministry, or follow-up details."
+                      value={memberForm.notes}
+                      onChange={(event) =>
+                        setMemberForm((current) => ({
+                          ...current,
+                          notes: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
                 </div>
               ) : null}
 
@@ -2288,12 +2373,6 @@ export default function ChurchDiscipleship() {
                         <p>
                           Attendance marks: {Number(member.attendanceCount || 0)}
                         </p>
-                        <p>
-                          Contributions:{' '}
-                          {Number(
-                            member.contributionSummary?.contributionCount || 0,
-                          )}
-                        </p>
                         {(member.aliases || []).filter(
                           (alias) => alias.source !== 'manual',
                         ).length > 0 ? (
@@ -2382,7 +2461,7 @@ export default function ChurchDiscipleship() {
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-                    {detailSection === 'attendance'
+                    {visibleDetailSection === 'attendance'
                       ? 'Attendance details'
                       : 'Contribution details'}
                   </p>
@@ -2434,11 +2513,11 @@ export default function ChurchDiscipleship() {
 
               <div className="mt-5 rounded-3xl bg-white/[0.045] p-5">
                 <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
-                  {detailSection === 'attendance'
+                  {visibleDetailSection === 'attendance'
                     ? 'Attendance progression'
                     : 'Contribution progression'}
                 </p>
-                {detailSection === 'attendance' ? (
+                {visibleDetailSection === 'attendance' ? (
                   memberAttendanceLoading ? (
                     <p className="mt-3 text-sm text-stone-300">
                       Loading attendance...
@@ -2469,7 +2548,12 @@ export default function ChurchDiscipleship() {
                   <dl className="mt-4 space-y-4 text-sm">
                     {[
                       ['Phone', detailMember?.phone || 'Not set'],
+                      ['Email', detailMember?.email || 'Not set'],
                       ['Gender', detailMember?.gender || 'Not set'],
+                      [
+                        'Enrollment date',
+                        detailMember?.enrollmentDate || 'Not set',
+                      ],
                       [
                         'First time in church',
                         formatYesNo(detailMember?.isFirstTimeAtChurch),
@@ -2488,21 +2572,27 @@ export default function ChurchDiscipleship() {
                         'Role or community notes',
                         detailMember?.churchRoleNotes || 'No role notes',
                       ],
-                      [
-                        'Known transaction names',
-                        (detailMember?.aliases || [])
-                          .filter((alias) => alias.source !== 'manual')
-                          .map((alias) => alias.alias)
-                          .filter(
-                            (alias, index, items) =>
-                              items.indexOf(alias) === index,
-                          )
-                          .join(', ') || 'No transaction aliases',
-                      ],
-                      [
-                        'Linked transaction identities',
-                        String(detailMember?.linkedContributorCount || 0),
-                      ],
+                      ...(isPriest
+                        ? [
+                            [
+                              'Known transaction names',
+                              (detailMember?.aliases || [])
+                                .filter((alias) => alias.source !== 'manual')
+                                .map((alias) => alias.alias)
+                                .filter(
+                                  (alias, index, items) =>
+                                    items.indexOf(alias) === index,
+                                )
+                                .join(', ') || 'No transaction aliases',
+                            ],
+                            [
+                              'Linked transaction identities',
+                              String(
+                                detailMember?.linkedContributorCount || 0,
+                              ),
+                            ],
+                          ]
+                        : []),
                       ['Notes', detailMember?.notes || 'No notes'],
                     ].map(([label, value]) => (
                       <div key={label}>
@@ -2515,7 +2605,7 @@ export default function ChurchDiscipleship() {
                   </dl>
                 </div>
 
-                {detailSection === 'attendance' ? (
+                {visibleDetailSection === 'attendance' ? (
                   <div className="rounded-3xl border border-white/10 bg-black/10 p-5">
                     <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
                       Attendance history

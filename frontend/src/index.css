@@ -2298,6 +2298,52 @@ textarea {
   }
 }
 
+@media (min-width: 480px) and (max-width: 1366px) and (orientation: landscape) and (hover: none) and (pointer: coarse) and (min-device-height: 600px) {
+  .fund-account-editor-modal {
+    max-height: calc(100dvh - 1rem);
+    max-width: min(72rem, calc(100vw - 1rem));
+    overflow: hidden;
+    padding: 1rem !important;
+  }
+
+  .fund-account-editor-modal > div:first-child h3 {
+    margin-top: 0.25rem;
+  }
+
+  .fund-account-editor-modal > div:first-child p:last-child {
+    margin-top: 0.45rem;
+  }
+
+  .fund-account-editor-form {
+    max-height: calc(100dvh - 9rem);
+    overflow-y: auto;
+    padding-right: 0.25rem;
+  }
+
+  .fund-account-editor-basics {
+    gap: 0.75rem !important;
+  }
+
+  .fund-account-editor-content {
+    grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem) !important;
+    gap: 0.75rem !important;
+  }
+
+  .fund-account-editor-receipt {
+    padding: 1rem !important;
+  }
+
+  .fund-account-editor-receipt textarea {
+    min-height: 7rem !important;
+  }
+
+  .fund-account-editor-preview {
+    position: sticky;
+    top: 0;
+    align-self: start;
+  }
+}
+
 .input-compact {
   @apply w-full rounded-xl px-3.5 py-2.5 text-sm text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-2;
   border: 1px solid var(--input-border);

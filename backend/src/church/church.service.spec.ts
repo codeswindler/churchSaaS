@@ -44,6 +44,25 @@ describe('ChurchService discipleship name matching', () => {
     expect(hasConflict(null, '254724075174')).toBe(false);
   });
 
+  it('does not treat different hashed payer identities as the same person', () => {
+    const hasConflict = (left: string[], right: string[]) =>
+      (service as any).hasDiscipleshipNumberIdentityConflict(
+        new Set(left),
+        new Set(right),
+      ) as boolean;
+
+    expect(
+      hasConflict(['provider:hash-a'], ['provider:hash-b']),
+    ).toBe(true);
+    expect(
+      hasConflict(
+        ['phone:254724075174', 'provider:hash-a'],
+        ['phone:254724075174', 'provider:hash-b'],
+      ),
+    ).toBe(false);
+    expect(hasConflict([], ['provider:hash-b'])).toBe(false);
+  });
+
   it('starts approval duration immediately and validates its bounds', () => {
     const buildWindow = (durationMinutes?: number) =>
       (service as any).buildFundDisplayDurationWindow(durationMinutes, {
@@ -96,7 +115,40 @@ describe('ChurchService discipleship name matching', () => {
     ]);
   });
 
-  it('normalizes an optional positive fund display target', () => {
+  it('normalizes an optional positive fund account target', () => {
+    expect(
+      (service as any).normalizeFundAccountTargetAmount('1500000.50'),
+    ).toBe(1500000.5);
+    expect(
+      (service as any).normalizeFundAccountTargetAmount(''),
+    ).toBeNull();
+    expect(() =>
+      (service as any).normalizeFundAccountTargetAmount('-1'),
+    ).toThrow('Fund account target must be a positive amount');
+  });
+
+  it('uses the fund account target before the legacy display fallback', () => {
+    expect(
+      (service as any).resolveFundDisplayTargetAmount(
+        { targetAmount: 200000 },
+        { targetAmount: 100000 },
+      ),
+    ).toBe(200000);
+    expect(
+      (service as any).resolveFundDisplayTargetAmount(
+        { targetAmount: null },
+        { targetAmount: 100000 },
+      ),
+    ).toBe(100000);
+    expect(
+      (service as any).resolveFundDisplayTargetAmount(
+        { targetAmount: null },
+        {},
+      ),
+    ).toBeNull();
+  });
+
+  it('keeps legacy display targets normalized for compatibility', () => {
     const normalized = (service as any).normalizeFundDisplays([
       {
         id: 'target-display',
@@ -105,7 +157,6 @@ describe('ChurchService discipleship name matching', () => {
         targetAmount: '1500000.50',
       },
     ]);
-
     expect(normalized[0]).toEqual(
       expect.objectContaining({
         targetAmount: 1500000.5,
@@ -153,7 +204,7 @@ describe('ChurchService discipleship name matching', () => {
     );
   });
 
-  it('requires approval when a non-priest changes the public target', () => {
+  it('does not treat a legacy display target as editable display content', () => {
     const previous = {
       id: 'display-1',
       fundAccountId: 'fund-1',
@@ -171,8 +222,8 @@ describe('ChurchService discipleship name matching', () => {
       false,
     );
 
-    expect(result.pendingIds).toEqual(['display-1']);
-    expect(result.items[0].approvalStatus).toBe('pending');
+    expect(result.pendingIds).toEqual([]);
+    expect(result.items[0].approvalStatus).toBe('approved');
   });
 
   it('uses the same outbox filters for CSV exports', async () => {
