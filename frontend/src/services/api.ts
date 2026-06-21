@@ -1,6 +1,6 @@
-import axios from 'axios';
+import axios from "axios";
 
-const STORAGE_KEY = 'church_saas_session';
+const STORAGE_KEY = "church_saas_session";
 
 export interface StoredSession {
   accessToken: string;
@@ -11,10 +11,11 @@ export interface StoredSession {
     username?: string | null;
     phone?: string | null;
     role: string;
-    userType: 'platform' | 'church';
+    userType: "platform" | "church";
     churchId?: string;
     enabledFeatures?: string[];
     permissionOverrides?: string[];
+    permissionDenials?: string[];
     permissions?: string[];
   };
   church?: any;
@@ -23,110 +24,112 @@ export interface StoredSession {
 
 const rolePermissionPresets: Record<string, string[]> = {
   priest: [
-    'dashboard.view',
-    'contributions.view',
-    'contributions.record',
-    'reports.view',
-    'reports.export',
-    'fundAccounts.view',
-    'fundAccounts.manage',
-    'contributors.view',
-    'contributors.tag',
-    'messaging.view',
-    'messaging.send',
-    'outbox.view',
-    'congregation.manage',
-    'presentation.manage',
-    'users.view',
-    'users.manage',
-    'discipleship.view',
-    'discipleship.manage',
-    'discipleship.attendanceRecord',
+    "dashboard.view",
+    "contributions.view",
+    "contributions.record",
+    "reports.view",
+    "reports.export",
+    "fundAccounts.view",
+    "fundAccounts.manage",
+    "contributors.view",
+    "contributors.tag",
+    "messaging.view",
+    "messaging.send",
+    "outbox.view",
+    "congregation.manage",
+    "presentation.manage",
+    "users.view",
+    "users.manage",
+    "discipleship.view",
+    "discipleship.manage",
+    "discipleship.attendanceRecord",
   ],
-  admin: [
-    'fundAccounts.view',
-    'fundAccounts.manage',
-    'contributors.view',
-    'contributors.tag',
-    'messaging.view',
-    'messaging.send',
-    'outbox.view',
-    'congregation.manage',
-    'presentation.manage',
-    'users.view',
-    'users.manage',
-    'discipleship.view',
-    'discipleship.manage',
-    'discipleship.attendanceRecord',
+  user: [
+    "fundAccounts.view",
+    "fundAccounts.manage",
+    "contributors.view",
+    "contributors.tag",
+    "messaging.view",
+    "messaging.send",
+    "outbox.view",
+    "congregation.manage",
+    "presentation.manage",
+    "users.view",
+    "discipleship.view",
+    "discipleship.manage",
+    "discipleship.attendanceRecord",
   ],
 };
 
 const financialPermissions = new Set([
-  'dashboard.view',
-  'contributions.view',
-  'contributions.record',
-  'reports.view',
-  'reports.export',
+  "dashboard.view",
+  "contributions.view",
+  "contributions.record",
+  "reports.view",
+  "reports.export",
+]);
+const priestOnlyPermissions = new Set([
+  ...financialPermissions,
+  "users.manage",
 ]);
 
 const permissionFeatureMap: Record<string, string | null> = {
-  'dashboard.view': 'finance',
-  'contributions.view': 'finance',
-  'contributions.record': 'finance',
-  'reports.view': 'finance',
-  'reports.export': 'finance',
-  'fundAccounts.view': 'fund_accounts',
-  'fundAccounts.manage': 'fund_accounts',
-  'contributors.view': 'messaging',
-  'contributors.tag': 'messaging',
-  'messaging.view': 'messaging',
-  'messaging.send': 'messaging',
-  'outbox.view': 'messaging',
-  'congregation.manage': 'messaging',
-  'presentation.manage': null,
-  'users.view': 'staff_management',
-  'users.manage': 'staff_management',
-  'discipleship.view': 'discipleship',
-  'discipleship.manage': 'discipleship',
-  'discipleship.attendanceRecord': 'discipleship',
+  "dashboard.view": "finance",
+  "contributions.view": "finance",
+  "contributions.record": "finance",
+  "reports.view": "finance",
+  "reports.export": "finance",
+  "fundAccounts.view": "fund_accounts",
+  "fundAccounts.manage": "fund_accounts",
+  "contributors.view": "messaging",
+  "contributors.tag": "messaging",
+  "messaging.view": "messaging",
+  "messaging.send": "messaging",
+  "outbox.view": "messaging",
+  "congregation.manage": "messaging",
+  "presentation.manage": null,
+  "users.view": "staff_management",
+  "users.manage": "staff_management",
+  "discipleship.view": "discipleship",
+  "discipleship.manage": "discipleship",
+  "discipleship.attendanceRecord": "discipleship",
 };
 
 function normalizeChurchRole(role?: string | null) {
-  if (role === 'church_admin') return 'priest';
-  if (role === 'priest') return 'priest';
+  if (role === "church_admin") return "priest";
+  if (role === "priest") return "priest";
   if (
-    role === 'admin' ||
-    role === 'treasurer' ||
-    role === 'secretary' ||
-    role === 'media' ||
-    role === 'cashier'
+    role === "user" ||
+    role === "admin" ||
+    role === "treasurer" ||
+    role === "secretary" ||
+    role === "media" ||
+    role === "cashier"
   ) {
-    return 'admin';
+    return "user";
   }
-  return 'admin';
+  return "user";
 }
 
-export function getChurchUserPermissions(
-  user?: StoredSession['user'] | null,
-) {
-  if (!user || user.userType !== 'church') {
+export function getChurchUserPermissions(user?: StoredSession["user"] | null) {
+  if (!user || user.userType !== "church") {
     return [];
   }
 
-  const providedPermissions = Array.isArray(user.permissions)
-    ? user.permissions
-    : [];
   const normalizedRole = normalizeChurchRole(user.role);
-  const permissions = Array.from(
-    new Set([
-      ...(rolePermissionPresets[normalizedRole] || []),
-      ...providedPermissions,
-    ]),
-  );
+  const denials = new Set(user.permissionDenials || []);
+  const permissions = Array.isArray(user.permissions)
+    ? [...user.permissions]
+    : Array.from(
+        new Set([
+          ...(rolePermissionPresets[normalizedRole] || []),
+          ...(user.permissionOverrides || []),
+        ]),
+      ).filter((permission) => !denials.has(permission));
   const enabledFeatures = new Set(user.enabledFeatures || []);
 
   return permissions.filter((permission) => {
-    if (normalizedRole !== 'priest' && financialPermissions.has(permission)) {
+    if (normalizedRole !== "priest" && priestOnlyPermissions.has(permission)) {
       return false;
     }
     const requiredFeature = permissionFeatureMap[permission];
@@ -139,16 +142,16 @@ export function getChurchUserPermissions(
 }
 
 export function hasChurchPermission(
-  user: StoredSession['user'] | null | undefined,
+  user: StoredSession["user"] | null | undefined,
   permission: string,
 ) {
   return getChurchUserPermissions(user).includes(permission);
 }
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: import.meta.env.VITE_API_URL || "/api",
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
 });
 
@@ -185,44 +188,44 @@ export function getSession(): StoredSession | null {
 }
 
 export function getPortalPath(
-  user?: StoredSession['user'] | null,
-  fallback = '/',
+  user?: StoredSession["user"] | null,
+  fallback = "/",
 ) {
   if (!user) {
     return fallback;
   }
 
-  if (user.userType === 'platform') {
-    return '/platform/dashboard';
+  if (user.userType === "platform") {
+    return "/platform/dashboard";
   }
 
   const permissions = new Set(getChurchUserPermissions(user));
-  if (permissions.has('dashboard.view')) {
-    return '/church/dashboard';
+  if (permissions.has("dashboard.view")) {
+    return "/church/dashboard";
   }
-  if (permissions.has('discipleship.view')) {
-    return '/church/discipleship';
+  if (permissions.has("discipleship.view")) {
+    return "/church/discipleship";
   }
-  if (permissions.has('messaging.view')) {
-    return '/church/messaging';
+  if (permissions.has("messaging.view")) {
+    return "/church/messaging";
   }
-  if (permissions.has('presentation.manage')) {
-    return '/church/presentation';
+  if (permissions.has("presentation.manage")) {
+    return "/church/presentation";
   }
-  if (permissions.has('fundAccounts.view')) {
-    return '/church/fund-accounts';
+  if (permissions.has("fundAccounts.view")) {
+    return "/church/fund-accounts";
   }
-  if (permissions.has('contributions.view')) {
-    return '/church/contributions';
+  if (permissions.has("contributions.view")) {
+    return "/church/contributions";
   }
-  if (permissions.has('users.view')) {
-    return '/church/users';
+  if (permissions.has("users.view")) {
+    return "/church/users";
   }
-  if (permissions.has('reports.view')) {
-    return '/church/reports';
+  if (permissions.has("reports.view")) {
+    return "/church/reports";
   }
 
-  return '/church/access';
+  return "/church/access";
 }
 
 export function saveSession(payload: any) {
@@ -256,10 +259,12 @@ export function updateSessionProfile(profile: any) {
       phone: profile.phone ?? null,
       role: profile.role || session.user.role,
       userType: profile.userType || session.user.userType,
-      enabledFeatures: profile.enabledFeatures || session.user.enabledFeatures,
+      enabledFeatures: profile.enabledFeatures ?? session.user.enabledFeatures,
       permissionOverrides:
-        profile.permissionOverrides || session.user.permissionOverrides,
-      permissions: profile.permissions || session.user.permissions,
+        profile.permissionOverrides ?? session.user.permissionOverrides,
+      permissionDenials:
+        profile.permissionDenials ?? session.user.permissionDenials,
+      permissions: profile.permissions ?? session.user.permissions,
       ...(profile.churchId ? { churchId: profile.churchId } : {}),
     },
     church: profile.church || session.church,

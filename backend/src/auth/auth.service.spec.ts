@@ -37,6 +37,7 @@ describe('AuthService mobile approval scopes', () => {
         isActive: true,
         churchId: 'church-1',
         permissionOverrides: null,
+        permissionDenials: null,
         church: {
           id: 'church-1',
           name: 'Test Church',
@@ -61,7 +62,7 @@ describe('AuthService mobile approval scopes', () => {
     );
   });
 
-  it.each(['admin', 'church_admin'])(
+  it.each(['user', 'admin'])(
     'does not issue a mobile token to %s users',
     async (role) => {
       jest

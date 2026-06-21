@@ -375,7 +375,7 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
       const churchUsers = await queryRunner.getTable('church_users');
       if (churchUsers) {
         const statements: string[] = [
-          "MODIFY COLUMN `role` varchar(40) NOT NULL DEFAULT 'admin'",
+          "MODIFY COLUMN `role` varchar(40) NOT NULL DEFAULT 'user'",
         ];
 
         if (!churchUsers.findColumnByName('permissionOverrides')) {
@@ -383,9 +383,20 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
             'ADD COLUMN `permissionOverrides` text NULL AFTER `role`',
           );
         }
+        if (!churchUsers.findColumnByName('permissionDenials')) {
+          statements.push(
+            'ADD COLUMN `permissionDenials` text NULL AFTER `permissionOverrides`',
+          );
+        }
 
         await queryRunner.query(
           `ALTER TABLE \`church_users\` ${statements.join(', ')}`,
+        );
+        await queryRunner.query(
+          "UPDATE `church_users` SET `role` = 'priest' WHERE `role` = 'church_admin'",
+        );
+        await queryRunner.query(
+          "UPDATE `church_users` SET `role` = 'user' WHERE `role` IN ('admin', 'treasurer', 'secretary', 'media', 'cashier') OR `role` IS NULL OR TRIM(`role`) = ''",
         );
       }
 
@@ -473,8 +484,7 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
         `);
         if (
           !contributions.indices.some(
-            (index) =>
-              index.name === 'IDX_contributions_church_status_date',
+            (index) => index.name === 'IDX_contributions_church_status_date',
           )
         ) {
           await queryRunner.query(
@@ -737,8 +747,7 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
       if (
         currentOutbox &&
         !currentOutbox.indices.some(
-          (index) =>
-            index.name === 'IDX_sms_outbox_church_contributor_created',
+          (index) => index.name === 'IDX_sms_outbox_church_contributor_created',
         )
       ) {
         await queryRunner.query(
@@ -748,8 +757,7 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
       if (
         currentOutbox &&
         !currentOutbox.indices.some(
-          (index) =>
-            index.name === 'IDX_sms_outbox_church_mobile_created',
+          (index) => index.name === 'IDX_sms_outbox_church_mobile_created',
         )
       ) {
         await queryRunner.query(

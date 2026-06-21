@@ -157,17 +157,18 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
-    if (user.role !== ChurchUserRole.PRIEST) {
+    if (normalizeChurchRole(user.role) !== ChurchUserRole.PRIEST) {
       throw new UnauthorizedException(
         'Mobile funds access is limited to priest accounts',
       );
     }
 
     const access = this.buildChurchAccess(user);
+    const role = normalizeChurchRole(user.role);
     const scope = [MOBILE_FUNDS_SCOPE, MOBILE_FUND_DISPLAY_REVIEW_SCOPE];
     const payload = {
       sub: user.id,
-      role: user.role,
+      role,
       userType: 'church',
       churchId: user.churchId,
       tokenUse: 'mobile_funds',
@@ -185,7 +186,7 @@ export class AuthService {
         email: user.email,
         username: user.username,
         phone: user.phone,
-        role: user.role,
+        role,
         userType: 'church',
         churchId: user.churchId,
         ...access,
@@ -228,6 +229,7 @@ export class AuthService {
 
     return {
       ...result,
+      role: normalizeChurchRole(churchUser.role),
       userType: 'church',
       church: sanitizeChurchForTenant(churchUser.church),
       subscription: sanitizeSubscriptionForTenant(subscription),
@@ -293,6 +295,7 @@ export class AuthService {
 
     return {
       ...result,
+      role: normalizeChurchRole(savedUser.role),
       userType: 'church',
       church: sanitizeChurchForTenant(churchUser.church),
       subscription: sanitizeSubscriptionForTenant(subscription),
@@ -307,9 +310,13 @@ export class AuthService {
   ) {
     const access =
       userType === 'church' ? this.buildChurchAccess(user as ChurchUser) : {};
+    const role =
+      userType === 'church'
+        ? normalizeChurchRole((user as ChurchUser).role)
+        : user.role;
     const payload = {
       sub: user.id,
-      role: user.role,
+      role,
       userType,
       churchId: userType === 'church' ? (user as ChurchUser).churchId : null,
       ...(userType === 'church' ? access : {}),
@@ -323,7 +330,7 @@ export class AuthService {
         email: user.email,
         username: user.username,
         phone: user.phone,
-        role: user.role,
+        role,
         userType,
         ...(userType === 'church'
           ? { churchId: (user as ChurchUser).churchId }
@@ -339,6 +346,7 @@ export class AuthService {
     const permissions = resolveChurchPermissions(
       user.role,
       user.permissionOverrides,
+      user.permissionDenials,
     ).filter((permission) => {
       const requiredFeature = PERMISSION_FEATURE_MAP[permission];
       return (
@@ -351,6 +359,7 @@ export class AuthService {
     return {
       enabledFeatures,
       permissionOverrides: user.permissionOverrides || [],
+      permissionDenials: user.permissionDenials || [],
       permissions,
     };
   }

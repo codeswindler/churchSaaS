@@ -51,9 +51,7 @@ describe('ChurchService discipleship name matching', () => {
         new Set(right),
       ) as boolean;
 
-    expect(
-      hasConflict(['provider:hash-a'], ['provider:hash-b']),
-    ).toBe(true);
+    expect(hasConflict(['provider:hash-a'], ['provider:hash-b'])).toBe(true);
     expect(
       hasConflict(
         ['phone:254724075174', 'provider:hash-a'],
@@ -61,6 +59,48 @@ describe('ChurchService discipleship name matching', () => {
       ),
     ).toBe(false);
     expect(hasConflict([], ['provider:hash-b'])).toBe(false);
+  });
+
+  it('stores removable User permissions but strips Priest-only access', () => {
+    const access = (service as any).normalizeChurchUserAccess(
+      'user',
+      ['messaging.send', 'dashboard.view', 'users.manage'],
+      ['discipleship.manage'],
+    );
+
+    expect(access.permissionOverrides).toEqual(['messaging.send']);
+    expect(access.permissionDenials).toEqual(['discipleship.manage']);
+  });
+
+  it('clears custom permission changes for Priest', () => {
+    expect(
+      (service as any).normalizeChurchUserAccess(
+        'priest',
+        ['messaging.send'],
+        ['reports.view'],
+      ),
+    ).toEqual({
+      permissionOverrides: null,
+      permissionDenials: null,
+    });
+  });
+
+  it('protects the last active Priest from demotion', async () => {
+    (service as any).churchUserRepo = {
+      find: jest.fn().mockResolvedValue([
+        { id: 'priest-1', role: 'priest', isActive: true },
+        { id: 'user-1', role: 'user', isActive: true },
+      ]),
+    };
+
+    await expect(
+      (service as any).assertLastActivePriestRemains(
+        'church-1',
+        { id: 'priest-1', role: 'priest', isActive: true },
+        'user',
+        true,
+      ),
+    ).rejects.toThrow('last active Priest');
   });
 
   it('starts approval duration immediately and validates its bounds', () => {
@@ -119,9 +159,7 @@ describe('ChurchService discipleship name matching', () => {
     expect(
       (service as any).normalizeFundAccountTargetAmount('1500000.50'),
     ).toBe(1500000.5);
-    expect(
-      (service as any).normalizeFundAccountTargetAmount(''),
-    ).toBeNull();
+    expect((service as any).normalizeFundAccountTargetAmount('')).toBeNull();
     expect(() =>
       (service as any).normalizeFundAccountTargetAmount('-1'),
     ).toThrow('Fund account target must be a positive amount');

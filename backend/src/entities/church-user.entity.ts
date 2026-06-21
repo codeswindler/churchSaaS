@@ -11,8 +11,9 @@ import { Church } from './church.entity';
 
 export enum ChurchUserRole {
   PRIEST = 'priest',
+  USER = 'user',
+  // Legacy values remain readable and are normalized/migrated to USER.
   ADMIN = 'admin',
-  // Legacy values are kept so old rows can load safely; access-control normalizes them to admin.
   TREASURER = 'treasurer',
   SECRETARY = 'secretary',
   MEDIA = 'media',
@@ -48,12 +49,15 @@ export class ChurchUser {
   @Column({
     type: 'varchar',
     length: 40,
-    default: ChurchUserRole.ADMIN,
+    default: ChurchUserRole.USER,
   })
   role: ChurchUserRole;
 
   @Column({ type: 'simple-json', nullable: true })
   permissionOverrides: string[] | null;
+
+  @Column({ type: 'simple-json', nullable: true })
+  permissionDenials: string[] | null;
 
   @Column({ default: true })
   isActive: boolean;

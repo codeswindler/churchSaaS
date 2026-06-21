@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Building2,
   BookOpenText,
@@ -23,22 +23,22 @@ import {
   Users,
   WalletCards,
   type LucideIcon,
-} from 'lucide-react';
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
-import toast from 'react-hot-toast';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { BrandLogo } from '../components/BrandLogo';
-import { CountdownBadge } from '../components/CountdownBadge';
-import { PageActionsProvider } from '../context/PageActionsContext';
+} from "lucide-react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { BrandLogo } from "../components/BrandLogo";
+import { CountdownBadge } from "../components/CountdownBadge";
+import { PageActionsProvider } from "../context/PageActionsContext";
 import api, {
   clearSession,
   getChurchUserPermissions,
   getSession,
   updateSessionProfile,
-} from '../services/api';
+} from "../services/api";
 
 interface AppShellProps {
-  userType: 'platform' | 'church';
+  userType: "platform" | "church";
 }
 
 interface ShellLink {
@@ -54,201 +54,209 @@ interface ShellLink {
   }[];
 }
 
-const THEME_STORAGE_KEY = 'church_saas_theme';
-const COLOR_MODE_STORAGE_KEY = 'church_saas_color_mode';
+const THEME_STORAGE_KEY = "church_saas_theme";
+const COLOR_MODE_STORAGE_KEY = "church_saas_color_mode";
 
 const platformLinks: ShellLink[] = [
-  { to: '/platform/dashboard', label: 'Overview', icon: Landmark },
-  { to: '/platform/churches', label: 'Churches', icon: Building2 },
-  { to: '/platform/collections', label: 'Revenue', icon: WalletCards },
+  { to: "/platform/dashboard", label: "Overview", icon: Landmark },
+  { to: "/platform/churches", label: "Churches", icon: Building2 },
+  { to: "/platform/collections", label: "Revenue", icon: WalletCards },
   {
-    to: '/platform/messaging?tab=compose',
-    matchPath: '/platform/messaging',
-    label: 'Messaging',
+    to: "/platform/messaging?tab=compose",
+    matchPath: "/platform/messaging",
+    label: "Messaging",
     icon: Send,
     children: [
-      { to: '/platform/messaging?tab=compose', label: 'Compose', tab: 'compose' },
       {
-        to: '/platform/messaging?tab=addressBox',
-        label: 'Address Box',
-        tab: 'addressBox',
+        to: "/platform/messaging?tab=compose",
+        label: "Compose",
+        tab: "compose",
       },
-      { to: '/platform/messaging?tab=outbox', label: 'Outbox', tab: 'outbox' },
+      {
+        to: "/platform/messaging?tab=addressBox",
+        label: "Address Box",
+        tab: "addressBox",
+      },
+      { to: "/platform/messaging?tab=outbox", label: "Outbox", tab: "outbox" },
     ],
   },
-  { to: '/platform/enquiries', label: 'Enquiries', icon: MessageSquareText },
-  { to: '/platform/users', label: 'Platform Users', icon: Users },
-  { to: '/platform/senders', label: 'Senders', icon: Send },
-  { to: '/platform/settings', label: 'Settings', icon: Settings },
+  { to: "/platform/enquiries", label: "Enquiries", icon: MessageSquareText },
+  { to: "/platform/users", label: "Platform Users", icon: Users },
+  { to: "/platform/senders", label: "Senders", icon: Send },
+  { to: "/platform/settings", label: "Settings", icon: Settings },
 ];
 
 const churchLinks: ShellLink[] = [
   {
-    to: '/church/discipleship',
-    label: 'Discipleship',
+    to: "/church/discipleship",
+    label: "Discipleship",
     icon: UserCheck,
-    permission: 'discipleship.view',
+    permission: "discipleship.view",
   },
   {
-    to: '/church/dashboard',
-    label: 'Overview',
+    to: "/church/dashboard",
+    label: "Overview",
     icon: ChartColumn,
-    permission: 'dashboard.view',
+    permission: "dashboard.view",
   },
   {
-    to: '/church/fund-accounts',
-    label: 'Fund Accounts',
+    to: "/church/fund-accounts",
+    label: "Fund Accounts",
     icon: Coins,
-    permission: 'fundAccounts.view',
+    permission: "fundAccounts.view",
   },
   {
-    to: '/church/contributions',
-    label: 'Contributions',
+    to: "/church/contributions",
+    label: "Contributions",
     icon: Clock4,
-    permission: 'contributions.view',
+    permission: "contributions.view",
   },
   {
-    to: '/church/messaging?tab=compose',
-    matchPath: '/church/messaging',
-    label: 'Messaging',
+    to: "/church/messaging?tab=compose",
+    matchPath: "/church/messaging",
+    label: "Messaging",
     icon: Send,
-    permission: 'messaging.view',
+    permission: "messaging.view",
     children: [
-      { to: '/church/messaging?tab=compose', label: 'Compose', tab: 'compose' },
+      { to: "/church/messaging?tab=compose", label: "Compose", tab: "compose" },
       {
-        to: '/church/messaging?tab=addressBooks',
-        label: 'Address Books',
-        tab: 'addressBooks',
+        to: "/church/messaging?tab=addressBooks",
+        label: "Address Books",
+        tab: "addressBooks",
       },
-      { to: '/church/messaging?tab=outbox', label: 'Outbox', tab: 'outbox' },
+      { to: "/church/messaging?tab=outbox", label: "Outbox", tab: "outbox" },
     ],
   },
   {
-    to: '/church/fund-displays',
-    label: 'Fund Displays',
+    to: "/church/fund-displays",
+    label: "Fund Displays",
     icon: Eye,
-    permission: 'congregation.manage',
+    permission: "congregation.manage",
   },
   {
-    to: '/church/congregation',
-    label: 'Verses & Announcements',
+    to: "/church/congregation",
+    label: "Verses & Announcements",
     icon: BookOpenText,
-    permission: 'congregation.manage',
+    permission: "congregation.manage",
   },
   {
-    to: '/church/users',
-    label: 'Staff Users',
+    to: "/church/users",
+    label: "Staff Users",
     icon: Users,
-    permission: 'users.view',
+    permission: "users.view",
   },
   {
-    to: '/church/reports',
-    label: 'Reports',
+    to: "/church/reports",
+    label: "Reports",
     icon: ShieldCheck,
-    permission: 'reports.view',
+    permission: "reports.view",
   },
   {
-    to: '/church/presentation',
-    label: 'Presentation',
+    to: "/church/presentation",
+    label: "Presentation",
     icon: MonitorPlay,
-    permission: 'presentation.manage',
+    permission: "presentation.manage",
   },
 ];
 
 const themeOptions = [
-  { value: 'forest', label: 'Forest' },
-  { value: 'sand', label: 'Sandstone' },
-  { value: 'midnight', label: 'Midnight' },
+  { value: "forest", label: "Forest" },
+  { value: "sand", label: "Sandstone" },
+  { value: "midnight", label: "Midnight" },
 ];
 
 const pageMeta = {
   platform: [
     {
-      prefix: '/platform/dashboard',
-      title: 'Customer church operations',
-      eyebrow: 'Business System',
-      variant: 'hero',
+      prefix: "/platform/dashboard",
+      title: "Customer church operations",
+      eyebrow: "Business System",
+      variant: "hero",
     },
-    { prefix: '/platform/churches', title: 'Churches', variant: 'compact' },
+    { prefix: "/platform/churches", title: "Churches", variant: "compact" },
     {
-      prefix: '/platform/collections',
-      title: 'Revenue',
-      variant: 'compact',
-    },
-    {
-      prefix: '/platform/messaging',
-      title: 'Client messaging',
-      variant: 'compact',
+      prefix: "/platform/collections",
+      title: "Revenue",
+      variant: "compact",
     },
     {
-      prefix: '/platform/enquiries',
-      title: 'Enquiries',
-      variant: 'compact',
+      prefix: "/platform/messaging",
+      title: "Client messaging",
+      variant: "compact",
     },
     {
-      prefix: '/platform/users',
-      title: 'Platform users',
-      variant: 'compact',
+      prefix: "/platform/enquiries",
+      title: "Enquiries",
+      variant: "compact",
     },
     {
-      prefix: '/platform/senders',
-      title: 'Senders',
-      variant: 'compact',
+      prefix: "/platform/users",
+      title: "Platform users",
+      variant: "compact",
     },
     {
-      prefix: '/platform/settings',
-      title: 'Settings',
-      variant: 'compact',
+      prefix: "/platform/senders",
+      title: "Senders",
+      variant: "compact",
+    },
+    {
+      prefix: "/platform/settings",
+      title: "Settings",
+      variant: "compact",
     },
   ],
   church: [
     {
-      prefix: '/church/access',
-      title: 'Workspace access',
-      variant: 'compact',
+      prefix: "/church/access",
+      title: "Workspace access",
+      variant: "compact",
     },
     {
-      prefix: '/church/dashboard',
-      title: 'Overview',
-      variant: 'compact',
+      prefix: "/church/dashboard",
+      title: "Overview",
+      variant: "compact",
     },
     {
-      prefix: '/church/fund-accounts',
-      title: 'Fund accounts',
-      variant: 'compact',
+      prefix: "/church/fund-accounts",
+      title: "Fund accounts",
+      variant: "compact",
     },
     {
-      prefix: '/church/fund-displays',
-      title: 'Fund displays',
-      variant: 'compact',
+      prefix: "/church/fund-displays",
+      title: "Fund displays",
+      variant: "compact",
     },
     {
-      prefix: '/church/contributions',
-      title: 'Contributions',
-      variant: 'compact',
+      prefix: "/church/contributions",
+      title: "Contributions",
+      variant: "compact",
     },
     {
-      prefix: '/church/messaging',
-      title: 'Messaging',
-      variant: 'compact',
+      prefix: "/church/messaging",
+      title: "Messaging",
+      variant: "compact",
     },
     {
-      prefix: '/church/congregation',
-      title: 'Verses & Announcements',
-      variant: 'compact',
+      prefix: "/church/congregation",
+      title: "Verses & Announcements",
+      variant: "compact",
     },
     {
-      prefix: '/church/discipleship',
-      title: 'Discipleship',
-      variant: 'compact',
+      prefix: "/church/discipleship",
+      title: "Discipleship",
+      variant: "compact",
     },
-    { prefix: '/church/users', title: 'Staff users', variant: 'compact' },
-    { prefix: '/church/reports', title: 'Reports', variant: 'compact' },
-    { prefix: '/church/presentation', title: 'Presentation', variant: 'compact' },
+    { prefix: "/church/users", title: "Staff users", variant: "compact" },
+    { prefix: "/church/reports", title: "Reports", variant: "compact" },
+    {
+      prefix: "/church/presentation",
+      title: "Presentation",
+      variant: "compact",
+    },
   ],
 } as const;
 
-function resolvePageMeta(pathname: string, userType: 'platform' | 'church') {
+function resolvePageMeta(pathname: string, userType: "platform" | "church") {
   return (
     pageMeta[userType].find((item) => pathname.startsWith(item.prefix)) ||
     pageMeta[userType][0]
@@ -256,13 +264,13 @@ function resolvePageMeta(pathname: string, userType: 'platform' | 'church') {
 }
 
 function getInitials(name?: string | null) {
-  const parts = `${name || 'User'}`
+  const parts = `${name || "User"}`
     .trim()
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2);
 
-  return parts.map((part) => part[0]?.toUpperCase() || '').join('') || 'U';
+  return parts.map((part) => part[0]?.toUpperCase() || "").join("") || "U";
 }
 
 export function AppShell({ userType }: AppShellProps) {
@@ -271,69 +279,76 @@ export function AppShell({ userType }: AppShellProps) {
   const location = useLocation();
   const queryClient = useQueryClient();
   const [theme, setTheme] = useState(() => {
-    return localStorage.getItem(THEME_STORAGE_KEY) || 'forest';
+    return localStorage.getItem(THEME_STORAGE_KEY) || "forest";
   });
   const [colorMode, setColorMode] = useState(() => {
-    return localStorage.getItem(COLOR_MODE_STORAGE_KEY) || 'dark';
+    return localStorage.getItem(COLOR_MODE_STORAGE_KEY) || "dark";
   });
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [pageActions, setPageActions] = useState<ReactNode>(null);
   const [profileForm, setProfileForm] = useState({
-    name: '',
-    email: '',
-    username: '',
-    phone: '',
-    password: '',
+    name: "",
+    email: "",
+    username: "",
+    phone: "",
+    password: "",
   });
 
   const { data: profile } = useQuery({
-    queryKey: ['auth-profile'],
-    queryFn: () => api.get('/auth/profile').then((response) => response.data),
+    queryKey: ["auth-profile"],
+    queryFn: () => api.get("/auth/profile").then((response) => response.data),
+    refetchInterval: userType === "church" ? 15_000 : false,
+    refetchOnWindowFocus: true,
   });
 
+  useEffect(() => {
+    if (profile) {
+      updateSessionProfile(profile);
+    }
+  }, [profile]);
+
   const { data: subscription } = useQuery({
-    queryKey: ['church-subscription-header'],
+    queryKey: ["church-subscription-header"],
     queryFn: () =>
-      api.get('/church/subscription/status').then((response) => response.data),
-    enabled: userType === 'church',
+      api.get("/church/subscription/status").then((response) => response.data),
+    enabled: userType === "church",
     refetchInterval: 15_000,
   });
 
   const { data: notifications = [] } = useQuery<any[]>({
-    queryKey: ['church-notifications'],
+    queryKey: ["church-notifications"],
     queryFn: () =>
-      api.get('/church/notifications').then((response) => response.data),
-    enabled: userType === 'church',
+      api.get("/church/notifications").then((response) => response.data),
+    enabled: userType === "church",
     refetchInterval: 30_000,
   });
 
   const currentUser = profile || session?.user;
   const permissionSet = new Set<string>(
-    userType === 'church'
+    userType === "church"
       ? getChurchUserPermissions(currentUser || session?.user)
       : currentUser?.permissions || session?.user?.permissions || [],
   );
   const links =
-    userType === 'platform'
+    userType === "platform"
       ? platformLinks
       : churchLinks.filter(
-          (link) =>
-            !link.permission || permissionSet.has(link.permission),
+          (link) => !link.permission || permissionSet.has(link.permission),
         );
   const organizationName =
-    userType === 'platform'
-      ? 'Choice Networks Church SaaS'
-      : profile?.church?.name || session?.church?.name || 'Church Workspace';
+    userType === "platform"
+      ? "Choice Networks Church SaaS"
+      : profile?.church?.name || session?.church?.name || "Church Workspace";
   const currentPage = useMemo(
     () => resolvePageMeta(location.pathname, userType),
     [location.pathname, userType],
   );
-  const isOverviewPage = currentPage.variant === 'hero';
+  const isOverviewPage = currentPage.variant === "hero";
   const isChurchPriest =
-    userType === 'church' &&
-    (currentUser?.role === 'priest' || currentUser?.role === 'church_admin');
+    userType === "church" &&
+    (currentUser?.role === "priest" || currentUser?.role === "church_admin");
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -351,11 +366,11 @@ export function AppShell({ userType }: AppShellProps) {
     }
 
     setProfileForm({
-      name: currentUser.name || '',
-      email: currentUser.email || '',
-      username: currentUser.username || '',
-      phone: currentUser.phone || '',
-      password: '',
+      name: currentUser.name || "",
+      email: currentUser.email || "",
+      username: currentUser.username || "",
+      phone: currentUser.phone || "",
+      password: "",
     });
   }, [
     currentUser?.email,
@@ -370,7 +385,7 @@ export function AppShell({ userType }: AppShellProps) {
     }
 
     const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = "hidden";
 
     return () => {
       document.body.style.overflow = previousOverflow;
@@ -395,21 +410,24 @@ export function AppShell({ userType }: AppShellProps) {
         payload.password = profileForm.password.trim();
       }
 
-      const response = await api.patch('/auth/profile', payload);
+      const response = await api.patch("/auth/profile", payload);
       return response.data;
     },
     onSuccess: (data) => {
       updateSessionProfile(data);
-      queryClient.setQueryData(['auth-profile'], data);
-      if (userType === 'church' && data.subscription) {
-        queryClient.setQueryData(['church-subscription-header'], data.subscription);
+      queryClient.setQueryData(["auth-profile"], data);
+      if (userType === "church" && data.subscription) {
+        queryClient.setQueryData(
+          ["church-subscription-header"],
+          data.subscription,
+        );
       }
-      toast.success('Profile updated');
+      toast.success("Profile updated");
       setIsProfileOpen(false);
-      setProfileForm((current) => ({ ...current, password: '' }));
+      setProfileForm((current) => ({ ...current, password: "" }));
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Unable to update profile');
+      toast.error(error?.response?.data?.message || "Unable to update profile");
     },
   });
 
@@ -417,27 +435,31 @@ export function AppShell({ userType }: AppShellProps) {
     mutationFn: (notificationId: string) =>
       api.patch(`/church/notifications/${notificationId}/read`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['church-notifications'] });
+      queryClient.invalidateQueries({ queryKey: ["church-notifications"] });
     },
   });
 
   const handleLogout = () => {
     clearSession();
-    navigate('/login', { replace: true });
+    navigate("/login", { replace: true });
   };
 
   const activeThemeLabel =
-    themeOptions.find((option) => option.value === theme)?.label || 'Theme';
+    themeOptions.find((option) => option.value === theme)?.label || "Theme";
   const cycleTheme = () => {
-    const currentIndex = themeOptions.findIndex((option) => option.value === theme);
+    const currentIndex = themeOptions.findIndex(
+      (option) => option.value === theme,
+    );
     const nextTheme =
-      themeOptions[(currentIndex + 1 + themeOptions.length) % themeOptions.length];
+      themeOptions[
+        (currentIndex + 1 + themeOptions.length) % themeOptions.length
+      ];
     setTheme(nextTheme.value);
   };
   const toggleColorMode = () => {
-    setColorMode((current) => (current === 'light' ? 'dark' : 'light'));
+    setColorMode((current) => (current === "light" ? "dark" : "light"));
   };
-  const isLightMode = colorMode === 'light';
+  const isLightMode = colorMode === "light";
 
   const sidebarIntro = (
     <div className="space-y-4">
@@ -445,7 +467,7 @@ export function AppShell({ userType }: AppShellProps) {
         <div className="flex items-center gap-3">
           <BrandLogo size="sm" />
           <p className="text-xs uppercase tracking-[0.3em] text-amber-200/70">
-            {userType === 'platform' ? 'Platform Admin' : 'Church Console'}
+            {userType === "platform" ? "Platform Admin" : "Church Console"}
           </p>
         </div>
         <div className="sidebar-header-actions">
@@ -460,9 +482,11 @@ export function AppShell({ userType }: AppShellProps) {
           </button>
 
           <button
-            aria-label={isLightMode ? 'Switch to dark mode' : 'Switch to light mode'}
+            aria-label={
+              isLightMode ? "Switch to dark mode" : "Switch to light mode"
+            }
             className="shell-icon-button shell-icon-button-sm"
-            title={isLightMode ? 'Switch to dark mode' : 'Switch to light mode'}
+            title={isLightMode ? "Switch to dark mode" : "Switch to light mode"}
             type="button"
             onClick={toggleColorMode}
           >
@@ -485,10 +509,10 @@ export function AppShell({ userType }: AppShellProps) {
       <span className="profile-avatar">{getInitials(currentUser?.name)}</span>
       <span className="min-w-0 flex-1 text-left">
         <span className="block truncate text-sm font-semibold text-white">
-          {currentUser?.name || 'User'}
+          {currentUser?.name || "User"}
         </span>
         <span className="block truncate text-xs text-stone-400">
-          {currentUser?.role?.replace(/_/g, ' ') || 'Account'}
+          {currentUser?.role?.replace(/_/g, " ") || "Account"}
         </span>
       </span>
       <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
@@ -498,12 +522,12 @@ export function AppShell({ userType }: AppShellProps) {
   );
 
   const currentTab =
-    new URLSearchParams(location.search).get('tab') || 'compose';
+    new URLSearchParams(location.search).get("tab") || "compose";
   const sidebarNavigation = (
     <nav className="space-y-2">
       {links.map((link) => {
         const { to, label, icon: Icon } = link;
-        const matchPath = link.matchPath || to.split('?')[0];
+        const matchPath = link.matchPath || to.split("?")[0];
         const isSectionActive = location.pathname === matchPath;
 
         return (
@@ -513,8 +537,8 @@ export function AppShell({ userType }: AppShellProps) {
               className={() =>
                 `flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition ${
                   isSectionActive
-                    ? 'bg-amber-200/15 text-white ring-1 ring-amber-200/30'
-                    : 'text-stone-300 hover:bg-white/5 hover:text-white'
+                    ? "bg-amber-200/15 text-white ring-1 ring-amber-200/30"
+                    : "text-stone-300 hover:bg-white/5 hover:text-white"
                 }`
               }
               onClick={() => setIsNavOpen(false)}
@@ -533,8 +557,8 @@ export function AppShell({ userType }: AppShellProps) {
                       to={child.to}
                       className={`block rounded-xl px-3 py-2 text-xs font-semibold transition ${
                         isChildActive
-                          ? 'bg-amber-200 text-stone-950'
-                          : 'text-stone-400 hover:bg-white/5 hover:text-white'
+                          ? "bg-amber-200 text-stone-950"
+                          : "text-stone-400 hover:bg-white/5 hover:text-white"
                       }`}
                       onClick={() => setIsNavOpen(false)}
                     >
@@ -609,8 +633,7 @@ export function AppShell({ userType }: AppShellProps) {
                     </p>
                   ) : null}
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    {notification.entityType ===
-                    'congregation_fund_display' ? (
+                    {notification.entityType === "congregation_fund_display" ? (
                       <button
                         className="btn-primary justify-center px-3 py-2"
                         type="button"
@@ -671,13 +694,12 @@ export function AppShell({ userType }: AppShellProps) {
 
             <div className="min-w-0 flex-1">
               <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-stone-400">
-                {userType === 'platform' ? 'Platform Admin' : 'Church Console'}
+                {userType === "platform" ? "Platform Admin" : "Church Console"}
               </p>
               <div className="mt-1 truncate text-base font-semibold text-white">
                 {organizationName}
               </div>
             </div>
-
           </div>
 
           {isOverviewPage ? (
@@ -691,8 +713,7 @@ export function AppShell({ userType }: AppShellProps) {
                 </h2>
               </div>
 
-              {userType === 'church' &&
-              subscription?.usesCountdown ? (
+              {userType === "church" && subscription?.usesCountdown ? (
                 <CountdownBadge
                   status={subscription.status}
                   expiresAt={subscription.expiresAt}
@@ -730,9 +751,7 @@ export function AppShell({ userType }: AppShellProps) {
           >
             <div className="flex h-full flex-col gap-5">
               {sidebarIntro}
-              <div className="mobile-drawer-user">
-                {sidebarProfileButton}
-              </div>
+              <div className="mobile-drawer-user">{sidebarProfileButton}</div>
               {sidebarNavigation}
               {sidebarFooter}
             </div>
@@ -766,11 +785,10 @@ export function AppShell({ userType }: AppShellProps) {
                     Manage your account
                   </h3>
                   <p className="mt-2 max-w-2xl text-sm text-stone-300">
-                    Update your personal details, login preferences, and sign out
-                    from one place.
+                    Update your personal details, login preferences, and sign
+                    out from one place.
                   </p>
                 </div>
-
               </div>
 
               <form
@@ -874,7 +892,7 @@ export function AppShell({ userType }: AppShellProps) {
                     type="submit"
                   >
                     <UserCircle2 size={16} />
-                    {profileMutation.isPending ? 'Saving...' : 'Save profile'}
+                    {profileMutation.isPending ? "Saving..." : "Save profile"}
                   </button>
                 </div>
               </form>

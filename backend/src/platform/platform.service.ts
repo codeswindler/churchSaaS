@@ -7,8 +7,11 @@ import { getDefaultReceiptTemplateForFundCode } from '../common/receipt-template
 import {
   ChurchPermission,
   DEFAULT_CHURCH_FEATURES,
+  PERMISSION_FEATURE_MAP,
+  PRIEST_ONLY_CHURCH_PERMISSIONS,
   normalizeChurchRole,
   normalizeFeatureList,
+  resolveChurchPermissions,
 } from '../common/access-control';
 import { ContributionsService } from '../contributions/contributions.service';
 import {
@@ -173,7 +176,9 @@ export class PlatformService {
   }
 
   async updateSmsSender(senderId: string, body: any) {
-    const sender = await this.smsSenderRepo.findOne({ where: { id: senderId } });
+    const sender = await this.smsSenderRepo.findOne({
+      where: { id: senderId },
+    });
     if (!sender) {
       throw new BadRequestException('Sender ID not found');
     }
@@ -461,13 +466,15 @@ export class PlatformService {
     await this.ensureChurchSenderAllocationsFromLegacy(church);
     const [subscription, userCount, fundAccountCount, senderAllocation] =
       await Promise.all([
-      billingModel === ChurchBillingModel.SUBSCRIPTION
-        ? this.churchSubscriptionsService.getChurchSubscriptionStatus(church.id)
-        : Promise.resolve(null),
-      this.churchUserRepo.count({ where: { churchId: church.id } }),
-      this.fundAccountRepo.count({ where: { churchId: church.id } }),
-      this.getChurchSenderAllocation(church.id),
-    ]);
+        billingModel === ChurchBillingModel.SUBSCRIPTION
+          ? this.churchSubscriptionsService.getChurchSubscriptionStatus(
+              church.id,
+            )
+          : Promise.resolve(null),
+        this.churchUserRepo.count({ where: { churchId: church.id } }),
+        this.fundAccountRepo.count({ where: { churchId: church.id } }),
+        this.getChurchSenderAllocation(church.id),
+      ]);
 
     return {
       id: church.id,
@@ -505,12 +512,14 @@ export class PlatformService {
   }
 
   async listChurchUsers(churchId: string) {
-    await this.ensureChurchExists(churchId);
+    const church = await this.ensureChurchExists(churchId);
     const users = await this.churchUserRepo.find({
       where: { churchId },
       order: { createdAt: 'DESC' },
     });
-    return users.map((user) => this.sanitizeChurchUser(user));
+    return users.map((user) =>
+      this.sanitizeChurchUser(user, church.enabledFeatures),
+    );
   }
 
   async createChurchUser(churchId: string, body: any) {
@@ -543,6 +552,12 @@ export class PlatformService {
       throw new BadRequestException('Church user already exists');
     }
 
+    const role = normalizeChurchRole(body.role) as ChurchUserRole;
+    const access = this.normalizeChurchUserAccess(
+      role,
+      body.permissionOverrides,
+      body.permissionDenials,
+    );
     const user = this.churchUserRepo.create({
       churchId,
       name,
@@ -550,10 +565,9 @@ export class PlatformService {
       username,
       phone,
       passwordHash: await bcrypt.hash(password, 10),
-      role: normalizeChurchRole(body.role) as ChurchUserRole,
-      permissionOverrides: this.normalizePermissionOverrides(
-        body.permissionOverrides,
-      ),
+      role,
+      permissionOverrides: access.permissionOverrides,
+      permissionDenials: access.permissionDenials,
       isActive: this.normalizeBoolean(body.isActive, true),
     });
 
@@ -565,14 +579,14 @@ export class PlatformService {
     );
 
     return {
-      ...this.sanitizeChurchUser(saved),
+      ...this.sanitizeChurchUser(saved, church.enabledFeatures),
       credentialsSmsSent: credentialsSms.sent,
       credentialsSmsError: credentialsSms.error,
     };
   }
 
   async updateChurchUser(churchId: string, userId: string, body: any) {
-    await this.ensureChurchExists(churchId);
+    const church = await this.ensureChurchExists(churchId);
     const user = await this.churchUserRepo.findOne({
       where: { id: userId, churchId },
     });
@@ -634,19 +648,34 @@ export class PlatformService {
       }
     }
 
-    if (body.role !== undefined) {
-      user.role = normalizeChurchRole(body.role) as ChurchUserRole;
-    }
-
-    if (body.permissionOverrides !== undefined) {
-      user.permissionOverrides = this.normalizePermissionOverrides(
-        body.permissionOverrides,
-      );
-    }
-
-    if (body.isActive !== undefined) {
-      user.isActive = this.normalizeBoolean(body.isActive, user.isActive);
-    }
+    const nextRole = (
+      body.role !== undefined
+        ? normalizeChurchRole(body.role)
+        : normalizeChurchRole(user.role)
+    ) as ChurchUserRole;
+    const nextIsActive =
+      body.isActive !== undefined
+        ? this.normalizeBoolean(body.isActive, user.isActive)
+        : user.isActive;
+    await this.assertLastActivePriestRemains(
+      churchId,
+      user,
+      nextRole,
+      nextIsActive,
+    );
+    const access = this.normalizeChurchUserAccess(
+      nextRole,
+      body.permissionOverrides !== undefined
+        ? body.permissionOverrides
+        : user.permissionOverrides,
+      body.permissionDenials !== undefined
+        ? body.permissionDenials
+        : user.permissionDenials,
+    );
+    user.role = nextRole;
+    user.permissionOverrides = access.permissionOverrides;
+    user.permissionDenials = access.permissionDenials;
+    user.isActive = nextIsActive;
 
     if (body.password !== undefined) {
       const password = this.normalizeOptionalText(body.password);
@@ -656,7 +685,7 @@ export class PlatformService {
     }
 
     const saved = await this.churchUserRepo.save(user);
-    return this.sanitizeChurchUser(saved);
+    return this.sanitizeChurchUser(saved, church.enabledFeatures);
   }
 
   async resendChurchUserCredentials(churchId: string, userId: string) {
@@ -690,7 +719,7 @@ export class PlatformService {
 
     return {
       sent: true,
-      user: this.sanitizeChurchUser(user),
+      user: this.sanitizeChurchUser(user, church.enabledFeatures),
     };
   }
 
@@ -942,9 +971,7 @@ export class PlatformService {
       'https://quicksms.advantasms.com';
     const mpesaEnvironment =
       this.normalizeOptionalText(body.mpesaEnvironment) || 'sandbox';
-    const mpesaConsumerKey = this.normalizeOptionalText(
-      body.mpesaConsumerKey,
-    );
+    const mpesaConsumerKey = this.normalizeOptionalText(body.mpesaConsumerKey);
     const mpesaConsumerSecret = this.normalizeOptionalText(
       body.mpesaConsumerSecret,
     );
@@ -1147,7 +1174,10 @@ export class PlatformService {
     const last30Summary = await this.contributionRepo
       .createQueryBuilder('contribution')
       .select('SUM(contribution.amount)', 'total')
-      .addSelect('SUM(COALESCE(contribution.commissionAmount, 0))', 'commission')
+      .addSelect(
+        'SUM(COALESCE(contribution.commissionAmount, 0))',
+        'commission',
+      )
       .where('contribution.status = :status', {
         status: ContributionStatus.CONFIRMED,
       })
@@ -1699,9 +1729,7 @@ export class PlatformService {
     const fallbackRevenue =
       billingModel === ChurchBillingModel.COMMISSION
         ? base.revenue ||
-          Math.ceil(
-            (base.total * Number(church.commissionRatePct || 0)) / 100,
-          )
+          Math.ceil((base.total * Number(church.commissionRatePct || 0)) / 100)
         : 0;
 
     return {
@@ -1895,9 +1923,63 @@ export class PlatformService {
     return digits.length >= 10 ? digits : null;
   }
 
-  private sanitizeChurchUser(user: ChurchUser) {
+  private sanitizeChurchUser(
+    user: ChurchUser,
+    enabledFeatureValues?: string[] | null,
+  ) {
     const { passwordHash, ...result } = user;
-    return result;
+    const role = normalizeChurchRole(user.role) as ChurchUserRole;
+    const access = this.normalizeChurchUserAccess(
+      role,
+      user.permissionOverrides,
+      user.permissionDenials,
+    );
+    const enabledFeatures = normalizeFeatureList(enabledFeatureValues);
+    const permissions = resolveChurchPermissions(
+      role,
+      access.permissionOverrides,
+      access.permissionDenials,
+    ).filter((permission) => {
+      const requiredFeature = PERMISSION_FEATURE_MAP[permission];
+      return (
+        permission === ChurchPermission.DASHBOARD_VIEW ||
+        !requiredFeature ||
+        enabledFeatures.includes(requiredFeature)
+      );
+    });
+    return {
+      ...result,
+      role,
+      permissionOverrides: access.permissionOverrides || [],
+      permissionDenials: access.permissionDenials || [],
+      permissions,
+    };
+  }
+
+  private async assertLastActivePriestRemains(
+    churchId: string,
+    currentUser: ChurchUser,
+    nextRole: ChurchUserRole,
+    nextIsActive: boolean,
+  ) {
+    if (
+      normalizeChurchRole(currentUser.role) !== ChurchUserRole.PRIEST ||
+      !currentUser.isActive ||
+      (normalizeChurchRole(nextRole) === ChurchUserRole.PRIEST && nextIsActive)
+    ) {
+      return;
+    }
+    const activeUsers = await this.churchUserRepo.find({
+      where: { churchId, isActive: true },
+    });
+    const activePriestCount = activeUsers.filter(
+      (user) => normalizeChurchRole(user.role) === ChurchUserRole.PRIEST,
+    ).length;
+    if (activePriestCount <= 1) {
+      throw new BadRequestException(
+        'Assign another active Priest before changing or deactivating the last active Priest.',
+      );
+    }
   }
 
   private async sendChurchUserCredentialsSms(
@@ -1943,15 +2025,44 @@ export class PlatformService {
     return `CS-${first}-${second}`;
   }
 
-  private normalizePermissionOverrides(value: unknown) {
-    if (!Array.isArray(value)) {
-      return null;
-    }
-
+  private normalizePermissionList(value: unknown) {
     const valid = new Set(Object.values(ChurchPermission));
-    return value.filter((permission) =>
-      valid.has(permission as ChurchPermission),
-    ) as ChurchPermission[];
+    return Array.isArray(value)
+      ? ([
+          ...new Set(
+            value.filter((permission) =>
+              valid.has(permission as ChurchPermission),
+            ),
+          ),
+        ] as ChurchPermission[])
+      : [];
+  }
+
+  private normalizeChurchUserAccess(
+    roleValue: string | ChurchUserRole,
+    overridesValue: unknown,
+    denialsValue: unknown,
+  ) {
+    const role = normalizeChurchRole(roleValue);
+    if (role === ChurchUserRole.PRIEST) {
+      return {
+        permissionOverrides: null,
+        permissionDenials: null,
+      };
+    }
+    const denials = this.normalizePermissionList(denialsValue).filter(
+      (permission) => !PRIEST_ONLY_CHURCH_PERMISSIONS.has(permission),
+    );
+    const denied = new Set(denials);
+    const overrides = this.normalizePermissionList(overridesValue).filter(
+      (permission) =>
+        !PRIEST_ONLY_CHURCH_PERMISSIONS.has(permission) &&
+        !denied.has(permission),
+    );
+    return {
+      permissionOverrides: overrides.length > 0 ? overrides : null,
+      permissionDenials: denials.length > 0 ? denials : null,
+    };
   }
 
   private normalizeBoolean(value: unknown, fallback: boolean) {

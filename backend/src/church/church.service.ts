@@ -16,8 +16,11 @@ import ExcelJS from 'exceljs';
 import {
   ChurchFeature,
   ChurchPermission,
+  PERMISSION_FEATURE_MAP,
+  PRIEST_ONLY_CHURCH_PERMISSIONS,
   normalizeChurchRole,
   normalizeFeatureList,
+  resolveChurchPermissions,
 } from '../common/access-control';
 import {
   sanitizeChurchForTenant,
@@ -278,25 +281,24 @@ export class ChurchService {
       groups,
       presentToday,
       duplicateClusterData,
-    ] =
-      await Promise.all([
-        this.discipleshipMemberRepo.count({ where: { churchId } }),
-        this.discipleshipMemberRepo.count({
-          where: { churchId, status: DiscipleshipMemberStatus.ACTIVE },
-        }),
-        this.discipleshipMemberRepo
-          .createQueryBuilder('member')
-          .where('member.churchId = :churchId', { churchId })
-          .andWhere('member.enrollmentDate >= :monthStart', { monthStart })
-          .getCount(),
-        this.discipleshipGroupRepo.count({
-          where: { churchId, isActive: true },
-        }),
-        this.discipleshipAttendanceRepo.count({
-          where: { churchId, attendanceDate: today.date },
-        }),
-        this.buildDiscipleshipDuplicateClusterCandidates(churchId),
-      ]);
+    ] = await Promise.all([
+      this.discipleshipMemberRepo.count({ where: { churchId } }),
+      this.discipleshipMemberRepo.count({
+        where: { churchId, status: DiscipleshipMemberStatus.ACTIVE },
+      }),
+      this.discipleshipMemberRepo
+        .createQueryBuilder('member')
+        .where('member.churchId = :churchId', { churchId })
+        .andWhere('member.enrollmentDate >= :monthStart', { monthStart })
+        .getCount(),
+      this.discipleshipGroupRepo.count({
+        where: { churchId, isActive: true },
+      }),
+      this.discipleshipAttendanceRepo.count({
+        where: { churchId, attendanceDate: today.date },
+      }),
+      this.buildDiscipleshipDuplicateClusterCandidates(churchId),
+    ]);
 
     const recentAttendance = await this.discipleshipAttendanceRepo.find({
       where: { churchId },
@@ -870,9 +872,7 @@ export class ChurchService {
     });
   }
 
-  private async buildDiscipleshipDuplicateClusterCandidates(
-    churchId: string,
-  ) {
+  private async buildDiscipleshipDuplicateClusterCandidates(churchId: string) {
     const members = await this.discipleshipMemberRepo.find({
       where: { churchId },
       order: { createdAt: 'ASC' },
@@ -1062,11 +1062,10 @@ export class ChurchService {
         numberIdentitiesByMemberId.get(left.id) || new Set<string>();
       const rightIdentities =
         numberIdentitiesByMemberId.get(right.id) || new Set<string>();
-      const identityConflict =
-        this.hasDiscipleshipNumberIdentityConflict(
-          leftIdentities,
-          rightIdentities,
-        );
+      const identityConflict = this.hasDiscipleshipNumberIdentityConflict(
+        leftIdentities,
+        rightIdentities,
+      );
       const phoneMatch =
         this.normalizePlainPhone(left.phone) &&
         this.normalizePlainPhone(left.phone) ===
@@ -1140,12 +1139,8 @@ export class ChurchService {
 
   async listDiscipleshipDuplicateMemberClusters(churchId: string) {
     this.triggerDiscipleshipTransactionSync(churchId);
-    const {
-      members,
-      skippedKeys,
-      duplicateGroups,
-      clusterReasons,
-    } = await this.buildDiscipleshipDuplicateClusterCandidates(churchId);
+    const { members, skippedKeys, duplicateGroups, clusterReasons } =
+      await this.buildDiscipleshipDuplicateClusterCandidates(churchId);
     if (duplicateGroups.length === 0) {
       return [];
     }
@@ -1558,8 +1553,7 @@ export class ChurchService {
                 detailed.contributionSummary?.latestContributionAt || null,
               contributionCount:
                 detailed.contributionSummary?.contributionCount || 0,
-              contributionTotal:
-                detailed.contributionSummary?.totalAmount || 0,
+              contributionTotal: detailed.contributionSummary?.totalAmount || 0,
             }
           : {}),
         latestAttendanceAt: latestAttendance?.attendanceDate || null,
@@ -1737,14 +1731,24 @@ export class ChurchService {
   }
 
   async listChurchUsers(churchId: string) {
+    const church = await this.churchRepo.findOne({ where: { id: churchId } });
+    if (!church) {
+      throw new NotFoundException('Church not found');
+    }
     const users = await this.churchUserRepo.find({
       where: { churchId },
       order: { createdAt: 'DESC' },
     });
-    return users.map(({ passwordHash, ...user }) => user);
+    return users.map((user) =>
+      this.sanitizeChurchUser(user, church.enabledFeatures),
+    );
   }
 
   async createChurchUser(churchId: string, body: any) {
+    const church = await this.churchRepo.findOne({ where: { id: churchId } });
+    if (!church) {
+      throw new NotFoundException('Church not found');
+    }
     const phone = `${body.phone || ''}`.trim();
 
     if (!body.name || !body.email || !phone || !body.password || !body.role) {
@@ -1764,6 +1768,12 @@ export class ChurchService {
       throw new BadRequestException('Church user already exists');
     }
 
+    const role = normalizeChurchRole(body.role) as ChurchUserRole;
+    const access = this.normalizeChurchUserAccess(
+      role,
+      body.permissionOverrides,
+      body.permissionDenials,
+    );
     const user = this.churchUserRepo.create({
       churchId,
       name: body.name,
@@ -1771,10 +1781,9 @@ export class ChurchService {
       username: body.username || null,
       phone,
       passwordHash: await bcrypt.hash(body.password, 10),
-      role: normalizeChurchRole(body.role) as ChurchUserRole,
-      permissionOverrides: this.normalizePermissionOverrides(
-        body.permissionOverrides,
-      ),
+      role,
+      permissionOverrides: access.permissionOverrides,
+      permissionDenials: access.permissionDenials,
       isActive: body.isActive ?? true,
     });
 
@@ -1786,13 +1795,17 @@ export class ChurchService {
     );
 
     return {
-      ...this.sanitizeChurchUser(saved),
+      ...this.sanitizeChurchUser(saved, church.enabledFeatures),
       credentialsSmsSent: credentialsSms.sent,
       credentialsSmsError: credentialsSms.error,
     };
   }
 
   async updateChurchUser(churchId: string, userId: string, body: any) {
+    const church = await this.churchRepo.findOne({ where: { id: churchId } });
+    if (!church) {
+      throw new NotFoundException('Church not found');
+    }
     const user = await this.churchUserRepo.findOne({
       where: { id: userId, churchId },
     });
@@ -1835,26 +1848,45 @@ export class ChurchService {
     }
 
     user.name = body.name ?? user.name;
-    user.role =
+    const nextRole = (
       body.role !== undefined
-        ? (normalizeChurchRole(body.role) as ChurchUserRole)
-        : user.role;
-    if (body.permissionOverrides !== undefined) {
-      user.permissionOverrides = this.normalizePermissionOverrides(
-        body.permissionOverrides,
-      );
-    }
-    user.isActive = body.isActive ?? user.isActive;
+        ? normalizeChurchRole(body.role)
+        : normalizeChurchRole(user.role)
+    ) as ChurchUserRole;
+    const nextIsActive = body.isActive ?? user.isActive;
+    await this.assertLastActivePriestRemains(
+      churchId,
+      user,
+      nextRole,
+      nextIsActive,
+    );
+    const access = this.normalizeChurchUserAccess(
+      nextRole,
+      body.permissionOverrides !== undefined
+        ? body.permissionOverrides
+        : user.permissionOverrides,
+      body.permissionDenials !== undefined
+        ? body.permissionDenials
+        : user.permissionDenials,
+    );
+    user.role = nextRole;
+    user.permissionOverrides = access.permissionOverrides;
+    user.permissionDenials = access.permissionDenials;
+    user.isActive = nextIsActive;
 
     if (body.password) {
       user.passwordHash = await bcrypt.hash(body.password, 10);
     }
 
     const saved = await this.churchUserRepo.save(user);
-    return this.sanitizeChurchUser(saved);
+    return this.sanitizeChurchUser(saved, church.enabledFeatures);
   }
 
   async resendChurchUserCredentials(churchId: string, userId: string) {
+    const church = await this.churchRepo.findOne({ where: { id: churchId } });
+    if (!church) {
+      throw new NotFoundException('Church not found');
+    }
     const user = await this.churchUserRepo.findOne({
       where: { id: userId, churchId },
     });
@@ -1883,7 +1915,7 @@ export class ChurchService {
 
     return {
       sent: true,
-      user: this.sanitizeChurchUser(user),
+      user: this.sanitizeChurchUser(user, church.enabledFeatures),
     };
   }
 
@@ -3099,9 +3131,7 @@ export class ChurchService {
       return null;
     }
 
-    const sync = this.syncTransactionalDiscipleshipMembersUnsafe(
-      churchId,
-    )
+    const sync = this.syncTransactionalDiscipleshipMembersUnsafe(churchId)
       .then((result) => {
         this.discipleshipLastSyncedAt.set(churchId, Date.now());
         return result;
@@ -5024,10 +5054,7 @@ export class ChurchService {
       displayStatus,
       fundAccountName: fundAccount?.name || 'Unavailable account',
       fundAccountCode: fundAccount?.code || null,
-      targetAmount: this.resolveFundDisplayTargetAmount(
-        fundAccount,
-        display,
-      ),
+      targetAmount: this.resolveFundDisplayTargetAmount(fundAccount, display),
       endMode,
       endDate: endMode === 'static' ? display.endDate || null : null,
       ...totals,
@@ -5598,9 +5625,7 @@ export class ChurchService {
         (contribution.contributorId
           ? memberByContributorId.get(contribution.contributorId)
           : null) ||
-        memberByName.get(
-          this.normalizeImportKey(contribution.payerName),
-        ) ||
+        memberByName.get(this.normalizeImportKey(contribution.payerName)) ||
         memberByName.get(
           this.normalizeImportKey(contribution.contributor?.name),
         );
@@ -5644,8 +5669,7 @@ export class ChurchService {
                 sum +
                 Math.max(
                   0,
-                  Number(item.amount || 0) -
-                    Number(item.commissionAmount || 0),
+                  Number(item.amount || 0) - Number(item.commissionAmount || 0),
                 ),
               0,
             )
@@ -5667,9 +5691,63 @@ export class ChurchService {
     return summaryByMemberId;
   }
 
-  private sanitizeChurchUser(user: ChurchUser) {
+  private sanitizeChurchUser(
+    user: ChurchUser,
+    enabledFeatureValues?: string[] | null,
+  ) {
     const { passwordHash, ...result } = user;
-    return result;
+    const role = normalizeChurchRole(user.role) as ChurchUserRole;
+    const access = this.normalizeChurchUserAccess(
+      role,
+      user.permissionOverrides,
+      user.permissionDenials,
+    );
+    const enabledFeatures = normalizeFeatureList(enabledFeatureValues);
+    const permissions = resolveChurchPermissions(
+      role,
+      access.permissionOverrides,
+      access.permissionDenials,
+    ).filter((permission) => {
+      const requiredFeature = PERMISSION_FEATURE_MAP[permission];
+      return (
+        permission === ChurchPermission.DASHBOARD_VIEW ||
+        !requiredFeature ||
+        enabledFeatures.includes(requiredFeature)
+      );
+    });
+    return {
+      ...result,
+      role,
+      permissionOverrides: access.permissionOverrides || [],
+      permissionDenials: access.permissionDenials || [],
+      permissions,
+    };
+  }
+
+  private async assertLastActivePriestRemains(
+    churchId: string,
+    currentUser: ChurchUser,
+    nextRole: ChurchUserRole,
+    nextIsActive: boolean,
+  ) {
+    if (
+      normalizeChurchRole(currentUser.role) !== ChurchUserRole.PRIEST ||
+      !currentUser.isActive ||
+      (normalizeChurchRole(nextRole) === ChurchUserRole.PRIEST && nextIsActive)
+    ) {
+      return;
+    }
+    const activeUsers = await this.churchUserRepo.find({
+      where: { churchId, isActive: true },
+    });
+    const activePriestCount = activeUsers.filter(
+      (user) => normalizeChurchRole(user.role) === ChurchUserRole.PRIEST,
+    ).length;
+    if (activePriestCount <= 1) {
+      throw new BadRequestException(
+        'Assign another active Priest before changing or deactivating the last active Priest.',
+      );
+    }
   }
 
   private generateTemporaryPassword() {
@@ -5731,15 +5809,44 @@ export class ChurchService {
       .replace(/^-+|-+$/g, '');
   }
 
-  private normalizePermissionOverrides(value: unknown) {
-    if (!Array.isArray(value)) {
-      return null;
-    }
-
+  private normalizePermissionList(value: unknown) {
     const valid = new Set(Object.values(ChurchPermission));
-    return value.filter((permission) =>
-      valid.has(permission as ChurchPermission),
-    ) as ChurchPermission[];
+    return Array.isArray(value)
+      ? ([
+          ...new Set(
+            value.filter((permission) =>
+              valid.has(permission as ChurchPermission),
+            ),
+          ),
+        ] as ChurchPermission[])
+      : [];
+  }
+
+  private normalizeChurchUserAccess(
+    roleValue: string | ChurchUserRole,
+    overridesValue: unknown,
+    denialsValue: unknown,
+  ) {
+    const role = normalizeChurchRole(roleValue);
+    if (role === ChurchUserRole.PRIEST) {
+      return {
+        permissionOverrides: null,
+        permissionDenials: null,
+      };
+    }
+    const denials = this.normalizePermissionList(denialsValue).filter(
+      (permission) => !PRIEST_ONLY_CHURCH_PERMISSIONS.has(permission),
+    );
+    const denied = new Set(denials);
+    const overrides = this.normalizePermissionList(overridesValue).filter(
+      (permission) =>
+        !PRIEST_ONLY_CHURCH_PERMISSIONS.has(permission) &&
+        !denied.has(permission),
+    );
+    return {
+      permissionOverrides: overrides.length > 0 ? overrides : null,
+      permissionDenials: denials.length > 0 ? denials : null,
+    };
   }
 
   private csvEscape(value: unknown) {

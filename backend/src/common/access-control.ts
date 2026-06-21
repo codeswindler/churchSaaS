@@ -44,13 +44,19 @@ export const FINANCIAL_CHURCH_PERMISSIONS = new Set<ChurchPermission>([
   ChurchPermission.REPORTS_EXPORT,
 ]);
 
-const adminPermissions = Object.values(ChurchPermission).filter(
-  (permission) => !FINANCIAL_CHURCH_PERMISSIONS.has(permission),
+export const PRIEST_ONLY_CHURCH_PERMISSIONS = new Set<ChurchPermission>([
+  ...FINANCIAL_CHURCH_PERMISSIONS,
+  ChurchPermission.USERS_MANAGE,
+]);
+
+const userPermissions = Object.values(ChurchPermission).filter(
+  (permission) => !PRIEST_ONLY_CHURCH_PERMISSIONS.has(permission),
 );
 
 export const ROLE_PERMISSION_PRESETS: Record<string, ChurchPermission[]> = {
   priest: Object.values(ChurchPermission),
-  admin: adminPermissions,
+  user: userPermissions,
+  admin: userPermissions,
 };
 
 export const PERMISSION_FEATURE_MAP: Record<
@@ -75,23 +81,23 @@ export const PERMISSION_FEATURE_MAP: Record<
   [ChurchPermission.USERS_MANAGE]: ChurchFeature.STAFF_MANAGEMENT,
   [ChurchPermission.DISCIPLESHIP_VIEW]: ChurchFeature.DISCIPLESHIP,
   [ChurchPermission.DISCIPLESHIP_MANAGE]: ChurchFeature.DISCIPLESHIP,
-  [ChurchPermission.DISCIPLESHIP_ATTENDANCE_RECORD]:
-    ChurchFeature.DISCIPLESHIP,
+  [ChurchPermission.DISCIPLESHIP_ATTENDANCE_RECORD]: ChurchFeature.DISCIPLESHIP,
 };
 
 export function normalizeChurchRole(role?: string | null) {
   if (role === 'church_admin') return 'priest';
   if (role === 'priest') return 'priest';
   if (
+    role === 'user' ||
     role === 'admin' ||
     role === 'treasurer' ||
     role === 'secretary' ||
     role === 'media' ||
     role === 'cashier'
   ) {
-    return 'admin';
+    return 'user';
   }
-  return 'admin';
+  return 'user';
 }
 
 export function normalizeFeatureList(features?: string[] | null) {
@@ -106,23 +112,34 @@ export function normalizeFeatureList(features?: string[] | null) {
 export function resolveChurchPermissions(
   role?: string | null,
   overrides?: string[] | null,
+  denials?: string[] | null,
 ) {
   const normalizedRole = normalizeChurchRole(role);
   const preset = ROLE_PERMISSION_PRESETS[normalizedRole] || [];
   const valid = new Set(Object.values(ChurchPermission));
   const resolved = new Set<ChurchPermission>(preset);
 
+  if (normalizedRole === 'priest') {
+    return [...resolved];
+  }
+
   (overrides || []).forEach((permission) => {
-    if (valid.has(permission as ChurchPermission)) {
+    if (
+      valid.has(permission as ChurchPermission) &&
+      !PRIEST_ONLY_CHURCH_PERMISSIONS.has(permission as ChurchPermission)
+    ) {
       resolved.add(permission as ChurchPermission);
     }
   });
 
-  if (normalizedRole !== 'priest') {
-    FINANCIAL_CHURCH_PERMISSIONS.forEach((permission) =>
-      resolved.delete(permission),
-    );
-  }
+  (denials || []).forEach((permission) => {
+    if (valid.has(permission as ChurchPermission)) {
+      resolved.delete(permission as ChurchPermission);
+    }
+  });
+  PRIEST_ONLY_CHURCH_PERMISSIONS.forEach((permission) =>
+    resolved.delete(permission),
+  );
 
   return [...resolved];
 }
@@ -131,9 +148,14 @@ export function hasEffectiveChurchPermission(
   permission: ChurchPermission,
   role?: string | null,
   permissionOverrides?: string[] | null,
+  permissionDenials?: string[] | null,
   enabledFeatures?: string[] | null,
 ) {
-  const permissions = resolveChurchPermissions(role, permissionOverrides);
+  const permissions = resolveChurchPermissions(
+    role,
+    permissionOverrides,
+    permissionDenials,
+  );
   const features = normalizeFeatureList(enabledFeatures);
   const requiredFeature = PERMISSION_FEATURE_MAP[permission];
   if (permission === ChurchPermission.DASHBOARD_VIEW) {

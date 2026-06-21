@@ -59,10 +59,7 @@ export class ChurchController {
   @Permissions(ChurchPermission.DISCIPLESHIP_VIEW)
   @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
   listDiscipleshipMembers(@Request() req: any, @Query() query: any) {
-    return this.churchService.listDiscipleshipMembers(
-      req.user.churchId,
-      query,
-    );
+    return this.churchService.listDiscipleshipMembers(req.user.churchId, query);
   }
 
   @Post('discipleship/members')
@@ -102,10 +99,7 @@ export class ChurchController {
       limits: { fileSize: 2 * 1024 * 1024 },
     }),
   )
-  importDiscipleshipMembers(
-    @Request() req: any,
-    @UploadedFile() file: any,
-  ) {
+  importDiscipleshipMembers(@Request() req: any, @UploadedFile() file: any) {
     return this.churchService.importDiscipleshipMembers(
       req.user.churchId,
       req.user.id,
@@ -135,10 +129,7 @@ export class ChurchController {
   @Post('discipleship/duplicate-members/review')
   @Permissions(ChurchPermission.DISCIPLESHIP_MANAGE)
   @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
-  reviewDiscipleshipDuplicateMembers(
-    @Request() req: any,
-    @Body() body: any,
-  ) {
+  reviewDiscipleshipDuplicateMembers(@Request() req: any, @Body() body: any) {
     return this.churchService.reviewDiscipleshipDuplicateMembers(
       req.user.churchId,
       req.user.id,
@@ -170,10 +161,7 @@ export class ChurchController {
       limits: { fileSize: 5 * 1024 * 1024 },
     }),
   )
-  importMpesaStatement(
-    @Request() req: any,
-    @UploadedFile() file: any,
-  ) {
+  importMpesaStatement(@Request() req: any, @UploadedFile() file: any) {
     return this.churchService.importMpesaStatementForDiscipleship(
       req.user.churchId,
       file,
@@ -221,10 +209,7 @@ export class ChurchController {
   @Permissions(ChurchPermission.DISCIPLESHIP_MANAGE)
   @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
   createDiscipleshipGroup(@Request() req: any, @Body() body: any) {
-    return this.churchService.createDiscipleshipGroup(
-      req.user.churchId,
-      body,
-    );
+    return this.churchService.createDiscipleshipGroup(req.user.churchId, body);
   }
 
   @Patch('discipleship/groups/:groupId')
@@ -350,10 +335,7 @@ export class ChurchController {
   )
   @Permissions(ChurchPermission.CONGREGATION_PAGE_MANAGE)
   @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
-  uploadCongregationImage(
-    @Request() req: any,
-    @UploadedFile() image: any,
-  ) {
+  uploadCongregationImage(@Request() req: any, @UploadedFile() image: any) {
     return this.churchService.uploadCongregationImage(req.user.churchId, image);
   }
 
@@ -365,10 +347,7 @@ export class ChurchController {
   )
   @Permissions(ChurchPermission.PRESENTATION_MANAGE)
   @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
-  uploadPresentationMedia(
-    @Request() req: any,
-    @UploadedFile() media: any,
-  ) {
+  uploadPresentationMedia(@Request() req: any, @UploadedFile() media: any) {
     return this.churchService.uploadPresentationMedia(req.user.churchId, media);
   }
 
@@ -403,21 +382,21 @@ export class ChurchController {
 
   @Get('users')
   @Permissions(ChurchPermission.USERS_VIEW)
-  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.USER)
   listUsers(@Request() req: any) {
     return this.churchService.listChurchUsers(req.user.churchId);
   }
 
   @Post('users')
   @Permissions(ChurchPermission.USERS_MANAGE)
-  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
+  @Roles(ChurchUserRole.PRIEST)
   createUser(@Request() req: any, @Body() body: any) {
     return this.churchService.createChurchUser(req.user.churchId, body);
   }
 
   @Patch('users/:userId')
   @Permissions(ChurchPermission.USERS_MANAGE)
-  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
+  @Roles(ChurchUserRole.PRIEST)
   updateUser(
     @Request() req: any,
     @Param('userId') userId: string,
@@ -428,11 +407,8 @@ export class ChurchController {
 
   @Post('users/:userId/resend-credentials')
   @Permissions(ChurchPermission.USERS_MANAGE)
-  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
-  resendUserCredentials(
-    @Request() req: any,
-    @Param('userId') userId: string,
-  ) {
+  @Roles(ChurchUserRole.PRIEST)
+  resendUserCredentials(@Request() req: any, @Param('userId') userId: string) {
     return this.churchService.resendChurchUserCredentials(
       req.user.churchId,
       userId,
@@ -623,17 +599,17 @@ export class ChurchController {
   @Permissions(ChurchPermission.OUTBOX_VIEW)
   @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
   listSmsOutboxRecipients(@Request() req: any, @Query() query: any) {
-    return this.churchService.listSmsOutboxRecipients(
-      req.user.churchId,
-      query,
-    );
+    return this.churchService.listSmsOutboxRecipients(req.user.churchId, query);
   }
 
   @Post('messaging/outbox/delivery-refresh')
   @Permissions(ChurchPermission.OUTBOX_VIEW)
   @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
   refreshSmsDeliveryReports(@Request() req: any, @Body() body: any) {
-    return this.churchService.refreshSmsDeliveryReports(req.user.churchId, body);
+    return this.churchService.refreshSmsDeliveryReports(
+      req.user.churchId,
+      body,
+    );
   }
 
   @Post('messaging/outbox/:messageId/dlr')
@@ -716,7 +692,10 @@ export class ChurchController {
     @Request() req: any,
     @Param('addressBookId') addressBookId: string,
   ) {
-    return this.churchService.deleteAddressBook(req.user.churchId, addressBookId);
+    return this.churchService.deleteAddressBook(
+      req.user.churchId,
+      addressBookId,
+    );
   }
 
   @Get('messaging/address-books/:addressBookId/contacts')

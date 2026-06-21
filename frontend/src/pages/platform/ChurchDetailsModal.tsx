@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpRight,
   CheckCircle2,
@@ -11,13 +11,13 @@ import {
   UserPlus,
   Users,
   X,
-} from 'lucide-react';
-import type { ReactNode } from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import toast from 'react-hot-toast';
-import api from '../../services/api';
+} from "lucide-react";
+import type { ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import toast from "react-hot-toast";
+import api from "../../services/api";
 
-export type PlatformChurchDetailsTab = 'overview' | 'users';
+export type PlatformChurchDetailsTab = "overview" | "users";
 
 interface PlatformChurchDetailsModalProps {
   churchId: string | null;
@@ -29,91 +29,86 @@ interface PlatformChurchDetailsModalProps {
 
 const roleOptions = [
   {
-    value: 'priest',
-    label: 'Priest',
+    value: "priest",
+    label: "Priest",
     description:
-      'Church super admin with financial dashboards, reports, and all enabled modules.',
+      "Church super admin with financial dashboards, reports, and all enabled modules.",
   },
   {
-    value: 'admin',
-    label: 'Admin',
+    value: "user",
+    label: "User",
     description:
-      'Non-financial operations, messaging, discipleship, presentation, and staff permissions.',
+      "Standard non-financial access. Individual permissions can be removed as needed.",
   },
 ];
 
 const permissionOptions = [
-  ['dashboard.view', 'Dashboard'],
-  ['contributions.view', 'View contributions'],
-  ['contributions.record', 'Record contributions'],
-  ['reports.view', 'View reports'],
-  ['reports.export', 'Export reports'],
-  ['fundAccounts.view', 'View fund accounts'],
-  ['fundAccounts.manage', 'Manage fund accounts'],
-  ['contributors.view', 'View contributors'],
-  ['contributors.tag', 'Tag contributor gender'],
-  ['messaging.view', 'View messaging'],
-  ['messaging.send', 'Send bulk messages'],
-  ['outbox.view', 'View outbox'],
-  ['congregation.manage', 'Manage sermons & announcements'],
-  ['presentation.manage', 'Manage presentation'],
-  ['users.view', 'View staff users'],
-  ['users.manage', 'Manage staff users'],
-  ['discipleship.view', 'View discipleship'],
-  ['discipleship.manage', 'Manage discipleship members'],
-  ['discipleship.attendanceRecord', 'Record discipleship attendance'],
+  ["dashboard.view", "Dashboard"],
+  ["contributions.view", "View contributions"],
+  ["contributions.record", "Record contributions"],
+  ["reports.view", "View reports"],
+  ["reports.export", "Export reports"],
+  ["fundAccounts.view", "View fund accounts"],
+  ["fundAccounts.manage", "Manage fund accounts"],
+  ["contributors.view", "View contributors"],
+  ["contributors.tag", "Tag contributor gender"],
+  ["messaging.view", "View messaging"],
+  ["messaging.send", "Send bulk messages"],
+  ["outbox.view", "View outbox"],
+  ["congregation.manage", "Manage sermons & announcements"],
+  ["presentation.manage", "Manage presentation"],
+  ["users.view", "View staff users"],
+  ["users.manage", "Manage staff users"],
+  ["discipleship.view", "View discipleship"],
+  ["discipleship.manage", "Manage discipleship members"],
+  ["discipleship.attendanceRecord", "Record discipleship attendance"],
 ] as const;
 
 const rolePermissionPresets: Record<string, string[]> = {
   priest: permissionOptions.map(([value]) => value),
-  admin: [
-    'fundAccounts.view',
-    'fundAccounts.manage',
-    'contributors.view',
-    'contributors.tag',
-    'messaging.view',
-    'messaging.send',
-    'outbox.view',
-    'congregation.manage',
-    'presentation.manage',
-    'users.view',
-    'users.manage',
-    'discipleship.view',
-    'discipleship.manage',
-    'discipleship.attendanceRecord',
+  user: [
+    "fundAccounts.view",
+    "fundAccounts.manage",
+    "contributors.view",
+    "contributors.tag",
+    "messaging.view",
+    "messaging.send",
+    "outbox.view",
+    "congregation.manage",
+    "presentation.manage",
+    "users.view",
+    "discipleship.view",
+    "discipleship.manage",
+    "discipleship.attendanceRecord",
   ],
 };
 
 const financialPermissionValues = new Set([
-  'dashboard.view',
-  'contributions.view',
-  'contributions.record',
-  'reports.view',
-  'reports.export',
+  "dashboard.view",
+  "contributions.view",
+  "contributions.record",
+  "reports.view",
+  "reports.export",
+]);
+const priestOnlyPermissionValues = new Set([
+  ...financialPermissionValues,
+  "users.manage",
 ]);
 
 function normalizeStaffRole(role?: string | null) {
-  return role === 'priest' || role === 'church_admin' ? 'priest' : 'admin';
-}
-
-function isLegacyNormalRole(role?: string | null) {
-  return Boolean(
-    role &&
-      role !== 'priest' &&
-      role !== 'church_admin' &&
-      role !== 'admin',
-  );
+  return role === "priest" || role === "church_admin" ? "priest" : "user";
 }
 
 function createInitialStaffForm() {
   return {
-    name: '',
-    email: '',
-    username: '',
-    phone: '',
-    password: '',
-    role: 'admin',
+    name: "",
+    email: "",
+    username: "",
+    phone: "",
+    password: "",
+    role: "user",
     permissionOverrides: [] as string[],
+    permissionDenials: [] as string[],
     isActive: true,
   };
 }
@@ -144,7 +139,7 @@ export default function ChurchDetailsModal({
   };
 
   const { data: churchDetails, isLoading: isLoadingDetails } = useQuery({
-    queryKey: ['platform-church-details', churchId],
+    queryKey: ["platform-church-details", churchId],
     queryFn: () =>
       api
         .get(`/platform/churches/${churchId}`)
@@ -153,7 +148,7 @@ export default function ChurchDetailsModal({
   });
 
   const { data: staffUsers, isLoading: isLoadingUsers } = useQuery({
-    queryKey: ['platform-church-users', churchId],
+    queryKey: ["platform-church-users", churchId],
     queryFn: () =>
       api
         .get(`/platform/churches/${churchId}/users`)
@@ -164,17 +159,11 @@ export default function ChurchDetailsModal({
   const saveUserMutation = useMutation({
     mutationFn: async () => {
       if (!churchId) {
-        throw new Error('Church is required');
+        throw new Error("Church is required");
       }
 
       if (editingUserId) {
-        const currentUser = Array.isArray(staffUsers)
-          ? staffUsers.find((user: any) => user.id === editingUserId)
-          : null;
         const payload: Partial<StaffFormState> = { ...staffForm };
-        if (isLegacyNormalRole(currentUser?.role) && payload.role === 'admin') {
-          delete payload.role;
-        }
         const response = await api.patch(
           `/platform/churches/${churchId}/users/${editingUserId}`,
           payload,
@@ -190,34 +179,34 @@ export default function ChurchDetailsModal({
     },
     onSuccess: (data: any) => {
       if (editingUserId) {
-        toast.success('Church user updated');
+        toast.success("Church user updated");
       } else if (data?.credentialsSmsSent) {
-        toast.success('Church user created and login SMS sent');
+        toast.success("Church user created and login SMS sent");
       } else {
         toast.error(
           data?.credentialsSmsError
             ? `User created, but login SMS failed. ${data.credentialsSmsError}`
-            : 'User created, but login SMS failed. Check SMS outbox.',
+            : "User created, but login SMS failed. Check SMS outbox.",
         );
       }
       resetStaffEditor();
       queryClient.invalidateQueries({
-        queryKey: ['platform-church-users', churchId],
+        queryKey: ["platform-church-users", churchId],
       });
       queryClient.invalidateQueries({
-        queryKey: ['platform-church-details', churchId],
+        queryKey: ["platform-church-details", churchId],
       });
-      queryClient.invalidateQueries({ queryKey: ['platform-churches'] });
+      queryClient.invalidateQueries({ queryKey: ["platform-churches"] });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Unable to save user');
+      toast.error(error?.response?.data?.message || "Unable to save user");
     },
   });
 
   const resendCredentialsMutation = useMutation({
     mutationFn: async (userId: string) => {
       if (!churchId) {
-        throw new Error('Church is required');
+        throw new Error("Church is required");
       }
       const response = await api.post(
         `/platform/churches/${churchId}/users/${userId}/resend-credentials`,
@@ -225,17 +214,17 @@ export default function ChurchDetailsModal({
       return response.data;
     },
     onSuccess: () => {
-      toast.success('Login credentials sent by SMS');
+      toast.success("Login credentials sent by SMS");
       queryClient.invalidateQueries({
-        queryKey: ['platform-church-users', churchId],
+        queryKey: ["platform-church-users", churchId],
       });
       queryClient.invalidateQueries({
-        queryKey: ['platform-messaging-outbox'],
+        queryKey: ["platform-messaging-outbox"],
       });
     },
     onError: (error: any) => {
       toast.error(
-        error?.response?.data?.message || 'Unable to send credentials SMS',
+        error?.response?.data?.message || "Unable to send credentials SMS",
       );
     },
   });
@@ -252,12 +241,12 @@ export default function ChurchDetailsModal({
   const userCount = Array.isArray(staffUsers)
     ? staffUsers.length
     : church?.userCount || 0;
-  const publicPath = church?.slug ? `/c/${church.slug}` : '';
+  const publicPath = church?.slug ? `/c/${church.slug}` : "";
   const publicUrl =
-    typeof window !== 'undefined' && publicPath
+    typeof window !== "undefined" && publicPath
       ? `${window.location.origin}${publicPath}`
       : publicPath;
-  const givingPath = church?.slug ? `/c/${church.slug}/give` : '';
+  const givingPath = church?.slug ? `/c/${church.slug}/give` : "";
 
   useEffect(() => {
     if (!churchId) {
@@ -274,19 +263,19 @@ export default function ChurchDetailsModal({
     }
 
     const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = "hidden";
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !saveUserMutation.isPending) {
+      if (event.key === "Escape" && !saveUserMutation.isPending) {
         onClose();
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
       document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener("keydown", handleKeyDown);
     };
   }, [churchId, onClose, saveUserMutation.isPending]);
 
@@ -318,60 +307,62 @@ export default function ChurchDetailsModal({
     setEditingUserId(null);
     setStaffForm(createInitialStaffForm());
     setIsUserEditorOpen(true);
-    setActiveTab('users');
+    setActiveTab("users");
   };
 
   const openEditUser = (user: any) => {
     setEditingUserId(user.id);
     setStaffForm({
-      name: user.name || '',
-      email: user.email || '',
-      username: user.username || '',
-      phone: user.phone || '',
-      password: '',
+      name: user.name || "",
+      email: user.email || "",
+      username: user.username || "",
+      phone: user.phone || "",
+      password: "",
       role: normalizeStaffRole(user.role),
       permissionOverrides: user.permissionOverrides || [],
+      permissionDenials: user.permissionDenials || [],
       isActive: user.isActive ?? true,
     });
     setIsUserEditorOpen(true);
-    setActiveTab('users');
+    setActiveTab("users");
   };
 
   const changeRole = (role: string) => {
-    const roleDefaults = rolePermissionPresets[role] || [];
     setStaffForm((current) => ({
       ...current,
       role,
-      permissionOverrides: current.permissionOverrides.filter(
-        (permission) =>
-          !roleDefaults.includes(permission) &&
-          (role === 'priest' || !financialPermissionValues.has(permission)),
-      ),
+      permissionOverrides: [],
+      permissionDenials: [],
     }));
   };
 
   const togglePermission = (permission: string) => {
     setStaffForm((current) => {
-      if (
-        normalizeStaffRole(current.role) !== 'priest' &&
-        financialPermissionValues.has(permission)
-      ) {
+      const role = normalizeStaffRole(current.role);
+      if (role === "priest" || priestOnlyPermissionValues.has(permission)) {
         return current;
       }
 
-      if (rolePermissionPresets[current.role]?.includes(permission)) {
-        return current;
-      }
-
-      const permissions = new Set(current.permissionOverrides || []);
-      if (permissions.has(permission)) {
-        permissions.delete(permission);
+      const defaults = rolePermissionPresets[role] || [];
+      const overrides = new Set(current.permissionOverrides || []);
+      const denials = new Set(current.permissionDenials || []);
+      if (defaults.includes(permission)) {
+        if (denials.has(permission)) {
+          denials.delete(permission);
+        } else {
+          denials.add(permission);
+        }
+        overrides.delete(permission);
+      } else if (overrides.has(permission)) {
+        overrides.delete(permission);
       } else {
-        permissions.add(permission);
+        overrides.add(permission);
+        denials.delete(permission);
       }
       return {
         ...current,
-        permissionOverrides: Array.from(permissions),
+        permissionOverrides: Array.from(overrides),
+        permissionDenials: Array.from(denials),
       };
     });
   };
@@ -395,11 +386,11 @@ export default function ChurchDetailsModal({
                 id="church-details-title"
                 className="mt-2 text-2xl font-semibold text-white"
               >
-                {church?.name || 'Church details'}
+                {church?.name || "Church details"}
               </h3>
               <div className="mt-3 flex flex-wrap gap-2 text-sm">
                 <span className="badge border-white/10 bg-white/5 text-stone-100">
-                  {church?.status || 'unknown'}
+                  {church?.status || "unknown"}
                 </span>
                 {church?.slug ? (
                   <span className="badge border-white/10 bg-white/5 text-stone-100">
@@ -443,29 +434,29 @@ export default function ChurchDetailsModal({
           <div className="mt-6 flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-black/10 p-1">
             <button
               className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                activeTab === 'overview'
-                  ? 'bg-amber-200 text-stone-950'
-                  : 'text-stone-300 hover:bg-white/10 hover:text-white'
+                activeTab === "overview"
+                  ? "bg-amber-200 text-stone-950"
+                  : "text-stone-300 hover:bg-white/10 hover:text-white"
               }`}
               type="button"
-              onClick={() => setActiveTab('overview')}
+              onClick={() => setActiveTab("overview")}
             >
               Overview
             </button>
             <button
               className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                activeTab === 'users'
-                  ? 'bg-amber-200 text-stone-950'
-                  : 'text-stone-300 hover:bg-white/10 hover:text-white'
+                activeTab === "users"
+                  ? "bg-amber-200 text-stone-950"
+                  : "text-stone-300 hover:bg-white/10 hover:text-white"
               }`}
               type="button"
-              onClick={() => setActiveTab('users')}
+              onClick={() => setActiveTab("users")}
             >
               Users
             </button>
           </div>
 
-          {activeTab === 'overview' ? (
+          {activeTab === "overview" ? (
             <div className="mt-6 space-y-5">
               {isLoadingDetails && !churchDetails ? (
                 <div className="rounded-3xl border border-white/10 bg-black/10 p-5 text-stone-300">
@@ -477,13 +468,13 @@ export default function ChurchDetailsModal({
                     <MetricTile
                       label="Billing"
                       value={
-                        church?.billingModel === 'commission'
-                          ? 'Commission'
-                          : church?.subscription?.status || 'subscription'
+                        church?.billingModel === "commission"
+                          ? "Commission"
+                          : church?.subscription?.status || "subscription"
                       }
                       detail={
-                        church?.billingModel === 'commission'
-                          ? 'No subscription timer'
+                        church?.billingModel === "commission"
+                          ? "No subscription timer"
                           : formatCountdown(church?.subscription)
                       }
                     />
@@ -502,9 +493,9 @@ export default function ChurchDetailsModal({
                         church?.contributionTotals?.revenue || 0,
                       )}
                       detail={
-                        church?.billingModel === 'commission'
+                        church?.billingModel === "commission"
                           ? `${Number(church?.commissionRatePct || 0)}% commission`
-                          : 'Subscription billing'
+                          : "Subscription billing"
                       }
                     />
                     <MetricTile
@@ -524,17 +515,17 @@ export default function ChurchDetailsModal({
                       <dl className="mt-4 grid gap-4 md:grid-cols-2">
                         <DetailItem
                           label="Contact email"
-                          value={church?.contactEmail || '-'}
+                          value={church?.contactEmail || "-"}
                           icon={<Mail size={15} />}
                         />
                         <DetailItem
                           label="Contact phone"
-                          value={church?.contactPhone || '-'}
+                          value={church?.contactPhone || "-"}
                           icon={<Phone size={15} />}
                         />
                         <DetailItem
                           label="Address"
-                          value={church?.address || '-'}
+                          value={church?.address || "-"}
                         />
                         <DetailItem
                           label="Created"
@@ -548,20 +539,18 @@ export default function ChurchDetailsModal({
                           ready={Boolean(church?.integrations?.smsConfigured)}
                           detail={
                             church?.integrations?.smsConfigured
-                              ? 'Advanta credentials are configured'
-                              : 'SMS credentials are missing'
+                              ? "Advanta credentials are configured"
+                              : "SMS credentials are missing"
                           }
                           icon={<MessageSquareText size={16} />}
                         />
                         <IntegrationStatus
                           label="Direct M-Pesa"
-                          ready={Boolean(
-                            church?.integrations?.mpesaConfigured,
-                          )}
+                          ready={Boolean(church?.integrations?.mpesaConfigured)}
                           detail={
                             church?.integrations?.mpesaConfigured
-                              ? 'C2B callback credentials are configured'
-                              : 'C2B credentials are missing'
+                              ? "C2B callback credentials are configured"
+                              : "C2B credentials are missing"
                           }
                           icon={<CreditCard size={16} />}
                         />
@@ -626,7 +615,7 @@ export default function ChurchDetailsModal({
                                 key={feature}
                                 className="badge border-white/10 bg-white/5 text-stone-100"
                               >
-                                {feature.replace(/_/g, ' ')}
+                                {feature.replace(/_/g, " ")}
                               </span>
                             ),
                           )}
@@ -657,7 +646,7 @@ export default function ChurchDetailsModal({
                       Church staff
                     </p>
                     <h4 className="mt-2 text-lg font-semibold text-white">
-                      Users for {church?.name || 'this church'}
+                      Users for {church?.name || "this church"}
                     </h4>
                   </div>
                   <button
@@ -698,7 +687,7 @@ export default function ChurchDetailsModal({
                                 {user.name}
                               </div>
                               <div className="text-xs text-stone-400">
-                                {user.phone || user.username || '-'}
+                                {user.phone || user.username || "-"}
                               </div>
                             </td>
                             <td>{user.email}</td>
@@ -709,11 +698,11 @@ export default function ChurchDetailsModal({
                               <span
                                 className={`badge ${
                                   user.isActive
-                                    ? 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100'
-                                    : 'border-white/10 bg-white/5 text-stone-300'
+                                    ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-100"
+                                    : "border-white/10 bg-white/5 text-stone-300"
                                 }`}
                               >
-                                {user.isActive ? 'Active' : 'Inactive'}
+                                {user.isActive ? "Active" : "Inactive"}
                               </span>
                             </td>
                             <td>
@@ -736,8 +725,8 @@ export default function ChurchDetailsModal({
                                   }
                                   title={
                                     user.phone
-                                      ? 'Send login details by SMS'
-                                      : 'Add a phone number before sending credentials'
+                                      ? "Send login details by SMS"
+                                      : "Add a phone number before sending credentials"
                                   }
                                   onClick={() =>
                                     resendCredentialsMutation.mutate(user.id)
@@ -763,7 +752,9 @@ export default function ChurchDetailsModal({
                       Staff user setup
                     </p>
                     <h4 className="mt-2 text-lg font-semibold text-white">
-                      {editingUserId ? 'Edit church user' : 'Create church user'}
+                      {editingUserId
+                        ? "Edit church user"
+                        : "Create church user"}
                     </h4>
                     <form
                       className="mt-5 space-y-4"
@@ -773,26 +764,28 @@ export default function ChurchDetailsModal({
                       }}
                     >
                       {[
-                        ['name', 'Full name'],
-                        ['email', 'Email address'],
-                        ['username', 'Username'],
-                        ['phone', 'Phone number'],
+                        ["name", "Full name"],
+                        ["email", "Email address"],
+                        ["username", "Username"],
+                        ["phone", "Phone number"],
                         [
-                          'password',
-                          editingUserId ? 'New password' : 'Password',
+                          "password",
+                          editingUserId ? "New password" : "Password",
                         ],
                       ].map(([key, label]) => (
                         <div key={key}>
                           <label className="label">
                             {label}
-                            {!editingUserId && key === 'phone' ? ' *' : ''}
+                            {!editingUserId && key === "phone" ? " *" : ""}
                           </label>
                           <input
-                            ref={key === 'name' ? staffNameInputRef : undefined}
+                            ref={key === "name" ? staffNameInputRef : undefined}
                             className="input"
-                            required={!editingUserId && key === 'phone'}
-                            type={key === 'password' ? 'password' : 'text'}
-                            value={staffForm[key as keyof StaffFormState] as any}
+                            required={!editingUserId && key === "phone"}
+                            type={key === "password" ? "password" : "text"}
+                            value={
+                              staffForm[key as keyof StaffFormState] as any
+                            }
                             onChange={(event) =>
                               setStaffForm((current) => ({
                                 ...current,
@@ -800,7 +793,7 @@ export default function ChurchDetailsModal({
                               }))
                             }
                           />
-                          {key === 'password' && editingUserId ? (
+                          {key === "password" && editingUserId ? (
                             <p className="mt-2 text-xs text-stone-400">
                               Leave blank to keep the current password.
                             </p>
@@ -824,7 +817,7 @@ export default function ChurchDetailsModal({
                         <p className="mt-2 text-xs text-stone-400">
                           {roleOptions.find(
                             (role) => role.value === staffForm.role,
-                          )?.description || ''}
+                          )?.description || ""}
                         </p>
                       </div>
 
@@ -844,7 +837,11 @@ export default function ChurchDetailsModal({
 
                       <div>
                         <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
-                          Permission overrides
+                          Permissions
+                        </p>
+                        <p className="mt-2 text-xs text-stone-400">
+                          User permissions start checked and can be removed.
+                          Priest permissions remain fixed.
                         </p>
                         <div className="mt-3 grid gap-2">
                           {permissionOptions.map(([value, label]) => {
@@ -854,39 +851,53 @@ export default function ChurchDetailsModal({
                               );
                             const isOverride =
                               staffForm.permissionOverrides.includes(value);
+                            const isDenied =
+                              staffForm.permissionDenials.includes(value);
                             const isPriestOnly =
-                              staffForm.role !== 'priest' &&
-                              financialPermissionValues.has(value);
+                              staffForm.role !== "priest" &&
+                              priestOnlyPermissionValues.has(value);
+                            const isPriestRole = staffForm.role === "priest";
+                            const isChecked = isPriestRole
+                              ? true
+                              : isPriestOnly
+                                ? false
+                                : isRolePermission
+                                  ? !isDenied
+                                  : isOverride && !isDenied;
 
                             return (
                               <label
                                 key={value}
                                 className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm transition ${
-                                  isRolePermission
-                                    ? 'border-emerald-300/30 bg-emerald-300/10 text-stone-100'
+                                  isChecked
+                                    ? "border-emerald-300/30 bg-emerald-300/10 text-stone-100"
                                     : isPriestOnly
-                                      ? 'border-white/10 bg-white/5 text-stone-500'
-                                    : 'border-white/10 bg-white/5 text-stone-100'
+                                      ? "border-white/10 bg-white/5 text-stone-500"
+                                      : "border-white/10 bg-white/5 text-stone-100"
                                 }`}
                               >
                                 <input
-                                  checked={
-                                    isPriestOnly
-                                      ? false
-                                      : isRolePermission || isOverride
-                                  }
-                                  disabled={isRolePermission || isPriestOnly}
+                                  checked={isChecked}
+                                  disabled={isPriestRole || isPriestOnly}
                                   type="checkbox"
                                   onChange={() => togglePermission(value)}
                                 />
                                 <span className="flex-1">{label}</span>
-                                {isRolePermission ? (
+                                {isPriestRole ? (
                                   <span className="rounded-full border border-emerald-300/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-100">
-                                    Role
+                                    Priest
                                   </span>
                                 ) : isPriestOnly ? (
                                   <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500">
                                     Priest only
+                                  </span>
+                                ) : isDenied ? (
+                                  <span className="rounded-full border border-rose-300/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-rose-100">
+                                    Removed
+                                  </span>
+                                ) : isRolePermission ? (
+                                  <span className="rounded-full border border-emerald-300/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-100">
+                                    Default
                                   </span>
                                 ) : null}
                               </label>
@@ -901,10 +912,10 @@ export default function ChurchDetailsModal({
                           type="submit"
                         >
                           {saveUserMutation.isPending
-                            ? 'Saving...'
+                            ? "Saving..."
                             : editingUserId
-                              ? 'Update user'
-                              : 'Create user'}
+                              ? "Update user"
+                              : "Create user"}
                         </button>
                         <button
                           className="btn-secondary justify-center"
@@ -1002,8 +1013,8 @@ function IntegrationStatus({
         <span
           className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border ${
             ready
-              ? 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100'
-              : 'border-amber-200/30 bg-amber-200/10 text-amber-100'
+              ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-100"
+              : "border-amber-200/30 bg-amber-200/10 text-amber-100"
           }`}
         >
           {ready ? <CheckCircle2 size={16} /> : icon}
@@ -1022,7 +1033,7 @@ function formatCurrency(value: number) {
 function formatCountdown(subscription: any) {
   const countdown = subscription?.countdown;
   if (!countdown) {
-    return 'No countdown available';
+    return "No countdown available";
   }
 
   return `${countdown.days || 0}d ${countdown.hours || 0}h ${
@@ -1032,17 +1043,17 @@ function formatCountdown(subscription: any) {
 
 function formatDate(value: unknown) {
   if (!value) {
-    return '-';
+    return "-";
   }
 
   const date = new Date(value as string);
   if (Number.isNaN(date.getTime())) {
-    return '-';
+    return "-";
   }
 
   return date.toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
+    year: "numeric",
+    month: "short",
+    day: "numeric",
   });
 }
