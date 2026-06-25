@@ -40,6 +40,13 @@ export class MobileApprovalsService {
     return { data: filtered.map((display) => this.mapDisplay(display)) };
   }
 
+  async listActiveFundDisplays(churchId: string) {
+    return this.listFundDisplayApprovals(churchId, {
+      status: 'approved',
+      displayStatus: 'active',
+    });
+  }
+
   reviewFundDisplay(
     churchId: string,
     userId: string,
@@ -104,6 +111,27 @@ export class MobileApprovalsService {
           : null,
       totalAmount: Number(display.totalAmount || 0),
       contributionCount: Number(display.contributionCount || 0),
+      lastContributionAt: display.lastContributionAt || null,
+      todayAmount: Number(display.todayAmount || 0),
+      todayContributionCount: Number(display.todayContributionCount || 0),
+      monthAmount: Number(display.monthAmount || 0),
+      monthContributionCount: Number(display.monthContributionCount || 0),
+      remainingAmount:
+        display.remainingAmount === null || display.remainingAmount === undefined
+          ? null
+          : Number(display.remainingAmount || 0),
+      progressPercentage:
+        display.progressPercentage === null ||
+        display.progressPercentage === undefined
+          ? null
+          : Number(display.progressPercentage || 0),
+      trendByDate: Array.isArray(display.trendByDate)
+        ? display.trendByDate.map((point: any) => ({
+            date: point.date,
+            totalAmount: Number(point.totalAmount || 0),
+            count: Number(point.count || 0),
+          }))
+        : [],
       approvalDurationMinutes: display.approvalDurationMinutes || null,
       visibleFrom: display.visibleFrom || null,
       visibleUntil: display.visibleUntil || null,

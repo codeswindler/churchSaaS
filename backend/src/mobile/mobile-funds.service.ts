@@ -108,6 +108,10 @@ export class MobileFundsService {
         description: account.description,
         displayOrder: account.displayOrder,
         isActive: account.isActive,
+        targetAmount:
+          Number(account.targetAmount || 0) > 0
+            ? Number(account.targetAmount)
+            : null,
         createdAt: account.createdAt?.toISOString() || null,
       })),
     };

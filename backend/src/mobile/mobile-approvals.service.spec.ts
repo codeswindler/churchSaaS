@@ -59,6 +59,16 @@ describe('MobileApprovalsService', () => {
         targetAmount: '5000',
         totalAmount: '1250',
         contributionCount: '4',
+        lastContributionAt: '2026-06-18T12:00:00.000Z',
+        todayAmount: '300',
+        todayContributionCount: '1',
+        monthAmount: '1250',
+        monthContributionCount: '4',
+        remainingAmount: '3750',
+        progressPercentage: '25',
+        trendByDate: [
+          { date: '2026-06-18', totalAmount: '300', count: '1' },
+        ],
         createdAt: '2026-06-18T10:00:00.000Z',
         createdByUserId: 'admin-1',
         updatedAt: '2026-06-18T11:00:00.000Z',
@@ -90,6 +100,16 @@ describe('MobileApprovalsService', () => {
           targetAmount: 5000,
           totalAmount: 1250,
           contributionCount: 4,
+          lastContributionAt: '2026-06-18T12:00:00.000Z',
+          todayAmount: 300,
+          todayContributionCount: 1,
+          monthAmount: 1250,
+          monthContributionCount: 4,
+          remainingAmount: 3750,
+          progressPercentage: 25,
+          trendByDate: [
+            { date: '2026-06-18', totalAmount: 300, count: 1 },
+          ],
           approvalDurationMinutes: null,
           visibleFrom: null,
           visibleUntil: null,
@@ -156,6 +176,26 @@ describe('MobileApprovalsService', () => {
       status: 'approved',
       displayStatus: 'active',
     });
+
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0].id).toBe('active-display');
+  });
+
+  it('lists active mobile displays through the dedicated route contract', async () => {
+    churchService.listCongregationFundDisplays.mockResolvedValue([
+      {
+        id: 'active-display',
+        approvalStatus: 'approved',
+        displayStatus: 'active',
+      },
+      {
+        id: 'expired-display',
+        approvalStatus: 'approved',
+        displayStatus: 'expired',
+      },
+    ]);
+
+    const result = await service.listActiveFundDisplays('church-1');
 
     expect(result.data).toHaveLength(1);
     expect(result.data[0].id).toBe('active-display');

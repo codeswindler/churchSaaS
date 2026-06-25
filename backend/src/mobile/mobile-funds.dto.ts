@@ -5,6 +5,7 @@ export interface MobileFundAccountDto {
   description: string | null;
   displayOrder: number;
   isActive: boolean;
+  targetAmount: number | null;
   createdAt: string | null;
 }
 

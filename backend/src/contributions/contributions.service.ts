@@ -1430,12 +1430,9 @@ export class ContributionsService {
     const rawValue = `${value || ''}`.trim();
 
     if (/^\d{4}-\d{2}-\d{2}$/.test(rawValue)) {
-      const [year, month, day] = rawValue.split('-').map(Number);
-      if (boundary === 'end') {
-        return new Date(year, month - 1, day, 23, 59, 59, 999);
-      }
-
-      return new Date(year, month - 1, day, 0, 0, 0, 0);
+      const time =
+        boundary === 'end' ? '23:59:59.999' : '00:00:00.000';
+      return new Date(`${rawValue}T${time}+03:00`);
     }
 
     const parsed = new Date(rawValue);

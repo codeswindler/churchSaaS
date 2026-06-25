@@ -5028,6 +5028,47 @@ export class ChurchService {
           contributionCount: 0,
           lastContributionAt: null,
         };
+    const trendByDate = fundAccount
+      ? await this.getCongregationFundDisplayTrend(
+          churchId,
+          fundAccount.id,
+          startDate,
+          endDate,
+        )
+      : [];
+    const todayKey = this.formatNairobiDate(new Date());
+    const todayTrend = trendByDate.find(
+      (point: any) => point.date === todayKey,
+    );
+    const monthPrefix = todayKey.slice(0, 7);
+    const monthTrend = trendByDate.filter((point: any) =>
+      `${point.date || ''}`.startsWith(monthPrefix),
+    );
+    const monthAmount = Number(
+      monthTrend
+        .reduce(
+          (sum: number, point: any) =>
+            sum + Number(point.totalAmount || 0),
+          0,
+        )
+        .toFixed(2),
+    );
+    const monthContributionCount = monthTrend.reduce(
+      (sum: number, point: any) => sum + Number(point.count || 0),
+      0,
+    );
+    const targetAmount = this.resolveFundDisplayTargetAmount(
+      fundAccount,
+      display,
+    );
+    const remainingAmount =
+      targetAmount === null
+        ? null
+        : Math.max(0, targetAmount - totals.totalAmount);
+    const progressPercentage =
+      targetAmount === null
+        ? null
+        : Number(((totals.totalAmount / targetAmount) * 100).toFixed(1));
 
     const approvalStatus = display.approvalStatus || 'approved';
     const now = Date.now();
@@ -5054,10 +5095,17 @@ export class ChurchService {
       displayStatus,
       fundAccountName: fundAccount?.name || 'Unavailable account',
       fundAccountCode: fundAccount?.code || null,
-      targetAmount: this.resolveFundDisplayTargetAmount(fundAccount, display),
+      targetAmount,
       endMode,
       endDate: endMode === 'static' ? display.endDate || null : null,
       ...totals,
+      todayAmount: Number(todayTrend?.totalAmount || 0),
+      todayContributionCount: Number(todayTrend?.count || 0),
+      monthAmount,
+      monthContributionCount,
+      remainingAmount,
+      progressPercentage,
+      trendByDate,
     };
   }
 
@@ -5106,6 +5154,68 @@ export class ChurchService {
       contributionCount: Number(raw?.contributionCount || 0),
       lastContributionAt: raw?.lastContributionAt || null,
     };
+  }
+
+  private async getCongregationFundDisplayTrend(
+    churchId: string,
+    fundAccountId: string,
+    startDate: Date,
+    endDate: Date | null,
+  ) {
+    const qb = this.contributionRepo
+      .createQueryBuilder('contribution')
+      .select(
+        "DATE(CONVERT_TZ(COALESCE(contribution.receivedAt, contribution.createdAt), '+00:00', '+03:00'))",
+        'date',
+      )
+      .addSelect(
+        'COALESCE(SUM(contribution.amount - COALESCE(contribution.commissionAmount, 0)), 0)',
+        'totalAmount',
+      )
+      .addSelect('COUNT(contribution.id)', 'count')
+      .where('contribution.churchId = :churchId', { churchId })
+      .andWhere('contribution.fundAccountId = :fundAccountId', {
+        fundAccountId,
+      })
+      .andWhere('contribution.status = :status', {
+        status: ContributionStatus.CONFIRMED,
+      })
+      .andWhere(
+        'COALESCE(contribution.receivedAt, contribution.createdAt) >= :startDate',
+        { startDate },
+      )
+      .groupBy(
+        "DATE(CONVERT_TZ(COALESCE(contribution.receivedAt, contribution.createdAt), '+00:00', '+03:00'))",
+      )
+      .orderBy('date', 'ASC');
+
+    if (endDate) {
+      qb.andWhere(
+        'COALESCE(contribution.receivedAt, contribution.createdAt) <= :endDate',
+        { endDate },
+      );
+    }
+
+    const rows = await qb.getRawMany();
+    return rows.map((row: any) => ({
+      date: this.formatNairobiDate(row.date),
+      totalAmount: Number(row.totalAmount || 0),
+      count: Number(row.count || 0),
+    }));
+  }
+
+  private formatNairobiDate(value: unknown) {
+    if (!value) return '';
+    const date = value instanceof Date ? value : new Date(`${value}`);
+    if (Number.isNaN(date.getTime())) {
+      return `${value}`.slice(0, 10);
+    }
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Africa/Nairobi',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
   }
 
   private parseFundDisplayDateBoundary(

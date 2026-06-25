@@ -19,6 +19,7 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
     await this.ensureChurchNotificationTable();
     await this.ensureDiscipleshipTables();
     await this.ensureCongregationPageTable();
+    await this.migrateLegacyFundDisplayTargets();
   }
 
   private async ensureChurchNotificationTable() {
@@ -521,6 +522,109 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
         'ALTER TABLE `fund_accounts` ADD COLUMN `targetAmount` decimal(14,2) NULL AFTER `displayOrder`',
       );
       this.logger.log('Added optional public target to fund accounts.');
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  private async migrateLegacyFundDisplayTargets() {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+
+    try {
+      const fundAccounts = await queryRunner.getTable('fund_accounts');
+      const congregationPages = await queryRunner.getTable(
+        'church_congregation_pages',
+      );
+      if (
+        !fundAccounts?.findColumnByName('targetAmount') ||
+        !congregationPages?.findColumnByName('fundDisplays')
+      ) {
+        return;
+      }
+
+      const pages = await queryRunner.query(`
+        SELECT \`churchId\`, \`fundDisplays\`
+        FROM \`church_congregation_pages\`
+        WHERE \`fundDisplays\` IS NOT NULL
+          AND TRIM(\`fundDisplays\`) <> ''
+      `);
+      let candidates = 0;
+
+      for (const page of pages) {
+        let displays: any[] = [];
+        try {
+          displays = Array.isArray(page.fundDisplays)
+            ? page.fundDisplays
+            : JSON.parse(page.fundDisplays);
+        } catch (_error) {
+          continue;
+        }
+        if (!Array.isArray(displays)) {
+          continue;
+        }
+
+        const targetByFundAccount = new Map<
+          string,
+          { amount: number; priority: number; updatedAt: number }
+        >();
+        displays.forEach((display: any) => {
+          const fundAccountId = `${display?.fundAccountId || ''}`.trim();
+          const amount = Number(display?.targetAmount || 0);
+          if (!fundAccountId || !Number.isFinite(amount) || amount <= 0) {
+            return;
+          }
+
+          const approvalStatus = `${display?.approvalStatus || 'approved'}`
+            .trim()
+            .toLowerCase();
+          const priority =
+            display?.isActive !== false && approvalStatus === 'approved'
+              ? 1
+              : 0;
+          const updatedAt = new Date(
+            display?.updatedAt ||
+              display?.createdAt ||
+              display?.visibleFrom ||
+              display?.startDate ||
+              0,
+          ).getTime();
+          const candidate = {
+            amount: Number(amount.toFixed(2)),
+            priority,
+            updatedAt: Number.isFinite(updatedAt) ? updatedAt : 0,
+          };
+          const previous = targetByFundAccount.get(fundAccountId);
+          if (
+            !previous ||
+            candidate.priority > previous.priority ||
+            (candidate.priority === previous.priority &&
+              candidate.updatedAt >= previous.updatedAt)
+          ) {
+            targetByFundAccount.set(fundAccountId, candidate);
+          }
+        });
+
+        for (const [fundAccountId, target] of targetByFundAccount) {
+          await queryRunner.query(
+            `
+              UPDATE \`fund_accounts\`
+              SET \`targetAmount\` = ?
+              WHERE \`id\` = ?
+                AND \`churchId\` = ?
+                AND (\`targetAmount\` IS NULL OR \`targetAmount\` <= 0)
+            `,
+            [target.amount, fundAccountId, page.churchId],
+          );
+          candidates += 1;
+        }
+      }
+
+      if (candidates > 0) {
+        this.logger.log(
+          `Checked ${candidates} legacy fund display target candidates for backfill.`,
+        );
+      }
     } finally {
       await queryRunner.release();
     }

@@ -69,6 +69,11 @@ export class MobileApprovalsController {
     );
   }
 
+  @Get('fund-displays/active')
+  listActiveFundDisplays(@Request() req: MobileApprovalRequest) {
+    return this.mobileApprovalsService.listActiveFundDisplays(req.user.churchId);
+  }
+
   @Post('fund-display-approvals/:displayId/approve')
   approveFundDisplay(
     @Request() req: MobileApprovalRequest,
