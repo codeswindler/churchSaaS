@@ -84,6 +84,24 @@ export class Church {
   @Column({ type: 'varchar', length: 255, nullable: true })
   mpesaCallbackUrl: string | null;
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  mpesaB2cConsumerKey: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  mpesaB2cConsumerSecret: string | null;
+
+  @Column({ type: 'varchar', length: 40, nullable: true })
+  mpesaB2cShortcode: string | null;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  mpesaB2cInitiatorName: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  mpesaB2cSecurityCredential: string | null;
+
+  @Column({ type: 'varchar', length: 60, nullable: true })
+  mpesaB2cCommandId: string | null;
+
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
   commissionRatePct: number;
 

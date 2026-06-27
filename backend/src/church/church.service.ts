@@ -1712,7 +1712,16 @@ export class ChurchService {
 
     fundAccount.name = body.name ?? fundAccount.name;
     fundAccount.description = body.description ?? fundAccount.description;
-    fundAccount.isActive = body.isActive ?? fundAccount.isActive;
+    if (body.isActive !== undefined) {
+      fundAccount.isActive = Boolean(body.isActive);
+      if (fundAccount.isActive) {
+        fundAccount.archivedAt = null;
+        fundAccount.archivedByUserId = null;
+        fundAccount.archiveReason = null;
+      } else if (!fundAccount.archivedAt) {
+        fundAccount.archivedAt = new Date();
+      }
+    }
     fundAccount.displayOrder = Number(
       body.displayOrder ?? fundAccount.displayOrder,
     );
@@ -1728,6 +1737,67 @@ export class ChurchService {
         : fundAccount.receiptTemplate;
 
     return this.fundAccountRepo.save(fundAccount);
+  }
+
+  async archiveFundAccount(
+    churchId: string,
+    fundAccountId: string,
+    archivedByUserId: string,
+    body: any = {},
+  ) {
+    const fundAccount = await this.fundAccountRepo.findOne({
+      where: { id: fundAccountId, churchId },
+    });
+    if (!fundAccount) {
+      throw new NotFoundException('Fund account not found');
+    }
+    if (this.isGeneralFundAccount(fundAccount)) {
+      throw new BadRequestException('General fund account cannot be archived');
+    }
+
+    fundAccount.isActive = false;
+    fundAccount.archivedAt = fundAccount.archivedAt || new Date();
+    fundAccount.archivedByUserId = archivedByUserId || null;
+    fundAccount.archiveReason = this.normalizeOptionalText(
+      body?.reason || body?.archiveReason,
+      255,
+    );
+
+    return this.fundAccountRepo.save(fundAccount);
+  }
+
+  async restoreFundAccount(churchId: string, fundAccountId: string) {
+    const fundAccount = await this.fundAccountRepo.findOne({
+      where: { id: fundAccountId, churchId },
+    });
+    if (!fundAccount) {
+      throw new NotFoundException('Fund account not found');
+    }
+
+    fundAccount.isActive = true;
+    fundAccount.archivedAt = null;
+    fundAccount.archivedByUserId = null;
+    fundAccount.archiveReason = null;
+
+    return this.fundAccountRepo.save(fundAccount);
+  }
+
+  private async assertFundDisplayFundAccountActive(
+    churchId: string,
+    fundAccountId: string | null | undefined,
+  ) {
+    if (!fundAccountId) {
+      throw new BadRequestException('Fund account is required');
+    }
+
+    const fundAccount = await this.fundAccountRepo.findOne({
+      where: { id: fundAccountId, churchId, isActive: true },
+    });
+    if (!fundAccount) {
+      throw new BadRequestException(
+        'Fund account is archived or unavailable for public display',
+      );
+    }
   }
 
   async listChurchUsers(churchId: string) {
@@ -2536,6 +2606,10 @@ export class ChurchService {
         'Fund account and reporting start date are required',
       );
     }
+    await this.assertFundDisplayFundAccountActive(
+      churchId,
+      normalized.fundAccountId,
+    );
 
     const isPriest = this.isPriestRole(userRole);
     const now = new Date().toISOString();
@@ -2619,6 +2693,10 @@ export class ChurchService {
         'Fund account and reporting start date are required',
       );
     }
+    await this.assertFundDisplayFundAccountActive(
+      churchId,
+      normalized.fundAccountId,
+    );
 
     const isPriest = this.isPriestRole(userRole);
     const now = new Date().toISOString();
@@ -4909,6 +4987,11 @@ export class ChurchService {
     }
 
     return Number(amount.toFixed(2));
+  }
+
+  private isGeneralFundAccount(account: Pick<FundAccount, 'code' | 'name'>) {
+    return `${account?.code || account?.name || ''}`.trim().toLowerCase() ===
+      'general';
   }
 
   private resolveFundDisplayTargetAmount(

@@ -303,6 +303,22 @@ export class PlatformService {
         mpesaPasskey: this.normalizeOptionalText(body.mpesaPasskey),
         mpesaShortcode: this.normalizeOptionalText(body.mpesaShortcode),
         mpesaCallbackUrl: this.normalizeOptionalText(body.mpesaCallbackUrl),
+        mpesaB2cConsumerKey: this.normalizeOptionalText(
+          body.mpesaB2cConsumerKey,
+        ),
+        mpesaB2cConsumerSecret: this.normalizeOptionalText(
+          body.mpesaB2cConsumerSecret,
+        ),
+        mpesaB2cShortcode: this.normalizeOptionalText(body.mpesaB2cShortcode),
+        mpesaB2cInitiatorName: this.normalizeOptionalText(
+          body.mpesaB2cInitiatorName,
+        ),
+        mpesaB2cSecurityCredential: this.normalizeOptionalText(
+          body.mpesaB2cSecurityCredential,
+        ),
+        mpesaB2cCommandId:
+          this.normalizeOptionalText(body.mpesaB2cCommandId) ||
+          'BusinessPayment',
         commissionRatePct,
         billingModel,
         enabledFeatures: this.normalizeChurchFeatures(body.enabledFeatures),
@@ -502,6 +518,12 @@ export class PlatformService {
       mpesaPasskey: church.mpesaPasskey,
       mpesaShortcode: church.mpesaShortcode,
       mpesaCallbackUrl: church.mpesaCallbackUrl,
+      mpesaB2cConsumerKey: church.mpesaB2cConsumerKey,
+      mpesaB2cConsumerSecret: church.mpesaB2cConsumerSecret,
+      mpesaB2cShortcode: church.mpesaB2cShortcode,
+      mpesaB2cInitiatorName: church.mpesaB2cInitiatorName,
+      mpesaB2cSecurityCredential: church.mpesaB2cSecurityCredential,
+      mpesaB2cCommandId: church.mpesaB2cCommandId || 'BusinessPayment',
       commissionRatePct: Number(church.commissionRatePct || 0),
       enabledFeatures: normalizeFeatureList(church.enabledFeatures),
       integrations: buildChurchIntegrationSummary(church),
@@ -822,6 +844,36 @@ export class PlatformService {
       church.mpesaCallbackUrl = this.normalizeOptionalText(
         body.mpesaCallbackUrl,
       );
+    }
+    if (body.mpesaB2cConsumerKey !== undefined) {
+      church.mpesaB2cConsumerKey = this.normalizeOptionalText(
+        body.mpesaB2cConsumerKey,
+      );
+    }
+    if (body.mpesaB2cConsumerSecret !== undefined) {
+      church.mpesaB2cConsumerSecret = this.normalizeOptionalText(
+        body.mpesaB2cConsumerSecret,
+      );
+    }
+    if (body.mpesaB2cShortcode !== undefined) {
+      church.mpesaB2cShortcode = this.normalizeOptionalText(
+        body.mpesaB2cShortcode,
+      );
+    }
+    if (body.mpesaB2cInitiatorName !== undefined) {
+      church.mpesaB2cInitiatorName = this.normalizeOptionalText(
+        body.mpesaB2cInitiatorName,
+      );
+    }
+    if (body.mpesaB2cSecurityCredential !== undefined) {
+      church.mpesaB2cSecurityCredential = this.normalizeOptionalText(
+        body.mpesaB2cSecurityCredential,
+      );
+    }
+    if (body.mpesaB2cCommandId !== undefined) {
+      church.mpesaB2cCommandId =
+        this.normalizeOptionalText(body.mpesaB2cCommandId) ||
+        'BusinessPayment';
     }
     if (body.commissionRatePct !== undefined) {
       church.commissionRatePct = this.normalizeCommissionRate(

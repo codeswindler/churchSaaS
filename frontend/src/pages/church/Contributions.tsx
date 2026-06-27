@@ -81,6 +81,10 @@ export default function ChurchContributions() {
     queryFn: () =>
       api.get('/church/fund-accounts').then((response) => response.data),
   });
+  const activeFundAccounts = useMemo(
+    () => (fundAccounts || []).filter((item: any) => item.isActive !== false),
+    [fundAccounts],
+  );
 
   const { data: contributions, isLoading } = useQuery({
     queryKey: ['church-contributions', queryString],
@@ -631,7 +635,7 @@ export default function ChurchContributions() {
                     }
                   >
                     <option value="">Select account</option>
-                    {(fundAccounts || []).map((item: any) => (
+                    {activeFundAccounts.map((item: any) => (
                       <option key={item.id} value={item.id}>
                         {item.name}
                       </option>

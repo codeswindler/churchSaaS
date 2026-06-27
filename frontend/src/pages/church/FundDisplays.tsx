@@ -390,6 +390,9 @@ export default function ChurchFundDisplays() {
 
   const editorNeedsDuration =
     isPriest && (!editorItem || editorItem.approvalStatus !== 'approved');
+  const selectedEditorFundAccount = activeFundAccounts.find(
+    (account) => account.id === form.fundAccountId,
+  );
   const copyPublicLink = async (path: string) => {
     if (!path) return;
     const url =
@@ -673,6 +676,19 @@ export default function ChurchFundDisplays() {
                       </option>
                     ))}
                   </select>
+                  <p className="mt-2 text-xs leading-5 text-stone-400">
+                    Target:{' '}
+                    <span className="font-semibold text-stone-100">
+                      {Number(selectedEditorFundAccount?.targetAmount || 0) > 0
+                        ? formatKes(selectedEditorFundAccount?.targetAmount)
+                        : 'Open goal'}
+                    </span>
+                    . Change it from{' '}
+                    <a className="text-emerald-300 underline" href="/church/fund-accounts">
+                      Fund Accounts
+                    </a>
+                    .
+                  </p>
                 </div>
                 <div>
                   <label className="label">Display title</label>

@@ -1,6 +1,8 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import {
+  MOBILE_B2C_READ_SCOPE,
+  MOBILE_B2C_WRITE_SCOPE,
   MOBILE_FUND_DISPLAY_REVIEW_SCOPE,
   MOBILE_FUNDS_SCOPE,
 } from '../mobile/mobile.constants';
@@ -52,11 +54,18 @@ describe('AuthService mobile approval scopes', () => {
     expect(result.scope).toEqual([
       MOBILE_FUNDS_SCOPE,
       MOBILE_FUND_DISPLAY_REVIEW_SCOPE,
+      MOBILE_B2C_READ_SCOPE,
+      MOBILE_B2C_WRITE_SCOPE,
     ]);
     expect(jwtService.sign).toHaveBeenCalledWith(
       expect.objectContaining({
         role: 'priest',
-        scope: [MOBILE_FUNDS_SCOPE, MOBILE_FUND_DISPLAY_REVIEW_SCOPE],
+        scope: [
+          MOBILE_FUNDS_SCOPE,
+          MOBILE_FUND_DISPLAY_REVIEW_SCOPE,
+          MOBILE_B2C_READ_SCOPE,
+          MOBILE_B2C_WRITE_SCOPE,
+        ],
       }),
       { expiresIn: '30d' },
     );

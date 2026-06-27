@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, X } from 'lucide-react';
+import { Archive, Plus, RotateCcw, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import SmsPhonePreview from '../../components/SmsPhonePreview';
@@ -116,6 +116,9 @@ export default function ChurchFundAccounts() {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [form, setForm] = useState<any>(initialForm);
   const [previewAccount, setPreviewAccount] = useState<any | null>(null);
+  const [accountView, setAccountView] = useState<'active' | 'archived'>(
+    'active',
+  );
 
   const { data, isLoading } = useQuery({
     queryKey: ['church-fund-accounts'],
@@ -160,7 +163,60 @@ export default function ChurchFundAccounts() {
     },
   });
 
+  const archiveMutation = useMutation({
+    mutationFn: async ({
+      fundAccountId,
+      reason,
+    }: {
+      fundAccountId: string;
+      reason: string | null;
+    }) => {
+      const response = await api.post(
+        `/church/fund-accounts/${fundAccountId}/archive`,
+        { reason },
+      );
+      return response.data;
+    },
+    onSuccess: (account) => {
+      toast.success('Fund account archived');
+      setPreviewAccount(account);
+      setAccountView('archived');
+      queryClient.invalidateQueries({ queryKey: ['church-fund-accounts'] });
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Unable to archive account');
+    },
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: async (fundAccountId: string) => {
+      const response = await api.post(
+        `/church/fund-accounts/${fundAccountId}/restore`,
+      );
+      return response.data;
+    },
+    onSuccess: (account) => {
+      toast.success('Fund account restored');
+      setPreviewAccount(account);
+      setAccountView('active');
+      queryClient.invalidateQueries({ queryKey: ['church-fund-accounts'] });
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Unable to restore account');
+    },
+  });
+
   const accounts = useMemo(() => data || [], [data]);
+  const activeAccounts = useMemo(
+    () => accounts.filter((item: any) => item.isActive !== false),
+    [accounts],
+  );
+  const archivedAccounts = useMemo(
+    () => accounts.filter((item: any) => item.isActive === false),
+    [accounts],
+  );
+  const visibleAccounts =
+    accountView === 'archived' ? archivedAccounts : activeAccounts;
   const receiptTemplatePrefix = getReceiptTemplatePrefix(form);
   const receiptExtraMessage = getReceiptExtraMessage(
     form.receiptTemplate,
@@ -180,7 +236,12 @@ export default function ChurchFundAccounts() {
   );
   const templateMetrics = getGsm7SmsMetrics(composedReceiptTemplate);
   const templateRemaining = RECEIPT_TEMPLATE_LIMIT - templateMetrics.length;
-  const accountPreview = previewAccount || accounts[0] || null;
+  const accountPreview =
+    previewAccount ||
+    visibleAccounts[0] ||
+    activeAccounts[0] ||
+    archivedAccounts[0] ||
+    null;
   const accountPreviewPrefix = getReceiptTemplatePrefix(accountPreview);
   const accountPreviewTemplate = buildReceiptTemplate(
     getReceiptExtraMessage(
@@ -228,6 +289,26 @@ export default function ChurchFundAccounts() {
     setIsEditorOpen(true);
   };
 
+  const handleArchiveAccount = (item: any) => {
+    if (isGeneralFundAccount(item)) {
+      toast.error('General account must stay available for fallback payments');
+      return;
+    }
+
+    const reason = window.prompt(
+      `Archive ${item.name}? It will be hidden from new giving, fund displays, and manual contribution entry, but all history will remain available.`,
+      item.archiveReason || '',
+    );
+    if (reason === null) {
+      return;
+    }
+
+    archiveMutation.mutate({
+      fundAccountId: item.id,
+      reason: reason.trim() || null,
+    });
+  };
+
   return (
     <div className="church-console-page fund-accounts-layout grid gap-5 xl:grid-cols-[minmax(22rem,26rem)_minmax(0,1fr)] xl:items-start">
       <section className="table-shell">
@@ -254,6 +335,36 @@ export default function ChurchFundAccounts() {
             Edit <span className="font-semibold">General</span> to control the
             fallback receipt message for unmatched M-Pesa account references.
           </div>
+          <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/10 p-1">
+            <button
+              className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
+                accountView === 'active'
+                  ? 'bg-emerald-300 text-emerald-950'
+                  : 'text-stone-300 hover:bg-white/10'
+              }`}
+              type="button"
+              onClick={() => setAccountView('active')}
+            >
+              Active ({activeAccounts.length})
+            </button>
+            <button
+              className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
+                accountView === 'archived'
+                  ? 'bg-stone-200 text-stone-950'
+                  : 'text-stone-300 hover:bg-white/10'
+              }`}
+              type="button"
+              onClick={() => setAccountView('archived')}
+            >
+              Archived ({archivedAccounts.length})
+            </button>
+          </div>
+          {accountView === 'archived' ? (
+            <p className="mt-3 text-xs text-stone-400">
+              Archived accounts stay in reports and old receipts, but are hidden
+              from new giving, fund-display setup, and manual entries.
+            </p>
+          ) : null}
         </div>
 
         {isLoading ? (
@@ -268,14 +379,24 @@ export default function ChurchFundAccounts() {
                 </tr>
               </thead>
               <tbody>
-                {accounts.map((item: any) => (
+                {visibleAccounts.map((item: any) => (
                   <tr
                     key={item.id}
                     onFocus={() => setPreviewAccount(item)}
                     onMouseEnter={() => setPreviewAccount(item)}
                   >
                     <td data-label="Name">
-                      <div className="font-medium text-white">{item.name}</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium text-white">{item.name}</span>
+                        {item.isActive === false ? (
+                          <span className="rounded-full border border-stone-400/30 bg-stone-400/10 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-stone-200">
+                            Archived
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="mt-1 text-xs uppercase tracking-[0.18em] text-stone-500">
+                        {item.code}
+                      </div>
                       <div className="text-xs text-stone-400">
                         {item.description || 'No description'}
                       </div>
@@ -285,18 +406,57 @@ export default function ChurchFundAccounts() {
                           ? formatKes(item.targetAmount)
                           : 'Open goal'}
                       </div>
+                      {item.archiveReason ? (
+                        <div className="mt-1 text-xs text-stone-500">
+                          Reason: {item.archiveReason}
+                        </div>
+                      ) : null}
                     </td>
                     <td data-label="Actions">
-                      <button
-                        className="btn-secondary px-3 py-2"
-                        onFocus={() => setPreviewAccount(item)}
-                        onClick={() => openEditEditor(item)}
-                      >
-                        Edit
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          className="btn-secondary px-3 py-2"
+                          onFocus={() => setPreviewAccount(item)}
+                          onClick={() => openEditEditor(item)}
+                        >
+                          Edit
+                        </button>
+                        {item.isActive === false ? (
+                          <button
+                            className="btn-secondary px-3 py-2"
+                            disabled={restoreMutation.isPending}
+                            onFocus={() => setPreviewAccount(item)}
+                            onClick={() => restoreMutation.mutate(item.id)}
+                          >
+                            <RotateCcw size={15} />
+                            Restore
+                          </button>
+                        ) : !isGeneralFundAccount(item) ? (
+                          <button
+                            className="btn-secondary px-3 py-2"
+                            disabled={archiveMutation.isPending}
+                            onFocus={() => setPreviewAccount(item)}
+                            onClick={() => handleArchiveAccount(item)}
+                          >
+                            <Archive size={15} />
+                            Archive
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))}
+                {visibleAccounts.length === 0 ? (
+                  <tr>
+                    <td colSpan={2}>
+                      <div className="py-8 text-center text-sm text-stone-400">
+                        {accountView === 'archived'
+                          ? 'No archived fund accounts yet.'
+                          : 'No active fund accounts yet.'}
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </div>

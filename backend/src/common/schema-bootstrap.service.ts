@@ -16,6 +16,7 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
     await this.ensureSmsMessagingTables();
     await this.ensureSmsSenderTables();
     await this.ensureMobileDeviceTable();
+    await this.ensureMobileB2cWithdrawalTable();
     await this.ensureChurchNotificationTable();
     await this.ensureDiscipleshipTables();
     await this.ensureCongregationPageTable();
@@ -164,6 +165,49 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
     }
   }
 
+  private async ensureMobileB2cWithdrawalTable() {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+
+    try {
+      const table = await queryRunner.getTable('mobile_b2c_withdrawals');
+      if (!table) {
+        await queryRunner.query(`
+          CREATE TABLE \`mobile_b2c_withdrawals\` (
+            \`id\` varchar(36) NOT NULL,
+            \`churchId\` varchar(36) NOT NULL,
+            \`requestedByUserId\` varchar(36) NULL,
+            \`fundAccountId\` varchar(36) NULL,
+            \`phoneNumber\` varchar(20) NOT NULL,
+            \`amount\` decimal(12,2) NOT NULL,
+            \`recipientName\` varchar(180) NULL,
+            \`remarks\` varchar(255) NOT NULL,
+            \`occasion\` varchar(120) NULL,
+            \`status\` varchar(40) NOT NULL DEFAULT 'created',
+            \`resultCode\` varchar(80) NULL,
+            \`resultDesc\` text NULL,
+            \`originatorConversationId\` varchar(120) NULL,
+            \`conversationId\` varchar(120) NULL,
+            \`transactionId\` varchar(120) NULL,
+            \`completedAt\` timestamp NULL,
+            \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            \`updatedAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+            PRIMARY KEY (\`id\`),
+            INDEX \`IDX_mobile_b2c_church_created\` (\`churchId\`, \`createdAt\`),
+            INDEX \`IDX_mobile_b2c_church_status_created\` (\`churchId\`, \`status\`, \`createdAt\`),
+            INDEX \`IDX_mobile_b2c_originator\` (\`originatorConversationId\`),
+            INDEX \`IDX_mobile_b2c_conversation\` (\`conversationId\`),
+            INDEX \`IDX_mobile_b2c_requested_by\` (\`requestedByUserId\`),
+            INDEX \`IDX_mobile_b2c_fund\` (\`fundAccountId\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        this.logger.log('Created mobile B2C withdrawals table.');
+      }
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
   private async ensureChurchCredentialColumns() {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -232,6 +276,36 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
       if (!table.findColumnByName('mpesaCallbackUrl')) {
         statements.push(
           'ADD COLUMN `mpesaCallbackUrl` varchar(255) NULL AFTER `mpesaShortcode`',
+        );
+      }
+      if (!table.findColumnByName('mpesaB2cConsumerKey')) {
+        statements.push(
+          'ADD COLUMN `mpesaB2cConsumerKey` varchar(255) NULL AFTER `mpesaCallbackUrl`',
+        );
+      }
+      if (!table.findColumnByName('mpesaB2cConsumerSecret')) {
+        statements.push(
+          'ADD COLUMN `mpesaB2cConsumerSecret` varchar(255) NULL AFTER `mpesaB2cConsumerKey`',
+        );
+      }
+      if (!table.findColumnByName('mpesaB2cShortcode')) {
+        statements.push(
+          'ADD COLUMN `mpesaB2cShortcode` varchar(40) NULL AFTER `mpesaB2cConsumerSecret`',
+        );
+      }
+      if (!table.findColumnByName('mpesaB2cInitiatorName')) {
+        statements.push(
+          'ADD COLUMN `mpesaB2cInitiatorName` varchar(120) NULL AFTER `mpesaB2cShortcode`',
+        );
+      }
+      if (!table.findColumnByName('mpesaB2cSecurityCredential')) {
+        statements.push(
+          'ADD COLUMN `mpesaB2cSecurityCredential` text NULL AFTER `mpesaB2cInitiatorName`',
+        );
+      }
+      if (!table.findColumnByName('mpesaB2cCommandId')) {
+        statements.push(
+          'ADD COLUMN `mpesaB2cCommandId` varchar(60) NULL AFTER `mpesaB2cSecurityCredential`',
         );
       }
 
@@ -514,14 +588,40 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
 
     try {
       const fundAccounts = await queryRunner.getTable('fund_accounts');
-      if (!fundAccounts || fundAccounts.findColumnByName('targetAmount')) {
+      if (!fundAccounts) {
+        return;
+      }
+
+      const statements: string[] = [];
+      if (!fundAccounts.findColumnByName('archivedAt')) {
+        statements.push(
+          'ADD COLUMN `archivedAt` datetime NULL AFTER `isActive`',
+        );
+      }
+      if (!fundAccounts.findColumnByName('archivedByUserId')) {
+        statements.push(
+          'ADD COLUMN `archivedByUserId` varchar(36) NULL AFTER `archivedAt`',
+        );
+      }
+      if (!fundAccounts.findColumnByName('archiveReason')) {
+        statements.push(
+          'ADD COLUMN `archiveReason` varchar(255) NULL AFTER `archivedByUserId`',
+        );
+      }
+      if (!fundAccounts.findColumnByName('targetAmount')) {
+        statements.push(
+          'ADD COLUMN `targetAmount` decimal(14,2) NULL AFTER `displayOrder`',
+        );
+      }
+
+      if (statements.length === 0) {
         return;
       }
 
       await queryRunner.query(
-        'ALTER TABLE `fund_accounts` ADD COLUMN `targetAmount` decimal(14,2) NULL AFTER `displayOrder`',
+        `ALTER TABLE \`fund_accounts\` ${statements.join(', ')}`,
       );
-      this.logger.log('Added optional public target to fund accounts.');
+      this.logger.log('Ensured fund account archive and public target columns.');
     } finally {
       await queryRunner.release();
     }

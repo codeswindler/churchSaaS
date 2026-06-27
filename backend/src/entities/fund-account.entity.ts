@@ -39,6 +39,15 @@ export class FundAccount {
   @Column({ default: true })
   isActive: boolean;
 
+  @Column({ type: 'datetime', nullable: true })
+  archivedAt: Date | null;
+
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  archivedByUserId: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  archiveReason: string | null;
+
   @Column({ type: 'int', default: 0 })
   displayOrder: number;
 

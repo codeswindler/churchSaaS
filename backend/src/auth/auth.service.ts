@@ -28,6 +28,8 @@ import {
 } from '../entities/platform-user.entity';
 import { ChurchSubscriptionsService } from '../subscriptions/church-subscriptions.service';
 import {
+  MOBILE_B2C_READ_SCOPE,
+  MOBILE_B2C_WRITE_SCOPE,
   MOBILE_FUNDS_SCOPE,
   MOBILE_FUND_DISPLAY_REVIEW_SCOPE,
 } from '../mobile/mobile.constants';
@@ -165,7 +167,12 @@ export class AuthService {
 
     const access = this.buildChurchAccess(user);
     const role = normalizeChurchRole(user.role);
-    const scope = [MOBILE_FUNDS_SCOPE, MOBILE_FUND_DISPLAY_REVIEW_SCOPE];
+    const scope = [
+      MOBILE_FUNDS_SCOPE,
+      MOBILE_FUND_DISPLAY_REVIEW_SCOPE,
+      MOBILE_B2C_READ_SCOPE,
+      MOBILE_B2C_WRITE_SCOPE,
+    ];
     const payload = {
       sub: user.id,
       role,

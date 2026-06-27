@@ -380,6 +380,35 @@ export class ChurchController {
     );
   }
 
+  @Post('fund-accounts/:fundAccountId/archive')
+  @Permissions(ChurchPermission.FUND_ACCOUNTS_MANAGE)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
+  archiveFundAccount(
+    @Request() req: any,
+    @Param('fundAccountId') fundAccountId: string,
+    @Body() body: any,
+  ) {
+    return this.churchService.archiveFundAccount(
+      req.user.churchId,
+      fundAccountId,
+      req.user.id,
+      body,
+    );
+  }
+
+  @Post('fund-accounts/:fundAccountId/restore')
+  @Permissions(ChurchPermission.FUND_ACCOUNTS_MANAGE)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
+  restoreFundAccount(
+    @Request() req: any,
+    @Param('fundAccountId') fundAccountId: string,
+  ) {
+    return this.churchService.restoreFundAccount(
+      req.user.churchId,
+      fundAccountId,
+    );
+  }
+
   @Get('users')
   @Permissions(ChurchPermission.USERS_VIEW)
   @Roles(ChurchUserRole.PRIEST, ChurchUserRole.USER)

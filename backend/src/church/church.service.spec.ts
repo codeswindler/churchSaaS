@@ -264,6 +264,59 @@ describe('ChurchService discipleship name matching', () => {
     expect(result.items[0].approvalStatus).toBe('approved');
   });
 
+  it('archives fund accounts without deleting their history target', async () => {
+    const account = {
+      id: 'fund-1',
+      churchId: 'church-1',
+      code: 'building',
+      name: 'Building',
+      isActive: true,
+      archivedAt: null,
+      archivedByUserId: null,
+      archiveReason: null,
+      targetAmount: 500000,
+    };
+    const save = jest.fn(async (value) => value);
+    (service as any).fundAccountRepo = {
+      findOne: jest.fn().mockResolvedValue(account),
+      save,
+    };
+
+    const archived = await service.archiveFundAccount(
+      'church-1',
+      'fund-1',
+      'priest-1',
+      { reason: 'Project complete' },
+    );
+
+    expect(archived).toEqual(
+      expect.objectContaining({
+        isActive: false,
+        archivedByUserId: 'priest-1',
+        archiveReason: 'Project complete',
+        targetAmount: 500000,
+      }),
+    );
+    expect(archived.archivedAt).toBeInstanceOf(Date);
+    expect(save).toHaveBeenCalledWith(account);
+  });
+
+  it('does not archive the General fallback account', async () => {
+    (service as any).fundAccountRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'general',
+        churchId: 'church-1',
+        code: 'general',
+        name: 'General',
+        isActive: true,
+      }),
+    };
+
+    await expect(
+      service.archiveFundAccount('church-1', 'general', 'priest-1', {}),
+    ).rejects.toThrow('General fund account cannot be archived');
+  });
+
   it('uses the same outbox filters for CSV exports', async () => {
     const listOutboxRows = jest.fn().mockResolvedValue([]);
     (service as any).smsService = { listOutboxRows };

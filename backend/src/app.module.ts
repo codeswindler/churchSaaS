@@ -29,6 +29,7 @@ import { DiscipleshipMemberContributor } from './entities/discipleship-member-co
 import { DiscipleshipMember } from './entities/discipleship-member.entity';
 import { DiscipleshipMembership } from './entities/discipleship-membership.entity';
 import { FundAccount } from './entities/fund-account.entity';
+import { MobileB2cWithdrawal } from './entities/mobile-b2c-withdrawal.entity';
 import { MobileDevice } from './entities/mobile-device.entity';
 import { PlatformUser } from './entities/platform-user.entity';
 import { PlatformSmsConfig } from './entities/platform-sms-config.entity';
@@ -75,6 +76,7 @@ import { SchemaBootstrapService } from './common/schema-bootstrap.service';
         DiscipleshipMember,
         DiscipleshipMembership,
         Contribution,
+        MobileB2cWithdrawal,
         MobileDevice,
         ClientEnquiry,
         SmsAddressBook,

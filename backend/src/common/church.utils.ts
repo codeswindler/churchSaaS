@@ -17,6 +17,16 @@ export interface ChurchMpesaConfig {
   mpesaCallbackUrl?: string | null;
 }
 
+export interface ChurchMpesaB2cConfig {
+  mpesaEnvironment?: string | null;
+  mpesaB2cConsumerKey?: string | null;
+  mpesaB2cConsumerSecret?: string | null;
+  mpesaB2cShortcode?: string | null;
+  mpesaB2cInitiatorName?: string | null;
+  mpesaB2cSecurityCredential?: string | null;
+  mpesaB2cCommandId?: string | null;
+}
+
 export interface ChurchIdentity {
   id: string;
   name: string;
@@ -125,11 +135,24 @@ export function hasConfiguredMpesaC2B(church: ChurchMpesaConfig | null) {
   );
 }
 
+export function hasConfiguredMpesaB2C(
+  church: ChurchMpesaB2cConfig | null,
+) {
+  return Boolean(
+    church?.mpesaB2cConsumerKey &&
+      church?.mpesaB2cConsumerSecret &&
+      church?.mpesaB2cShortcode &&
+      church?.mpesaB2cInitiatorName &&
+      church?.mpesaB2cSecurityCredential,
+  );
+}
+
 export function buildChurchIntegrationSummary(
-  church: ChurchSmsConfig & ChurchMpesaConfig,
+  church: ChurchSmsConfig & ChurchMpesaConfig & ChurchMpesaB2cConfig,
 ) {
   const mpesaC2bConfigured = hasConfiguredMpesaC2B(church);
   const mpesaStkConfigured = hasConfiguredMpesaCredentials(church);
+  const mpesaB2cConfigured = hasConfiguredMpesaB2C(church);
 
   return {
     smsConfigured: hasConfiguredSmsCredentials(church),
@@ -139,8 +162,10 @@ export function buildChurchIntegrationSummary(
     mpesaConfigured: mpesaC2bConfigured,
     mpesaC2bConfigured,
     mpesaStkConfigured,
+    mpesaB2cConfigured,
     mpesaEnvironment: church.mpesaEnvironment ?? null,
     mpesaShortcode: church.mpesaShortcode ?? null,
     mpesaCallbackUrl: getConfiguredMpesaCallbackUrl(church),
+    mpesaB2cShortcode: church.mpesaB2cShortcode ?? null,
   };
 }

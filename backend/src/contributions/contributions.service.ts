@@ -65,6 +65,7 @@ export class ContributionsService {
     const fundAccount = await this.ensureFundAccount(
       churchId,
       body.fundAccountId,
+      true,
     );
     const contributor = await this.findOrCreateContributor(churchId, body);
     const channel = this.resolveRecordedChannel(body.channel);
@@ -371,6 +372,16 @@ export class ContributionsService {
       this.logger.warn(
         `Accepted M-Pesa C2B validation for church=${church.slug} unmatched account=${payload.billRefNumber || 'n/a'}; confirmation will be grouped under General.`,
       );
+    }
+
+    if (fundAccount && !fundAccount.isActive) {
+      this.logger.warn(
+        `Rejected M-Pesa C2B validation for church=${church.slug} archived fund=${fundAccount.code} account=${payload.billRefNumber || 'n/a'}`,
+      );
+      return {
+        ResultCode: 1,
+        ResultDesc: 'Fund account is archived',
+      };
     }
 
     return {
@@ -860,19 +871,19 @@ export class ContributionsService {
 
     const code = this.slugify(reference);
     const byCode = await this.fundAccountRepo.findOne({
-      where: { churchId, code, isActive: true },
+      where: { churchId, code },
     });
     if (byCode) {
       return byCode;
     }
 
     const normalizedReference = this.normalizeComparisonText(reference);
-    const activeAccounts = await this.fundAccountRepo.find({
-      where: { churchId, isActive: true },
+    const accounts = await this.fundAccountRepo.find({
+      where: { churchId },
     });
 
     return (
-      activeAccounts.find(
+      accounts.find(
         (account) =>
           this.normalizeComparisonText(account.name) === normalizedReference ||
           this.normalizeComparisonText(account.code) === normalizedReference,
@@ -1036,6 +1047,9 @@ export class ContributionsService {
     const pieces = [
       'M-Pesa C2B confirmation',
       payload.billRefNumber ? `account ref: ${payload.billRefNumber}` : null,
+      fundAccount && !fundAccount.isActive
+        ? 'recorded against archived fund account'
+        : null,
       usedGeneralFallback && payload.billRefNumber
         ? 'grouped under General fallback account'
         : null,

@@ -68,6 +68,12 @@ function createInitialForm() {
     mpesaPasskey: '',
     mpesaShortcode: '',
     mpesaCallbackUrl: getDefaultMpesaCallbackUrl(),
+    mpesaB2cConsumerKey: '',
+    mpesaB2cConsumerSecret: '',
+    mpesaB2cShortcode: '',
+    mpesaB2cInitiatorName: '',
+    mpesaB2cSecurityCredential: '',
+    mpesaB2cCommandId: 'BusinessPayment',
     billingModel: 'subscription',
     commissionRatePct: 0,
     enabledFeatures: [
@@ -534,6 +540,14 @@ export default function PlatformChurches() {
         mpesaPasskey: response.data.mpesaPasskey || '',
         mpesaShortcode: response.data.mpesaShortcode || '',
         mpesaCallbackUrl: response.data.mpesaCallbackUrl || defaultCallbackUrl,
+        mpesaB2cConsumerKey: response.data.mpesaB2cConsumerKey || '',
+        mpesaB2cConsumerSecret: response.data.mpesaB2cConsumerSecret || '',
+        mpesaB2cShortcode: response.data.mpesaB2cShortcode || '',
+        mpesaB2cInitiatorName: response.data.mpesaB2cInitiatorName || '',
+        mpesaB2cSecurityCredential:
+          response.data.mpesaB2cSecurityCredential || '',
+        mpesaB2cCommandId:
+          response.data.mpesaB2cCommandId || 'BusinessPayment',
         billingModel: response.data.billingModel || 'subscription',
         commissionRatePct: Number(response.data.commissionRatePct || 0),
         enabledFeatures:
@@ -1630,6 +1644,63 @@ export default function PlatformChurches() {
                       completes. Passkey is only needed if STK push is enabled
                       later.
                     </p>
+
+                    <div className="mt-5 rounded-2xl border border-emerald-300/20 bg-emerald-300/5 p-4">
+                      <div className="flex flex-col gap-1">
+                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-200">
+                          Mobile B2C withdrawals
+                        </p>
+                        <p className="text-sm text-stone-300">
+                          These credentials are stored per church and used only
+                          by the backend. The mobile app never receives Daraja
+                          keys, initiator passwords, or encrypted credentials.
+                        </p>
+                      </div>
+                      <div className="mt-4 grid gap-4 md:grid-cols-2">
+                        {[
+                          ['mpesaB2cShortcode', 'B2C shortcode'],
+                          ['mpesaB2cInitiatorName', 'Initiator name'],
+                          ['mpesaB2cCommandId', 'Command ID'],
+                        ].map(([key, label]) => (
+                          <div key={key}>
+                            <label className="label">{label}</label>
+                            <input
+                              className="input"
+                              type="text"
+                              value={form[key as keyof ChurchFormState]}
+                              onChange={(event) =>
+                                updateForm(
+                                  key as keyof ChurchFormState,
+                                  event.target.value as never,
+                                )
+                              }
+                            />
+                          </div>
+                        ))}
+                        {renderSensitiveField(
+                          'mpesaB2cConsumerKey',
+                          'B2C consumer key',
+                          'text',
+                        )}
+                        {renderSensitiveField(
+                          'mpesaB2cConsumerSecret',
+                          'B2C consumer secret',
+                        )}
+                        <div className="md:col-span-2">
+                          {renderSensitiveField(
+                            'mpesaB2cSecurityCredential',
+                            'Encrypted security credential',
+                          )}
+                        </div>
+                      </div>
+                      <p className="mt-4 text-xs leading-5 text-stone-400">
+                        Generate the encrypted security credential with
+                        Safaricom&apos;s matching certificate for the selected
+                        environment. Use the production certificate for
+                        production B2C. Do not paste or store the raw initiator
+                        password/PIN here.
+                      </p>
+                    </div>
                   </section>
 
                   <div className="flex flex-col gap-3 sm:flex-row">
@@ -2048,6 +2119,12 @@ function buildUpdatePayload(form: ChurchFormState) {
     mpesaPasskey: form.mpesaPasskey,
     mpesaShortcode: form.mpesaShortcode,
     mpesaCallbackUrl: form.mpesaCallbackUrl,
+    mpesaB2cConsumerKey: form.mpesaB2cConsumerKey,
+    mpesaB2cConsumerSecret: form.mpesaB2cConsumerSecret,
+    mpesaB2cShortcode: form.mpesaB2cShortcode,
+    mpesaB2cInitiatorName: form.mpesaB2cInitiatorName,
+    mpesaB2cSecurityCredential: form.mpesaB2cSecurityCredential,
+    mpesaB2cCommandId: form.mpesaB2cCommandId,
     billingModel: form.billingModel,
     commissionRatePct: form.commissionRatePct,
     initialSubscriptionDays: form.initialSubscriptionDays,
