@@ -342,6 +342,12 @@ export class ContributionsService {
 
   async handleMpesaC2BValidation(body: any) {
     const payload = this.parseMpesaC2BPayload(body);
+    const smsUnitValidation =
+      await this.smsService.handleSmsUnitPurchaseC2BValidation(payload);
+    if (smsUnitValidation) {
+      return smsUnitValidation;
+    }
+
     const { church, fundAccount } = await this.resolveMpesaC2BTarget(payload);
 
     if (!church) {
@@ -399,6 +405,12 @@ export class ContributionsService {
     if (!payload.transId) {
       this.logger.warn('Ignored M-Pesa C2B confirmation without TransID');
       return { ResultCode: 0, ResultDesc: 'Accepted - missing TransID' };
+    }
+
+    const smsUnitConfirmation =
+      await this.smsService.handleSmsUnitPurchaseC2BConfirmation(payload);
+    if (smsUnitConfirmation) {
+      return smsUnitConfirmation;
     }
 
     const target = await this.resolveMpesaC2BTarget(payload);

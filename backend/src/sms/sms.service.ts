@@ -937,6 +937,137 @@ export class SmsService {
     return { ResultCode: 0, ResultDesc: 'Accepted' };
   }
 
+  async handleSmsUnitPurchaseC2BValidation(payload: {
+    billRefNumber?: string | null;
+    amount?: number | null;
+  }) {
+    if (!this.extractSmsUnitPurchaseReferenceToken(payload.billRefNumber)) {
+      return null;
+    }
+
+    const purchase = await this.findSmsUnitPurchaseByC2BReference(
+      payload.billRefNumber,
+    );
+    if (!purchase) {
+      this.logger.warn(
+        `[SMS] Rejected SMS unit C2B validation; no purchase matched ref=${payload.billRefNumber || 'n/a'}`,
+      );
+      return {
+        ResultCode: 1,
+        ResultDesc: 'SMS unit purchase not found',
+      };
+    }
+
+    const paidAmount = Number(payload.amount || 0);
+    const expectedAmount = Number(purchase.amountKes || 0);
+    if (
+      Number.isFinite(paidAmount) &&
+      Number.isFinite(expectedAmount) &&
+      paidAmount > 0 &&
+      expectedAmount > 0 &&
+      paidAmount + 0.01 < expectedAmount
+    ) {
+      this.logger.warn(
+        `[SMS] Rejected SMS unit C2B validation for purchase=${purchase.id}; paid=${paidAmount} expected=${expectedAmount}`,
+      );
+      return {
+        ResultCode: 1,
+        ResultDesc: 'SMS unit payment amount is below expected amount',
+      };
+    }
+
+    return { ResultCode: 0, ResultDesc: 'Accepted' };
+  }
+
+  async handleSmsUnitPurchaseC2BConfirmation(payload: {
+    transId?: string | null;
+    amount?: number | null;
+    billRefNumber?: string | null;
+    phone?: string | null;
+    phoneForContributor?: string | null;
+    customerName?: string | null;
+    shortcode?: string | null;
+    receivedAt?: Date | null;
+    raw?: any;
+  }) {
+    if (!this.extractSmsUnitPurchaseReferenceToken(payload.billRefNumber)) {
+      return null;
+    }
+
+    const purchase = await this.findSmsUnitPurchaseByC2BReference(
+      payload.billRefNumber,
+    );
+    if (!purchase) {
+      this.logger.warn(
+        `[SMS] SMS unit C2B confirmation ignored; no purchase matched ref=${payload.billRefNumber || 'n/a'} receipt=${payload.transId || 'n/a'}`,
+      );
+      return { ResultCode: 0, ResultDesc: 'SMS unit purchase not found' };
+    }
+
+    if (
+      [
+        SmsUnitPurchaseStatus.CONFIRMED,
+        SmsUnitPurchaseStatus.SENDING,
+        SmsUnitPurchaseStatus.SENT,
+      ].includes(purchase.status)
+    ) {
+      return { ResultCode: 0, ResultDesc: 'Already processed' };
+    }
+
+    const paidAmount = Number(payload.amount || 0);
+    const expectedAmount = Number(purchase.amountKes || 0);
+    purchase.providerRawResponse = {
+      ...(purchase.providerRawResponse || {}),
+      c2bConfirmation: payload.raw || payload,
+    };
+
+    if (
+      Number.isFinite(paidAmount) &&
+      Number.isFinite(expectedAmount) &&
+      paidAmount > 0 &&
+      expectedAmount > 0 &&
+      paidAmount + 0.01 < expectedAmount
+    ) {
+      purchase.status = SmsUnitPurchaseStatus.FAILED;
+      purchase.statusDescription = `SMS unit payment amount mismatch. Paid KES ${paidAmount}, expected KES ${expectedAmount}`;
+      await this.smsUnitPurchaseRepo.save(purchase);
+      if (purchase.batchId) {
+        await this.smsBatchRepo.save({
+          id: purchase.batchId,
+          status: 'payment_failed',
+        });
+      }
+      this.logger.warn(
+        `[SMS] SMS unit C2B payment amount mismatch | purchase=${purchase.id} | paid=${paidAmount} | expected=${expectedAmount} | receipt=${payload.transId || 'n/a'}`,
+      );
+      return { ResultCode: 0, ResultDesc: 'Accepted' };
+    }
+
+    purchase.status = SmsUnitPurchaseStatus.CONFIRMED;
+    purchase.statusDescription = 'SMS unit payment confirmed';
+    purchase.mpesaReceipt = payload.transId || purchase.mpesaReceipt;
+    purchase.payerPhone =
+      payload.phoneForContributor || payload.phone || purchase.payerPhone;
+    if (Number.isFinite(paidAmount) && paidAmount > 0) {
+      purchase.amountKes = paidAmount;
+    }
+    purchase.paidAt = payload.receivedAt || new Date();
+
+    await this.smsUnitPurchaseRepo.save(purchase);
+    if (purchase.batchId) {
+      await this.smsBatchRepo.save({
+        id: purchase.batchId,
+        status: 'payment_confirmed',
+      });
+    }
+
+    this.logger.log(
+      `[SMS] SMS unit payment confirmed from C2B | purchase=${purchase.id} | church=${purchase.churchId} | receipt=${payload.transId || 'n/a'} | ref=${payload.billRefNumber || 'n/a'} | amount=${paidAmount || purchase.amountKes}`,
+    );
+
+    return { ResultCode: 0, ResultDesc: 'Accepted' };
+  }
+
   async listOutbox(churchId: string, query: any = {}) {
     const page = Math.max(Number(query.page || 1), 1);
     const limit = Math.min(Math.max(Number(query.limit || 50), 1), 100);
@@ -954,6 +1085,26 @@ export class SmsService {
         totalPages: Math.max(Math.ceil(total / limit), 1),
       },
     };
+  }
+
+  private async findSmsUnitPurchaseByC2BReference(
+    reference?: string | null,
+  ) {
+    const token = this.extractSmsUnitPurchaseReferenceToken(reference);
+    if (!token) {
+      return null;
+    }
+
+    return this.smsUnitPurchaseRepo
+      .createQueryBuilder('purchase')
+      .where('purchase.id LIKE :prefix', { prefix: `${token}%` })
+      .orderBy('purchase.createdAt', 'DESC')
+      .getOne();
+  }
+
+  private extractSmsUnitPurchaseReferenceToken(reference?: string | null) {
+    const match = `${reference || ''}`.trim().match(/^SMS-([a-f0-9]{8})$/i);
+    return match?.[1]?.toLowerCase() || null;
   }
 
   async listOutboxRows(churchId: string, query: any = {}) {
