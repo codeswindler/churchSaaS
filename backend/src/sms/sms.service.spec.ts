@@ -98,6 +98,37 @@ describe('SmsService SMS unit C2B confirmations', () => {
     });
   });
 
+  it('does not store hashed C2B MSISDN values in the payer phone column', async () => {
+    const purchase = {
+      id: '2714ae53-1111-4222-8333-abcdefabcdef',
+      churchId: 'church-1',
+      batchId: 'batch-1',
+      amountKes: 1,
+      payerPhone: '254724075174',
+      status: SmsUnitPurchaseStatus.STK_SENT,
+      providerRawResponse: null,
+    };
+    const { service, savePurchase } = createService(purchase);
+
+    await service.handleSmsUnitPurchaseC2BConfirmation({
+      transId: 'UFRMB8YG85',
+      billRefNumber: 'SMS-2714ae53',
+      amount: 1,
+      phone:
+        'aae790296afb910a6e1fc37cb9732802edde8cb20e3f4041f984e80061e2015a',
+      phoneForContributor: null,
+      raw: { MSISDN: 'aae790296afb910a6e1fc37cb9732802edde8cb20e3f4041f984e80061e2015a' },
+    });
+
+    expect(savePurchase).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: SmsUnitPurchaseStatus.CONFIRMED,
+        payerPhone: '254724075174',
+        mpesaReceipt: 'UFRMB8YG85',
+      }),
+    );
+  });
+
   it('handles unknown SMS unit C2B references without falling through to contributions', async () => {
     const { service } = createService(null);
 

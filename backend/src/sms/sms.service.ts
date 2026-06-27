@@ -1046,8 +1046,14 @@ export class SmsService {
     purchase.status = SmsUnitPurchaseStatus.CONFIRMED;
     purchase.statusDescription = 'SMS unit payment confirmed';
     purchase.mpesaReceipt = payload.transId || purchase.mpesaReceipt;
-    purchase.payerPhone =
-      payload.phoneForContributor || payload.phone || purchase.payerPhone;
+    const safePayerPhone =
+      payload.phoneForContributor ||
+      (payload.phone && `${payload.phone}`.length <= 30
+        ? `${payload.phone}`
+        : null);
+    if (safePayerPhone) {
+      purchase.payerPhone = safePayerPhone;
+    }
     if (Number.isFinite(paidAmount) && paidAmount > 0) {
       purchase.amountKes = paidAmount;
     }
