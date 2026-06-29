@@ -144,3 +144,66 @@ describe('SmsService SMS unit C2B confirmations', () => {
     });
   });
 });
+
+describe('SmsService SMS unit purchase polling', () => {
+  it('marks stale STK-sent purchases as failed so the UI can stop waiting', async () => {
+    const stalePurchase = {
+      id: '89500f63-8a17-4d1d-931f-31c6e1e74408',
+      churchId: 'church-1',
+      batchId: 'batch-1',
+      recipientCount: 90,
+      totalUnits: 90,
+      smsUnitRateKes: 1,
+      amountKes: 90,
+      payerPhone: '254724653257',
+      checkoutRequestId: 'ws_CO_29062026093925504724653257',
+      merchantRequestId: 'merchant-1',
+      mpesaReceipt: null,
+      status: SmsUnitPurchaseStatus.STK_SENT,
+      statusDescription: 'Success. Request accepted for processing',
+      quoteSnapshot: {},
+      paidAt: null,
+      sentAt: null,
+      createdAt: new Date(Date.now() - 10 * 60 * 1000),
+      updatedAt: new Date(Date.now() - 10 * 60 * 1000),
+    };
+    const savePurchase = jest.fn(async (value) => value);
+    const saveBatch = jest.fn(async (value) => value);
+    const service = Object.create(SmsService.prototype) as SmsService;
+    (service as any).logger = { warn: jest.fn() };
+    (service as any).configService = {
+      get: jest.fn().mockReturnValue('180'),
+    };
+    (service as any).smsUnitPurchaseRepo = {
+      findOne: jest.fn().mockResolvedValue(stalePurchase),
+      save: savePurchase,
+    };
+    (service as any).smsBatchRepo = {
+      save: saveBatch,
+    };
+
+    const result = await service.getSmsUnitPurchase(
+      'church-1',
+      stalePurchase.id,
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        id: stalePurchase.id,
+        status: SmsUnitPurchaseStatus.FAILED,
+        statusDescription: expect.stringContaining(
+          'No M-Pesa confirmation was received',
+        ),
+      }),
+    );
+    expect(savePurchase).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: SmsUnitPurchaseStatus.FAILED,
+      }),
+    );
+    expect(saveBatch).toHaveBeenCalledWith({
+      id: 'batch-1',
+      status: 'payment_failed',
+    });
+  });
+});

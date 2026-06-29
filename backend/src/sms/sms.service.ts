@@ -770,8 +770,7 @@ export class SmsService {
       purchase.checkoutRequestId = stkResponse.CheckoutRequestID || null;
       purchase.merchantRequestId = stkResponse.MerchantRequestID || null;
       purchase.statusDescription =
-        stkResponse.CustomerMessage ||
-        'STK push sent. Complete the prompt on your phone.';
+        'STK push sent. Complete the M-Pesa prompt on the payment phone. This usually confirms within a few seconds; you can retry if no confirmation arrives in about 3 minutes.';
       purchase.providerRawResponse = {
         ...(purchase.providerRawResponse || {}),
         stkPush: stkResponse,
@@ -799,12 +798,13 @@ export class SmsService {
   }
 
   async getSmsUnitPurchase(churchId: string, purchaseId: string) {
-    const purchase = await this.smsUnitPurchaseRepo.findOne({
+    let purchase = await this.smsUnitPurchaseRepo.findOne({
       where: { id: purchaseId, churchId },
     });
     if (!purchase) {
       throw new BadRequestException('SMS unit purchase not found');
     }
+    purchase = await this.expireStaleSmsUnitPurchase(purchase);
     return this.sanitizeSmsUnitPurchase(purchase);
   }
 
@@ -1678,6 +1678,51 @@ export class SmsService {
       createdAt: purchase.createdAt,
       updatedAt: purchase.updatedAt,
     };
+  }
+
+  private async expireStaleSmsUnitPurchase(purchase: SmsUnitPurchase) {
+    if (purchase.status !== SmsUnitPurchaseStatus.STK_SENT) {
+      return purchase;
+    }
+
+    const createdAtMs = new Date(purchase.createdAt || Date.now()).getTime();
+    if (!Number.isFinite(createdAtMs)) {
+      return purchase;
+    }
+
+    const timeoutMs = this.getSmsUnitPaymentTimeoutMs();
+    if (Date.now() - createdAtMs < timeoutMs) {
+      return purchase;
+    }
+
+    purchase.status = SmsUnitPurchaseStatus.FAILED;
+    purchase.statusDescription =
+      'No M-Pesa confirmation was received in time. If you completed payment, wait a moment and refresh; otherwise retry the payment.';
+
+    const saved = await this.smsUnitPurchaseRepo.save(purchase);
+    if (saved.batchId) {
+      await this.smsBatchRepo.save({
+        id: saved.batchId,
+        status: 'payment_failed',
+      });
+    }
+    this.logger.warn(
+      `[SMS] SMS unit payment timed out while polling | purchase=${saved.id} | church=${saved.churchId} | checkout=${saved.checkoutRequestId || 'n/a'}`,
+    );
+
+    return saved;
+  }
+
+  private getSmsUnitPaymentTimeoutMs() {
+    const seconds = Number(
+      this.configService.get<string>('SMS_UNIT_PAYMENT_TIMEOUT_SECONDS') ||
+        process.env.SMS_UNIT_PAYMENT_TIMEOUT_SECONDS ||
+        180,
+    );
+    const safeSeconds = Number.isFinite(seconds)
+      ? Math.min(Math.max(seconds, 60), 900)
+      : 180;
+    return safeSeconds * 1000;
   }
 
   private async recordOutboxMessage(input: {
