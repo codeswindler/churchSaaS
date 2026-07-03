@@ -17,6 +17,8 @@ interface DiscipleshipMember {
   gender?: string | null;
   enrollmentDate?: string | null;
   notes?: string | null;
+  isParent?: boolean | null;
+  childInSundaySchool?: boolean | null;
   groups?: DiscipleshipGroup[];
   activitySummary?: {
     latestAttendanceAt?: string | null;
@@ -36,8 +38,6 @@ interface FollowUpRecord {
   proposedSolutions?: string | null;
   nextProposedVisitDate?: string | null;
   nextVisitNotes?: string | null;
-  isParent?: boolean | null;
-  childInSundaySchool?: boolean | null;
   status: FollowUpStatus;
   recordedByUser?: {
     id: string;
@@ -75,8 +75,6 @@ function createFollowUpForm() {
     proposedSolutions: '',
     nextProposedVisitDate: '',
     nextVisitNotes: '',
-    isParent: '',
-    childInSundaySchool: '',
     status: 'open' as FollowUpStatus,
   };
 }
@@ -134,6 +132,11 @@ export default function ChurchOneOnOne() {
   );
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [form, setForm] = useState(createFollowUpForm);
+  const [isBioEditorOpen, setIsBioEditorOpen] = useState(false);
+  const [bioForm, setBioForm] = useState({
+    isParent: '',
+    childInSundaySchool: '',
+  });
 
   const { data: groups = [] } = useQuery<DiscipleshipGroup[]>({
     queryKey: ['one-on-one-groups'],
@@ -181,6 +184,23 @@ export default function ChurchOneOnOne() {
       : selectedMemberBase;
   const activeMemberId = selectedMemberId || selectedMember?.id || '';
 
+  useEffect(() => {
+    if (!selectedMember?.id) {
+      return;
+    }
+    setBioForm({
+      isParent: booleanToFormValue(selectedMember.isParent),
+      childInSundaySchool: booleanToFormValue(
+        selectedMember.childInSundaySchool,
+      ),
+    });
+    setIsBioEditorOpen(false);
+  }, [
+    selectedMember?.id,
+    selectedMember?.isParent,
+    selectedMember?.childInSundaySchool,
+  ]);
+
   const { data: followUps = [], isLoading: followUpsLoading } = useQuery<
     FollowUpRecord[]
   >({
@@ -214,8 +234,42 @@ export default function ChurchOneOnOne() {
   const refreshFollowUps = () => {
     queryClient.invalidateQueries({ queryKey: ['one-on-one-follow-ups'] });
     queryClient.invalidateQueries({ queryKey: ['one-on-one-member-detail'] });
+    queryClient.invalidateQueries({ queryKey: ['one-on-one-members'] });
+    queryClient.invalidateQueries({ queryKey: ['discipleship-members'] });
+    queryClient.invalidateQueries({ queryKey: ['discipleship-member-detail'] });
+    queryClient.invalidateQueries({
+      queryKey: ['discipleship-panel-member-detail'],
+    });
     queryClient.invalidateQueries({ queryKey: ['discipleship-follow-ups'] });
   };
+
+  const saveBioMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedMember?.id) {
+        throw new Error('Select a disciple first');
+      }
+      return api
+        .patch(`/church/discipleship/members/${selectedMember.id}`, {
+          isParent: formValueToNullableBoolean(bioForm.isParent),
+          childInSundaySchool: formValueToNullableBoolean(
+            bioForm.childInSundaySchool,
+          ),
+        })
+        .then((response) => response.data);
+    },
+    onSuccess: () => {
+      toast.success('Member biodata updated');
+      setIsBioEditorOpen(false);
+      refreshFollowUps();
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message ||
+          error?.message ||
+          'Unable to update member biodata',
+      );
+    },
+  });
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -229,10 +283,6 @@ export default function ChurchOneOnOne() {
         proposedSolutions: form.proposedSolutions,
         nextProposedVisitDate: form.nextProposedVisitDate || null,
         nextVisitNotes: form.nextVisitNotes,
-        isParent: formValueToNullableBoolean(form.isParent),
-        childInSundaySchool: formValueToNullableBoolean(
-          form.childInSundaySchool,
-        ),
         status: form.status,
       };
       if (editingFollowUpId) {
@@ -293,10 +343,6 @@ export default function ChurchOneOnOne() {
             proposedSolutions: record.proposedSolutions || '',
             nextProposedVisitDate: record.nextProposedVisitDate || '',
             nextVisitNotes: record.nextVisitNotes || '',
-            isParent: booleanToFormValue(record.isParent),
-            childInSundaySchool: booleanToFormValue(
-              record.childInSundaySchool,
-            ),
             status: record.status || 'open',
           }
         : createFollowUpForm(),
@@ -449,6 +495,105 @@ export default function ChurchOneOnOne() {
                 ))}
               </div>
 
+              <div className="rounded-3xl border border-white/10 bg-black/10 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-stone-400">
+                      One-time biodata
+                    </p>
+                    <h4 className="mt-1 font-semibold text-white">
+                      Family and Sunday-school profile
+                    </h4>
+                    <p className="mt-1 text-xs text-stone-400">
+                      These details are stored once on the member record, not on
+                      every one-on-one visit.
+                    </p>
+                  </div>
+                  {canManage ? (
+                    <button
+                      className="btn-secondary px-3 py-2 text-xs"
+                      type="button"
+                      onClick={() => setIsBioEditorOpen((current) => !current)}
+                    >
+                      <PencilLine size={14} />
+                      {isBioEditorOpen ? 'Close' : 'Edit biodata'}
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
+                      Is member a parent?
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {formatNullableBoolean(selectedMember.isParent)}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
+                      Child in Sunday school?
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {formatNullableBoolean(
+                        selectedMember.childInSundaySchool,
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {isBioEditorOpen ? (
+                  <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                    <label className="space-y-2">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                        Is member a parent?
+                      </span>
+                      <select
+                        className="input-compact"
+                        value={bioForm.isParent}
+                        onChange={(event) =>
+                          setBioForm((current) => ({
+                            ...current,
+                            isParent: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Not recorded</option>
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                      </select>
+                    </label>
+                    <label className="space-y-2">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                        Child in Sunday school?
+                      </span>
+                      <select
+                        className="input-compact"
+                        value={bioForm.childInSundaySchool}
+                        onChange={(event) =>
+                          setBioForm((current) => ({
+                            ...current,
+                            childInSundaySchool: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Not recorded</option>
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                      </select>
+                    </label>
+                    <button
+                      className="btn-primary justify-center"
+                      disabled={saveBioMutation.isPending}
+                      type="button"
+                      onClick={() => saveBioMutation.mutate()}
+                    >
+                      Save biodata
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+
               {isFormOpen ? (
                 <form
                   className="rounded-3xl border border-white/10 bg-black/10 p-4"
@@ -489,44 +634,6 @@ export default function ChurchOneOnOne() {
                         <option value="open">Open</option>
                         <option value="completed">Completed</option>
                         <option value="cancelled">Cancelled</option>
-                      </select>
-                    </label>
-                    <label className="space-y-2">
-                      <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
-                        Is member a parent?
-                      </span>
-                      <select
-                        className="input-compact"
-                        value={form.isParent}
-                        onChange={(event) =>
-                          setForm((current) => ({
-                            ...current,
-                            isParent: event.target.value,
-                          }))
-                        }
-                      >
-                        <option value="">Not recorded</option>
-                        <option value="yes">Yes</option>
-                        <option value="no">No</option>
-                      </select>
-                    </label>
-                    <label className="space-y-2">
-                      <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
-                        Child in Sunday school?
-                      </span>
-                      <select
-                        className="input-compact"
-                        value={form.childInSundaySchool}
-                        onChange={(event) =>
-                          setForm((current) => ({
-                            ...current,
-                            childInSundaySchool: event.target.value,
-                          }))
-                        }
-                      >
-                        <option value="">Not recorded</option>
-                        <option value="yes">Yes</option>
-                        <option value="no">No</option>
                       </select>
                     </label>
                   </div>
@@ -686,16 +793,6 @@ export default function ChurchOneOnOne() {
                             }`}
                           >
                             {formatStatus(record.status)}
-                          </span>
-                        </div>
-
-                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-stone-300">
-                          <span className="rounded-full border border-white/10 bg-black/10 px-3 py-1">
-                            Parent: {formatNullableBoolean(record.isParent)}
-                          </span>
-                          <span className="rounded-full border border-white/10 bg-black/10 px-3 py-1">
-                            Sunday school child:{' '}
-                            {formatNullableBoolean(record.childInSundaySchool)}
                           </span>
                         </div>
 

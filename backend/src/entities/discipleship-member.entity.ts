@@ -56,6 +56,12 @@ export class DiscipleshipMember {
   @Column({ type: 'text', nullable: true })
   churchRoleNotes: string | null;
 
+  @Column({ type: 'boolean', nullable: true })
+  isParent: boolean | null;
+
+  @Column({ type: 'boolean', nullable: true })
+  childInSundaySchool: boolean | null;
+
   @Column({
     type: 'varchar',
     length: 40,

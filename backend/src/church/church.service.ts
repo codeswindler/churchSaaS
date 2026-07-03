@@ -535,6 +535,10 @@ export class ChurchService {
         ),
         hasChurchRole: this.normalizeNullableBoolean(body.hasChurchRole),
         churchRoleNotes: this.normalizeOptionalText(body.churchRoleNotes, 1200),
+        isParent: this.normalizeNullableBoolean(body.isParent),
+        childInSundaySchool: this.normalizeNullableBoolean(
+          body.childInSundaySchool,
+        ),
         status: DiscipleshipMemberStatus.ACTIVE,
         notes: this.normalizeOptionalText(body.notes, 1200),
         createdByUserId,
@@ -606,6 +610,14 @@ export class ChurchService {
       member.churchRoleNotes = this.normalizeOptionalText(
         body.churchRoleNotes,
         1200,
+      );
+    }
+    if (body.isParent !== undefined) {
+      member.isParent = this.normalizeNullableBoolean(body.isParent);
+    }
+    if (body.childInSundaySchool !== undefined) {
+      member.childInSundaySchool = this.normalizeNullableBoolean(
+        body.childInSundaySchool,
       );
     }
     member.status = DiscipleshipMemberStatus.ACTIVE;
@@ -1052,13 +1064,13 @@ export class ChurchService {
       if (phone) {
         addCandidateKey(`phone:${phone}`, member.id);
       }
-      this.getDiscipleshipNameParts(member.fullName).forEach((part) =>
-        addCandidateKey(`name:${part}`, member.id),
+      this.getDiscipleshipDuplicateNameKeys(member.fullName).forEach((key) =>
+        addCandidateKey(key, member.id),
       );
     });
     aliases.forEach((alias) => {
-      this.getDiscipleshipNameParts(alias.alias).forEach((part) =>
-        addCandidateKey(`name:${part}`, alias.memberId),
+      this.getDiscipleshipDuplicateNameKeys(alias.alias).forEach((key) =>
+        addCandidateKey(key, alias.memberId),
       );
     });
     const candidatePairKeys = new Set<string>();
@@ -1636,19 +1648,14 @@ export class ChurchService {
       body?.nextVisitNotes,
       2000,
     );
-    const isParent = this.normalizeNullableBoolean(body?.isParent);
-    const childInSundaySchool = this.normalizeNullableBoolean(
-      body?.childInSundaySchool,
-    );
+    await this.updateDiscipleshipMemberHouseholdBio(member, body);
 
     if (
       !discussionSummary &&
       !issueRaised &&
       !proposedSolutions &&
       !nextProposedVisitDate &&
-      !nextVisitNotes &&
-      isParent === null &&
-      childInSundaySchool === null
+      !nextVisitNotes
     ) {
       throw new BadRequestException(
         'Record a summary, issue, proposed solution, or next proposed visit',
@@ -1666,8 +1673,6 @@ export class ChurchService {
         proposedSolutions,
         nextProposedVisitDate,
         nextVisitNotes,
-        isParent,
-        childInSundaySchool,
         status,
         recordedByUserId,
         completedAt:
@@ -1694,7 +1699,7 @@ export class ChurchService {
     }
     const record = await this.discipleshipFollowUpRepo.findOne({
       where: { id, churchId },
-      relations: ['recordedByUser'],
+      relations: ['recordedByUser', 'member'],
     });
     if (!record) {
       throw new NotFoundException('One-on-one follow-up record not found');
@@ -1738,15 +1743,11 @@ export class ChurchService {
         2000,
       );
     }
-    if (Object.prototype.hasOwnProperty.call(body || {}, 'isParent')) {
-      record.isParent = this.normalizeNullableBoolean(body.isParent);
-    }
     if (
+      Object.prototype.hasOwnProperty.call(body || {}, 'isParent') ||
       Object.prototype.hasOwnProperty.call(body || {}, 'childInSundaySchool')
     ) {
-      record.childInSundaySchool = this.normalizeNullableBoolean(
-        body.childInSundaySchool,
-      );
+      await this.updateDiscipleshipMemberHouseholdBio(record.member, body);
     }
     if (Object.prototype.hasOwnProperty.call(body || {}, 'status')) {
       const nextStatus = this.normalizeDiscipleshipFollowUpStatus(
@@ -4130,6 +4131,27 @@ export class ChurchService {
       .filter((part) => part.length > 1);
   }
 
+  private getDiscipleshipDuplicateNameKeys(value: unknown) {
+    const parts = [...new Set(this.getDiscipleshipNameParts(value))];
+    if (parts.length < 2) {
+      return [];
+    }
+    const keys = new Set<string>();
+    keys.add(`name:exact:${parts.join(' ')}`);
+    for (let leftIndex = 0; leftIndex < parts.length; leftIndex += 1) {
+      for (
+        let rightIndex = leftIndex + 1;
+        rightIndex < parts.length;
+        rightIndex += 1
+      ) {
+        keys.add(
+          `namepair:${[parts[leftIndex], parts[rightIndex]].sort().join('|')}`,
+        );
+      }
+    }
+    return [...keys];
+  }
+
   private hasDiscipleshipPhoneConflict(
     transactionPhone: string | null,
     memberPhone: string | null,
@@ -5810,6 +5832,31 @@ export class ChurchService {
     return member;
   }
 
+  private async updateDiscipleshipMemberHouseholdBio(
+    member: DiscipleshipMember | null | undefined,
+    body: any,
+  ) {
+    if (!member) {
+      return;
+    }
+    let changed = false;
+    if (Object.prototype.hasOwnProperty.call(body || {}, 'isParent')) {
+      member.isParent = this.normalizeNullableBoolean(body.isParent);
+      changed = true;
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(body || {}, 'childInSundaySchool')
+    ) {
+      member.childInSundaySchool = this.normalizeNullableBoolean(
+        body.childInSundaySchool,
+      );
+      changed = true;
+    }
+    if (changed) {
+      await this.discipleshipMemberRepo.save(member);
+    }
+  }
+
   private mapDiscipleshipFollowUp(record: DiscipleshipFollowUp) {
     return {
       id: record.id,
@@ -5821,8 +5868,6 @@ export class ChurchService {
       proposedSolutions: record.proposedSolutions,
       nextProposedVisitDate: record.nextProposedVisitDate,
       nextVisitNotes: record.nextVisitNotes,
-      isParent: record.isParent,
-      childInSundaySchool: record.childInSundaySchool,
       status: record.status,
       completedAt: record.completedAt,
       createdAt: record.createdAt,

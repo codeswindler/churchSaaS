@@ -47,6 +47,8 @@ interface DiscipleshipMember {
   isFirstTimeAtChurch?: boolean | null;
   hasChurchRole?: boolean | null;
   churchRoleNotes?: string | null;
+  isParent?: boolean | null;
+  childInSundaySchool?: boolean | null;
   status: 'active' | 'inactive';
   notes?: string | null;
   groups?: DiscipleshipGroup[];
@@ -239,6 +241,8 @@ function MemberBioSummary({ member }: { member: DiscipleshipMember }) {
         ? member.churchRoleNotes || 'Yes'
         : formatYesNo(member.hasChurchRole),
     ],
+    ['Is parent', formatYesNo(member.isParent)],
+    ['Child in Sunday school', formatYesNo(member.childInSundaySchool)],
   ];
   return (
     <div>
@@ -913,6 +917,8 @@ function createMemberForm() {
     isFirstTimeAtChurch: null as boolean | null,
     hasChurchGroups: null as boolean | null,
     hasChurchRole: null as boolean | null,
+    isParent: null as boolean | null,
+    childInSundaySchool: null as boolean | null,
     churchRoleNotes: '',
     notes: '',
     groupIds: [] as string[],
@@ -1173,6 +1179,8 @@ export default function ChurchDiscipleship() {
           : memberEditor?.enrollmentDate || null,
         isFirstTimeAtChurch: memberForm.isFirstTimeAtChurch,
         hasChurchRole: memberForm.hasChurchRole,
+        isParent: memberForm.isParent,
+        childInSundaySchool: memberForm.childInSundaySchool,
         churchRoleNotes: memberForm.hasChurchRole
           ? memberForm.churchRoleNotes
           : '',
@@ -1334,6 +1342,8 @@ export default function ChurchDiscipleship() {
             isFirstTimeAtChurch: member.isFirstTimeAtChurch ?? null,
             hasChurchGroups: (member.groupIds || member.groups || []).length > 0,
             hasChurchRole: member.hasChurchRole ?? null,
+            isParent: member.isParent ?? null,
+            childInSundaySchool: member.childInSundaySchool ?? null,
             churchRoleNotes: member.churchRoleNotes || '',
             notes: member.notes || '',
             groupIds:
@@ -1564,7 +1574,7 @@ export default function ChurchDiscipleship() {
       <section className="panel p-2">
         <div className="grid gap-2 sm:grid-cols-2">
           {[
-            ['discipleship', 'Discipleship'],
+            ['discipleship', 'Members & groups'],
             ['oneOnOne', 'One-on-one'],
           ].map(([value, label]) => (
             <button
@@ -2412,6 +2422,75 @@ export default function ChurchDiscipleship() {
                     Responsibility
                   </p>
                   <h4 className="mt-2 text-lg font-semibold text-white">
+                    Record family and pastoral biodata
+                  </h4>
+                  <p className="mt-2 text-sm text-stone-300">
+                    These fields are stored once on the member record and reused
+                    in One-on-one.
+                  </p>
+                  <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                    <label className="space-y-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
+                        Is member a parent?
+                      </span>
+                      <select
+                        className="input"
+                        value={
+                          memberForm.isParent === true
+                            ? 'yes'
+                            : memberForm.isParent === false
+                              ? 'no'
+                              : ''
+                        }
+                        onChange={(event) =>
+                          setMemberForm((current) => ({
+                            ...current,
+                            isParent:
+                              event.target.value === 'yes'
+                                ? true
+                                : event.target.value === 'no'
+                                  ? false
+                                  : null,
+                          }))
+                        }
+                      >
+                        <option value="">Not recorded</option>
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                      </select>
+                    </label>
+                    <label className="space-y-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-400">
+                        Child in Sunday school?
+                      </span>
+                      <select
+                        className="input"
+                        value={
+                          memberForm.childInSundaySchool === true
+                            ? 'yes'
+                            : memberForm.childInSundaySchool === false
+                              ? 'no'
+                              : ''
+                        }
+                        onChange={(event) =>
+                          setMemberForm((current) => ({
+                            ...current,
+                            childInSundaySchool:
+                              event.target.value === 'yes'
+                                ? true
+                                : event.target.value === 'no'
+                                  ? false
+                                  : null,
+                          }))
+                        }
+                      >
+                        <option value="">Not recorded</option>
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                      </select>
+                    </label>
+                  </div>
+                  <h4 className="mt-6 text-lg font-semibold text-white">
                     Do they belong to a small Christian community or serve in a
                     church role?
                   </h4>

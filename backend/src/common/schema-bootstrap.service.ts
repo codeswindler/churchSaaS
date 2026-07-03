@@ -1025,6 +1025,8 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
             \`isFirstTimeAtChurch\` tinyint NULL,
             \`hasChurchRole\` tinyint NULL,
             \`churchRoleNotes\` text NULL,
+            \`isParent\` tinyint NULL,
+            \`childInSundaySchool\` tinyint NULL,
             \`status\` varchar(40) NOT NULL DEFAULT 'active',
             \`notes\` text NULL,
             \`contributorId\` varchar(36) NULL,
@@ -1061,6 +1063,16 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
             'ADD COLUMN `churchRoleNotes` text NULL AFTER `hasChurchRole`',
           );
         }
+        if (!members.findColumnByName('isParent')) {
+          biodataStatements.push(
+            'ADD COLUMN `isParent` tinyint NULL AFTER `churchRoleNotes`',
+          );
+        }
+        if (!members.findColumnByName('childInSundaySchool')) {
+          biodataStatements.push(
+            'ADD COLUMN `childInSundaySchool` tinyint NULL AFTER `isParent`',
+          );
+        }
         if (biodataStatements.length > 0) {
           await queryRunner.query(
             `ALTER TABLE \`discipleship_members\` ${biodataStatements.join(', ')}`,
@@ -1082,6 +1094,38 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
       await queryRunner.query(
         "UPDATE `discipleship_members` SET `status` = 'active' WHERE `status` IS NULL OR TRIM(`status`) = ''",
       );
+
+      const followUpsForMemberBio = await queryRunner.getTable(
+        'discipleship_follow_ups',
+      );
+      if (
+        followUpsForMemberBio &&
+        followUpsForMemberBio.findColumnByName('isParent') &&
+        followUpsForMemberBio.findColumnByName('childInSundaySchool')
+      ) {
+        await queryRunner.query(`
+          UPDATE \`discipleship_members\` member
+          JOIN (
+            SELECT latest.\`memberId\`,
+              MAX(latest.\`isParent\`) AS \`isParent\`,
+              MAX(latest.\`childInSundaySchool\`) AS \`childInSundaySchool\`
+            FROM \`discipleship_follow_ups\` latest
+            JOIN (
+              SELECT \`memberId\`, MAX(\`createdAt\`) AS \`createdAt\`
+              FROM \`discipleship_follow_ups\`
+              WHERE \`isParent\` IS NOT NULL OR \`childInSundaySchool\` IS NOT NULL
+              GROUP BY \`memberId\`
+            ) picked
+              ON picked.\`memberId\` = latest.\`memberId\`
+             AND picked.\`createdAt\` = latest.\`createdAt\`
+            GROUP BY latest.\`memberId\`
+          ) bio ON bio.\`memberId\` = member.\`id\`
+          SET
+            member.\`isParent\` = COALESCE(member.\`isParent\`, bio.\`isParent\`),
+            member.\`childInSundaySchool\` = COALESCE(member.\`childInSundaySchool\`, bio.\`childInSundaySchool\`)
+          WHERE member.\`isParent\` IS NULL OR member.\`childInSundaySchool\` IS NULL
+        `);
+      }
 
       const memberAliases = await queryRunner.getTable(
         'discipleship_member_aliases',

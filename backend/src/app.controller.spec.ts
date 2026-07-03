@@ -17,7 +17,7 @@ describe('AppController', () => {
   it('should expose a health payload', () => {
     const health = appController.getHealth();
     expect(health.status).toBe('ok');
-    expect(health.service).toBe('church-management-saas');
+    expect(health.service).toBe('choice-networks-church-saas');
     expect(health.timestamp).toBeDefined();
   });
 });
