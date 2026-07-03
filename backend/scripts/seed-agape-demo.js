@@ -647,6 +647,9 @@ async function runSeed(connection, options) {
     linksCreated: 0,
     groupsCreated: 0,
     membershipsCreated: 0,
+    legacyContributionNotesSanitized: 0,
+    legacyMemberNotesSanitized: 0,
+    legacyGroupDescriptionsSanitized: 0,
     refreshedContributionsDeleted: 0,
     refreshedAttendanceDeleted: 0,
     contributionsCreated: 0,
@@ -705,6 +708,7 @@ async function runSeed(connection, options) {
       options.memberTarget,
       summary,
     );
+    await sanitizeLegacyVisibleMarkers(connection, church.id, summary);
     const memberLinks = await ensureDiscipleshipMembers(
       connection,
       church.id,
@@ -848,6 +852,49 @@ async function ensureDemoContributors(connection, churchId, target, summary) {
   }
 
   return contributors;
+}
+
+async function sanitizeLegacyVisibleMarkers(connection, churchId, summary) {
+  const [legacyContributionResult] = await connection.query(
+    `UPDATE contributions
+     SET notes = CASE
+       WHEN notes LIKE '%account=tithe%' THEN 'M-Pesa C2B confirmation; account ref: tithe'
+       WHEN notes LIKE '%account=offering%' THEN 'M-Pesa C2B confirmation; account ref: offering'
+       WHEN notes LIKE '%account=wedding%' THEN 'M-Pesa C2B confirmation; account ref: wedding'
+       WHEN notes LIKE '%account=harambee%' THEN 'M-Pesa C2B confirmation; account ref: harambee'
+       WHEN notes LIKE '%account=general%' THEN 'M-Pesa C2B confirmation; account ref: general'
+       WHEN notes LIKE '%account=funeral%' THEN 'M-Pesa C2B confirmation; account ref: funeral'
+       ELSE 'M-Pesa C2B confirmation'
+     END
+     WHERE churchId = ?
+       AND (
+         notes LIKE 'Demo seed:%'
+         OR notes LIKE '%simulated M-Pesa C2B%'
+       )`,
+    [churchId],
+  );
+
+  const [legacyMemberResult] = await connection.query(
+    `UPDATE discipleship_members
+     SET notes = NULL
+     WHERE churchId = ?
+       AND notes LIKE 'Demo seed:%'`,
+    [churchId],
+  );
+
+  const [legacyGroupResult] = await connection.query(
+    `UPDATE discipleship_groups
+     SET description = REPLACE(description, 'Demo ', '')
+     WHERE churchId = ?
+       AND description LIKE 'Demo %'`,
+    [churchId],
+  );
+
+  summary.legacyContributionNotesSanitized =
+    legacyContributionResult.affectedRows || 0;
+  summary.legacyMemberNotesSanitized = legacyMemberResult.affectedRows || 0;
+  summary.legacyGroupDescriptionsSanitized =
+    legacyGroupResult.affectedRows || 0;
 }
 
 async function ensureDiscipleshipMembers(
@@ -1375,6 +1422,15 @@ function printSummary(options, summary) {
   console.log(`Member links created: ${summary.linksCreated}`);
   console.log(`Groups created: ${summary.groupsCreated}`);
   console.log(`Memberships created: ${summary.membershipsCreated}`);
+  if (
+    summary.legacyContributionNotesSanitized ||
+    summary.legacyMemberNotesSanitized ||
+    summary.legacyGroupDescriptionsSanitized
+  ) {
+    console.log(
+      `Visible legacy markers cleaned: ${summary.legacyContributionNotesSanitized || 0} contribution notes, ${summary.legacyMemberNotesSanitized || 0} member notes, ${summary.legacyGroupDescriptionsSanitized || 0} group descriptions.`,
+    );
+  }
 
   if (options.membersOnly) {
     console.log('Daily contribution seeding: skipped (--members-only)');
