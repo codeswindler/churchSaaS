@@ -1242,6 +1242,18 @@ export class ContributionsService {
     contribution: Contribution,
     church: Church | null,
   ) {
+    const billingModel =
+      church?.billingModel ||
+      (Number(church?.commissionRatePct || 0) > 0
+        ? ChurchBillingModel.COMMISSION
+        : ChurchBillingModel.SUBSCRIPTION);
+    const commissionEnabled =
+      billingModel === ChurchBillingModel.COMMISSION &&
+      Number(church?.commissionRatePct || 0) > 0;
+    if (!commissionEnabled) {
+      return 0;
+    }
+
     if (
       contribution.commissionAmount !== null &&
       contribution.commissionAmount !== undefined
@@ -1456,8 +1468,7 @@ export class ContributionsService {
     const rawValue = `${value || ''}`.trim();
 
     if (/^\d{4}-\d{2}-\d{2}$/.test(rawValue)) {
-      const time =
-        boundary === 'end' ? '23:59:59.999' : '00:00:00.000';
+      const time = boundary === 'end' ? '23:59:59.999' : '00:00:00.000';
       return new Date(`${rawValue}T${time}+03:00`);
     }
 

@@ -872,8 +872,7 @@ export class PlatformService {
     }
     if (body.mpesaB2cCommandId !== undefined) {
       church.mpesaB2cCommandId =
-        this.normalizeOptionalText(body.mpesaB2cCommandId) ||
-        'BusinessPayment';
+        this.normalizeOptionalText(body.mpesaB2cCommandId) || 'BusinessPayment';
     }
     if (body.commissionRatePct !== undefined) {
       church.commissionRatePct = this.normalizeCommissionRate(
@@ -901,6 +900,11 @@ export class PlatformService {
     }
 
     const saved = await this.churchRepo.save(church);
+    await this.clearContributionCommissionsWhenDisabled(
+      saved.id,
+      saved.billingModel,
+      saved.commissionRatePct,
+    );
     if (Array.isArray(body.smsSenderIds)) {
       await this.setChurchSmsSenders(church.id, {
         senderIds: body.smsSenderIds,
@@ -958,6 +962,11 @@ export class PlatformService {
       church.billingModel = billingModel;
       church.commissionRatePct = commissionRatePct;
       await this.churchRepo.save(church);
+      await this.clearContributionCommissionsWhenDisabled(
+        church.id,
+        church.billingModel,
+        church.commissionRatePct,
+      );
 
       if (billingModel === ChurchBillingModel.SUBSCRIPTION) {
         await this.churchSubscriptionsService.ensureSubscriptionForBilling(
@@ -1225,11 +1234,9 @@ export class PlatformService {
     last30Days.setDate(last30Days.getDate() - 30);
     const last30Summary = await this.contributionRepo
       .createQueryBuilder('contribution')
+      .leftJoin('contribution.church', 'church')
       .select('SUM(contribution.amount)', 'total')
-      .addSelect(
-        'SUM(COALESCE(contribution.commissionAmount, 0))',
-        'commission',
-      )
+      .addSelect(this.getPlatformCommissionRevenueSql(), 'commission')
       .where('contribution.status = :status', {
         status: ContributionStatus.CONFIRMED,
       })
@@ -1441,15 +1448,7 @@ export class PlatformService {
     );
     const revenueAmount = contributions.reduce(
       (sum, item) =>
-        sum +
-        Number(
-          item.commissionAmount ??
-            Math.ceil(
-              (Number(item.amount || 0) *
-                Number(item.church?.commissionRatePct || 0)) /
-                100,
-            ),
-        ),
+        sum + this.getPlatformCommissionAmountForContribution(item),
       0,
     );
 
@@ -1771,6 +1770,87 @@ export class PlatformService {
     ];
   }
 
+  private isCommissionBillingEnabled(
+    church:
+      | Pick<Church, 'billingModel' | 'commissionRatePct'>
+      | null
+      | undefined,
+  ) {
+    const billingModel =
+      church?.billingModel || this.inferBillingModel(church?.commissionRatePct);
+    return (
+      billingModel === ChurchBillingModel.COMMISSION &&
+      Number(church?.commissionRatePct || 0) > 0
+    );
+  }
+
+  private getPlatformCommissionAmountForContribution(
+    contribution: Contribution,
+  ) {
+    if (!this.isCommissionBillingEnabled(contribution.church)) {
+      return 0;
+    }
+
+    if (
+      contribution.commissionAmount !== null &&
+      contribution.commissionAmount !== undefined
+    ) {
+      return Number(contribution.commissionAmount || 0);
+    }
+
+    return Math.ceil(
+      (Number(contribution.amount || 0) *
+        Number(contribution.church?.commissionRatePct || 0)) /
+        100,
+    );
+  }
+
+  private getPlatformCommissionRevenueSql() {
+    return `
+      SUM(
+        CASE
+          WHEN church.billingModel = '${ChurchBillingModel.COMMISSION}'
+            AND COALESCE(church.commissionRatePct, 0) > 0
+          THEN COALESCE(
+            contribution.commissionAmount,
+            CEILING((contribution.amount * COALESCE(church.commissionRatePct, 0)) / 100)
+          )
+          ELSE 0
+        END
+      )
+    `;
+  }
+
+  private async clearContributionCommissionsWhenDisabled(
+    churchId: string,
+    billingModel: ChurchBillingModel | string | null,
+    commissionRatePct: number | string | null,
+  ) {
+    const commissionEnabled =
+      (billingModel || this.inferBillingModel(commissionRatePct)) ===
+        ChurchBillingModel.COMMISSION && Number(commissionRatePct || 0) > 0;
+    if (commissionEnabled) {
+      return;
+    }
+
+    await this.contributionRepo
+      .createQueryBuilder()
+      .update(Contribution)
+      .set({
+        commissionRatePctApplied: 0,
+        commissionAmount: 0,
+      })
+      .where('churchId = :churchId', { churchId })
+      .andWhere('channel = :channel', { channel: ContributionChannel.MPESA })
+      .andWhere('sourceType IN (:...sourceTypes)', {
+        sourceTypes: this.getDirectMpesaSourceTypes(),
+      })
+      .andWhere(
+        '(COALESCE(commissionRatePctApplied, 0) <> 0 OR COALESCE(commissionAmount, 0) <> 0)',
+      )
+      .execute();
+  }
+
   private decorateRevenueTotals(
     totals: { total: number; revenue: number; count: number } | undefined,
     church: Church,
@@ -1778,11 +1858,12 @@ export class PlatformService {
     const base = totals || { total: 0, revenue: 0, count: 0 };
     const billingModel =
       church.billingModel || this.inferBillingModel(church.commissionRatePct);
-    const fallbackRevenue =
-      billingModel === ChurchBillingModel.COMMISSION
-        ? base.revenue ||
-          Math.ceil((base.total * Number(church.commissionRatePct || 0)) / 100)
-        : 0;
+    const commissionRate = Number(church.commissionRatePct || 0);
+    const commissionEnabled =
+      billingModel === ChurchBillingModel.COMMISSION && commissionRate > 0;
+    const fallbackRevenue = commissionEnabled
+      ? base.revenue || Math.ceil((base.total * commissionRate) / 100)
+      : 0;
 
     return {
       total: base.total,
