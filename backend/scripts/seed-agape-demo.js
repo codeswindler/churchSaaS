@@ -822,13 +822,12 @@ async function runSeed(connection, options) {
       groups,
       summary,
     );
-    const activeContributors = await getActiveDemoContributors(
-      connection,
-      church.id,
-      options.dailyContributors,
-    );
-
     if (!options.membersOnly) {
+      const activeContributors = await getActiveDemoContributors(
+        connection,
+        church.id,
+        options.dailyContributors,
+      );
       await seedDailyContributions(
         connection,
         church,
