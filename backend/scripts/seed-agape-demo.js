@@ -719,6 +719,7 @@ async function runSeed(connection, options) {
     generatedActiveTarget: 0,
     generatedMembersActivated: 0,
     generatedMembersDeactivated: 0,
+    staleMemberLinksRemoved: 0,
     memberContributorLinksBackfilled: 0,
     linksCreated: 0,
     groupsCreated: 0,
@@ -1139,14 +1140,25 @@ async function ensureDiscipleshipMembers(
   summary,
 ) {
   const contributorIds = contributors.map((contributor) => contributor.id);
-  const existingLinkRows = await selectByChunks(
+  summary.staleMemberLinksRemoved += await deleteStaleMemberContributorLinks(
     connection,
-    `SELECT contributorId, memberId
-     FROM discipleship_member_contributors
-     WHERE churchId = ? AND`,
     churchId,
     contributorIds,
-    'contributorId',
+  );
+
+  const existingLinkRows = await selectByChunks(
+    connection,
+    `SELECT link.contributorId, link.memberId
+     FROM discipleship_member_contributors link
+     JOIN discipleship_members member
+       ON member.id = link.memberId
+      AND member.churchId = link.churchId
+     WHERE link.churchId = ?
+       AND link.isConfirmed = 1
+       AND`,
+    churchId,
+    contributorIds,
+    'link.contributorId',
   );
 
   const linkByContributorId = new Map(
@@ -1261,6 +1273,29 @@ async function ensureDiscipleshipMembers(
   );
 
   return linkByContributorId;
+}
+
+async function deleteStaleMemberContributorLinks(connection, churchId, contributorIds) {
+  let deleted = 0;
+  for (const idsChunk of chunk(contributorIds, 500)) {
+    if (idsChunk.length === 0) {
+      continue;
+    }
+    const marks = idsChunk.map(() => '?').join(', ');
+    const [result] = await connection.query(
+      `DELETE link
+       FROM discipleship_member_contributors link
+       LEFT JOIN discipleship_members member
+         ON member.id = link.memberId
+        AND member.churchId = link.churchId
+       WHERE link.churchId = ?
+         AND member.id IS NULL
+         AND link.contributorId IN (${marks})`,
+      [churchId, ...idsChunk],
+    );
+    deleted += result.affectedRows || 0;
+  }
+  return deleted;
 }
 
 async function backfillDemoMemberContributorLinks(connection, churchId, summary) {
@@ -1836,6 +1871,11 @@ function printSummary(options, summary) {
   console.log(
     `Generated member status balanced: ${summary.generatedMembersActivated} activated, ${summary.generatedMembersDeactivated} deactivated`,
   );
+  if (summary.staleMemberLinksRemoved) {
+    console.log(
+      `Stale member links repaired: ${summary.staleMemberLinksRemoved} removed`,
+    );
+  }
   if (summary.memberContributorLinksBackfilled) {
     console.log(
       `Member contributor links backfilled: ${summary.memberContributorLinksBackfilled}`,
