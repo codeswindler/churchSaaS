@@ -21,7 +21,8 @@ const MEMBER_PREFIX = 'AGP';
 const MATCH_METHOD = 'demo_seed';
 const ATTENDANCE_EVENT_NAME = 'Giving attendance';
 const KENYA_TIMEZONE = 'Africa/Nairobi';
-const DEFAULT_MEMBER_TARGET = 6000;
+const DEFAULT_MEMBER_TARGET = 8291;
+const DEFAULT_ACTIVE_MEMBER_TARGET = 7327;
 const DEFAULT_DAILY_CONTRIBUTORS = 500;
 
 const FEMALE_FIRST_NAMES = [
@@ -293,7 +294,8 @@ Usage:
 
 Options:
   --date <YYYY-MM-DD|today>     Kenya calendar date to seed. Default: today.
-  --members <number>            Ensure this many Agape members/contributors. Default: 6000.
+  --members <number>            Ensure this many total Agape members. Default: 8291.
+  --active-members <number>     Target active Agape members. Default: 7327.
   --contributors <number>       Daily contributing members. Default: 500.
   --min <amount>                Minimum daily total in KES. Default: 400000.
   --max <amount>                Maximum daily total in KES. Default: 600000.
@@ -317,6 +319,7 @@ function parseArgs(argv) {
   const options = {
     date: 'today',
     memberTarget: DEFAULT_MEMBER_TARGET,
+    activeMemberTarget: DEFAULT_ACTIVE_MEMBER_TARGET,
     dailyContributors: DEFAULT_DAILY_CONTRIBUTORS,
     minDailyTotal: 400000,
     maxDailyTotal: 600000,
@@ -354,6 +357,12 @@ function parseArgs(argv) {
         break;
       case '--members':
         options.memberTarget = parsePositiveInteger(next(), 'members');
+        break;
+      case '--active-members':
+        options.activeMemberTarget = parsePositiveInteger(
+          next(),
+          'active-members',
+        );
         break;
       case '--contributors':
         options.dailyContributors = parsePositiveInteger(
@@ -412,6 +421,18 @@ function parseArgs(argv) {
   if (options.memberTarget < options.dailyContributors) {
     throw new Error(
       `members (${options.memberTarget}) must be >= contributors (${options.dailyContributors}).`,
+    );
+  }
+
+  if (options.memberTarget < options.activeMemberTarget) {
+    throw new Error(
+      `members (${options.memberTarget}) must be >= active-members (${options.activeMemberTarget}).`,
+    );
+  }
+
+  if (options.activeMemberTarget < options.dailyContributors) {
+    throw new Error(
+      `active-members (${options.activeMemberTarget}) must be >= contributors (${options.dailyContributors}).`,
     );
   }
 
@@ -690,6 +711,14 @@ async function runSeed(connection, options) {
     funds: 0,
     contributorsCreated: 0,
     membersCreated: 0,
+    totalMembersBefore: 0,
+    activeMembersBefore: 0,
+    nonGeneratedMembers: 0,
+    nonGeneratedActiveMembers: 0,
+    generatedMemberTarget: 0,
+    generatedActiveTarget: 0,
+    generatedMembersActivated: 0,
+    generatedMembersDeactivated: 0,
     linksCreated: 0,
     groupsCreated: 0,
     membershipsCreated: 0,
@@ -742,9 +771,21 @@ async function runSeed(connection, options) {
   }
 
   summary.funds = funds.length;
+  const memberTargets = await getAgapeMemberSeedTargets(
+    connection,
+    church.id,
+    options,
+    summary,
+  );
 
   if (options.dryRun) {
-    await collectDryRunSummary(connection, options, funds, summary);
+    await collectDryRunSummary(
+      connection,
+      options,
+      funds,
+      summary,
+      memberTargets,
+    );
     printSummary(options, summary);
     return;
   }
@@ -754,7 +795,7 @@ async function runSeed(connection, options) {
     const contributors = await ensureDemoContributors(
       connection,
       church.id,
-      options.memberTarget,
+      memberTargets.generatedMemberTarget,
       summary,
     );
     await sanitizeLegacyVisibleMarkers(connection, church.id, summary);
@@ -762,6 +803,12 @@ async function runSeed(connection, options) {
       connection,
       church.id,
       contributors,
+      summary,
+    );
+    await rebalanceGeneratedMemberStatuses(
+      connection,
+      church.id,
+      memberTargets.generatedActiveTarget,
       summary,
     );
     const groups = await ensureDemoGroups(connection, church.id, summary);
@@ -773,13 +820,18 @@ async function runSeed(connection, options) {
       groups,
       summary,
     );
+    const activeContributors = await getActiveDemoContributors(
+      connection,
+      church.id,
+      options.dailyContributors,
+    );
 
     if (!options.membersOnly) {
       await seedDailyContributions(
         connection,
         church,
         funds,
-        contributors,
+        activeContributors,
         memberLinks,
         memberships,
         options,
@@ -796,7 +848,65 @@ async function runSeed(connection, options) {
   printSummary(options, summary);
 }
 
-async function collectDryRunSummary(connection, options, funds, summary) {
+async function getAgapeMemberSeedTargets(
+  connection,
+  churchId,
+  options,
+  summary,
+) {
+  const [rows] = await connection.query(
+    `SELECT
+       COUNT(member.id) AS totalMembers,
+       SUM(CASE WHEN member.status = 'active' THEN 1 ELSE 0 END) AS activeMembers,
+       SUM(CASE WHEN contributor.memberNumber LIKE ? THEN 1 ELSE 0 END) AS generatedMembers,
+       SUM(CASE WHEN contributor.memberNumber LIKE ? AND member.status = 'active' THEN 1 ELSE 0 END) AS generatedActiveMembers,
+       SUM(CASE WHEN contributor.id IS NULL OR contributor.memberNumber NOT LIKE ? THEN 1 ELSE 0 END) AS nonGeneratedMembers,
+       SUM(CASE WHEN (contributor.id IS NULL OR contributor.memberNumber NOT LIKE ?) AND member.status = 'active' THEN 1 ELSE 0 END) AS nonGeneratedActiveMembers
+     FROM discipleship_members member
+     LEFT JOIN contributors contributor
+       ON contributor.id = member.contributorId
+      AND contributor.churchId = member.churchId
+     WHERE member.churchId = ?`,
+    [
+      `${MEMBER_PREFIX}-%`,
+      `${MEMBER_PREFIX}-%`,
+      `${MEMBER_PREFIX}-%`,
+      `${MEMBER_PREFIX}-%`,
+      churchId,
+    ],
+  );
+  const counts = rows[0] || {};
+  const nonGeneratedMembers = Number(counts.nonGeneratedMembers || 0);
+  const nonGeneratedActiveMembers = Number(
+    counts.nonGeneratedActiveMembers || 0,
+  );
+
+  summary.totalMembersBefore = Number(counts.totalMembers || 0);
+  summary.activeMembersBefore = Number(counts.activeMembers || 0);
+  summary.nonGeneratedMembers = nonGeneratedMembers;
+  summary.nonGeneratedActiveMembers = nonGeneratedActiveMembers;
+  summary.generatedMemberTarget = Math.max(
+    0,
+    options.memberTarget - nonGeneratedMembers,
+  );
+  summary.generatedActiveTarget = Math.min(
+    summary.generatedMemberTarget,
+    Math.max(0, options.activeMemberTarget - nonGeneratedActiveMembers),
+  );
+
+  return {
+    generatedMemberTarget: summary.generatedMemberTarget,
+    generatedActiveTarget: summary.generatedActiveTarget,
+  };
+}
+
+async function collectDryRunSummary(
+  connection,
+  options,
+  funds,
+  summary,
+  memberTargets,
+) {
   const [contributorRows] = await connection.query(
     `SELECT COUNT(*) AS count
      FROM contributors
@@ -807,7 +917,7 @@ async function collectDryRunSummary(connection, options, funds, summary) {
   const existingContributors = Number(contributorRows[0]?.count || 0);
   summary.contributorsCreated = Math.max(
     0,
-    options.memberTarget - existingContributors,
+    memberTargets.generatedMemberTarget - existingContributors,
   );
 
   const [memberRows] = await connection.query(
@@ -819,7 +929,10 @@ async function collectDryRunSummary(connection, options, funds, summary) {
     [options.churchId, `${MEMBER_PREFIX}-%`],
   );
   const existingMembers = Number(memberRows[0]?.count || 0);
-  summary.membersCreated = Math.max(0, options.memberTarget - existingMembers);
+  summary.membersCreated = Math.max(
+    0,
+    memberTargets.generatedMemberTarget - existingMembers,
+  );
 
   await collectExistingDailySummary(connection, options, summary);
   if (!options.membersOnly) {
@@ -830,11 +943,18 @@ async function collectDryRunSummary(connection, options, funds, summary) {
          AND memberNumber LIKE ?
        ORDER BY memberNumber ASC
        LIMIT ?`,
-      [options.churchId, `${MEMBER_PREFIX}-%`, options.memberTarget],
+      [
+        options.churchId,
+        `${MEMBER_PREFIX}-%`,
+        memberTargets.generatedMemberTarget,
+      ],
     );
     const plan = calculateDailyPlan(
       options,
-      buildDryRunContributorPool(contributors, options.memberTarget),
+      buildDryRunContributorPool(
+        contributors,
+        memberTargets.generatedActiveTarget,
+      ),
       funds,
       new Map(),
     );
@@ -1125,6 +1245,96 @@ async function ensureDiscipleshipMembers(
   );
 
   return linkByContributorId;
+}
+
+async function rebalanceGeneratedMemberStatuses(
+  connection,
+  churchId,
+  generatedActiveTarget,
+  summary,
+) {
+  const [generatedMembers] = await connection.query(
+    `SELECT member.id, member.status, contributor.memberNumber
+     FROM discipleship_members member
+     JOIN contributors contributor
+       ON contributor.id = member.contributorId
+      AND contributor.churchId = member.churchId
+     WHERE member.churchId = ?
+       AND contributor.memberNumber LIKE ?
+     ORDER BY contributor.memberNumber ASC`,
+    [churchId, `${MEMBER_PREFIX}-%`],
+  );
+
+  const activeLimit = Math.min(generatedActiveTarget, generatedMembers.length);
+  const idsToActivate = [];
+  const idsToDeactivate = [];
+
+  for (let index = 0; index < generatedMembers.length; index += 1) {
+    const member = generatedMembers[index];
+    const shouldBeActive = index < activeLimit;
+    if (shouldBeActive && member.status !== 'active') {
+      idsToActivate.push(member.id);
+    }
+    if (!shouldBeActive && member.status !== 'inactive') {
+      idsToDeactivate.push(member.id);
+    }
+  }
+
+  summary.generatedMembersActivated = await updateMemberStatusByIds(
+    connection,
+    churchId,
+    idsToActivate,
+    'active',
+  );
+  summary.generatedMembersDeactivated = await updateMemberStatusByIds(
+    connection,
+    churchId,
+    idsToDeactivate,
+    'inactive',
+  );
+}
+
+async function updateMemberStatusByIds(connection, churchId, ids, status) {
+  let updated = 0;
+  for (const idsChunk of chunk(ids, 500)) {
+    if (idsChunk.length === 0) {
+      continue;
+    }
+    const marks = idsChunk.map(() => '?').join(', ');
+    const [result] = await connection.query(
+      `UPDATE discipleship_members
+       SET status = ?, updatedAt = NOW(6)
+       WHERE churchId = ?
+         AND id IN (${marks})`,
+      [status, churchId, ...idsChunk],
+    );
+    updated += result.affectedRows || 0;
+  }
+  return updated;
+}
+
+async function getActiveDemoContributors(connection, churchId, target) {
+  const [contributors] = await connection.query(
+    `SELECT contributor.id, contributor.name, contributor.phone, contributor.memberNumber, contributor.gender
+     FROM contributors contributor
+     JOIN discipleship_members member
+       ON member.contributorId = contributor.id
+      AND member.churchId = contributor.churchId
+     WHERE contributor.churchId = ?
+       AND contributor.memberNumber LIKE ?
+       AND member.status = 'active'
+     ORDER BY contributor.memberNumber ASC
+     LIMIT ?`,
+    [churchId, `${MEMBER_PREFIX}-%`, target],
+  );
+
+  if (contributors.length < target) {
+    throw new Error(
+      `Only ${contributors.length} active Agape demo contributors are available; expected ${target}.`,
+    );
+  }
+
+  return contributors;
 }
 
 async function ensureDemoGroups(connection, churchId, summary) {
@@ -1571,10 +1781,24 @@ function printSummary(options, summary) {
     `Daily mode: ${options.progressive ? 'progressive through the day' : 'full day'}`,
   );
   console.log(`Active funds available: ${summary.funds}`);
-  console.log(`Target members: ${options.memberTarget}`);
+  console.log(
+    `Target members: ${options.memberTarget} total, ${options.activeMemberTarget} active`,
+  );
+  console.log(
+    `Existing before run: ${summary.totalMembersBefore} total, ${summary.activeMembersBefore} active`,
+  );
+  console.log(
+    `Preserved non-generated members: ${summary.nonGeneratedMembers} total, ${summary.nonGeneratedActiveMembers} active`,
+  );
+  console.log(
+    `Generated fill target: ${summary.generatedMemberTarget} total, ${summary.generatedActiveTarget} active`,
+  );
   console.log(`Daily contributor target: ${options.dailyContributors}`);
   console.log(`Contributors created: ${summary.contributorsCreated}`);
   console.log(`Discipleship members created: ${summary.membersCreated}`);
+  console.log(
+    `Generated member status balanced: ${summary.generatedMembersActivated} activated, ${summary.generatedMembersDeactivated} deactivated`,
+  );
   console.log(`Member links created: ${summary.linksCreated}`);
   console.log(`Groups created: ${summary.groupsCreated}`);
   console.log(`Memberships created: ${summary.membershipsCreated}`);
