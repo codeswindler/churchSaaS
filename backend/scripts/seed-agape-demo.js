@@ -21,6 +21,8 @@ const MEMBER_PREFIX = 'AGP';
 const MATCH_METHOD = 'demo_seed';
 const ATTENDANCE_EVENT_NAME = 'Giving attendance';
 const KENYA_TIMEZONE = 'Africa/Nairobi';
+const DEFAULT_MEMBER_TARGET = 6000;
+const DEFAULT_DAILY_CONTRIBUTORS = 500;
 
 const FEMALE_FIRST_NAMES = [
   'Grace',
@@ -291,11 +293,12 @@ Usage:
 
 Options:
   --date <YYYY-MM-DD|today>     Kenya calendar date to seed. Default: today.
-  --members <number>            Ensure this many Agape demo discipleship members. Default: 6000.
-  --contributors <number>       Confirmed demo contributors for the selected date. Default: 500.
+  --members <number>            Ensure this many Agape members/contributors. Default: 6000.
+  --contributors <number>       Daily contributing members. Default: 500.
   --min <amount>                Minimum daily total in KES. Default: 400000.
   --max <amount>                Maximum daily total in KES. Default: 600000.
   --members-only                Create/update demo members, groups, and links only.
+  --progressive                 For today, add only transactions due up to the current Kenya time.
   --refresh-date                Delete and recreate only this date's Agape demo contributions/attendance.
   --dry-run                     Report planned work without writing.
   --church-id <uuid>            Safety guard. Default: ${DEFAULT_AGAPE_CHURCH_ID}
@@ -305,6 +308,7 @@ Options:
 Examples:
   npm run seed:agape-demo -- --dry-run
   npm run seed:agape-demo -- --date today
+  npm run seed:agape-demo -- --date today --progressive
   npm run seed:agape-demo -- --date 2026-07-03 --refresh-date
 `);
 }
@@ -312,12 +316,13 @@ Examples:
 function parseArgs(argv) {
   const options = {
     date: 'today',
-    memberTarget: 6000,
-    dailyContributors: 500,
+    memberTarget: DEFAULT_MEMBER_TARGET,
+    dailyContributors: DEFAULT_DAILY_CONTRIBUTORS,
     minDailyTotal: 400000,
     maxDailyTotal: 600000,
     dryRun: false,
     refreshDate: false,
+    progressive: false,
     membersOnly: false,
     churchId:
       process.env.AGAPE_DEMO_CHURCH_ID ||
@@ -351,7 +356,10 @@ function parseArgs(argv) {
         options.memberTarget = parsePositiveInteger(next(), 'members');
         break;
       case '--contributors':
-        options.dailyContributors = parsePositiveInteger(next(), 'contributors');
+        options.dailyContributors = parsePositiveInteger(
+          next(),
+          'contributors',
+        );
         break;
       case '--min':
         options.minDailyTotal = parsePositiveNumber(next(), 'min');
@@ -364,6 +372,9 @@ function parseArgs(argv) {
         break;
       case '--refresh-date':
         options.refreshDate = true;
+        break;
+      case '--progressive':
+        options.progressive = true;
         break;
       case '--members-only':
         options.membersOnly = true;
@@ -380,6 +391,11 @@ function parseArgs(argv) {
   }
 
   options.date = normalizeDateOption(options.date);
+  options.today = kenyaDateToday();
+
+  if (options.progressive && options.date !== options.today) {
+    throw new Error('--progressive is only supported with --date today.');
+  }
 
   if (options.slug !== DEFAULT_AGAPE_SLUG) {
     throw new Error(
@@ -446,6 +462,28 @@ function kenyaDateToday() {
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
+function kenyaTimeNow() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: KENYA_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  const get = (type) => parts.find((part) => part.type === type)?.value || '0';
+  const hour = Number.parseInt(get('hour'), 10);
+  const minute = Number.parseInt(get('minute'), 10);
+  const second = Number.parseInt(get('second'), 10);
+
+  return {
+    date: `${get('year')}-${get('month')}-${get('day')}`,
+    secondsFromMidnight: hour * 3600 + minute * 60 + second,
+  };
+}
+
 function dateFromKenyaDate(date) {
   return new Date(`${date}T00:00:00.000+03:00`);
 }
@@ -509,7 +547,8 @@ function demoPaymentReference(date, seq) {
 
 function demoProfile(seq) {
   const gender = seq % 2 === 0 ? 'female' : 'male';
-  const firstNames = gender === 'female' ? FEMALE_FIRST_NAMES : MALE_FIRST_NAMES;
+  const firstNames =
+    gender === 'female' ? FEMALE_FIRST_NAMES : MALE_FIRST_NAMES;
   const firstName = firstNames[(seq * 7) % firstNames.length];
   const middleName = FAMILY_NAMES[(seq * 11) % FAMILY_NAMES.length];
   const familyName = FAMILY_NAMES[(seq * 17 + 13) % FAMILY_NAMES.length];
@@ -580,7 +619,13 @@ async function bulkInsert(connection, table, columns, rows, batchSize = 500) {
   return inserted;
 }
 
-async function selectByChunks(connection, sqlPrefix, churchId, ids, idColumnName) {
+async function selectByChunks(
+  connection,
+  sqlPrefix,
+  churchId,
+  ids,
+  idColumnName,
+) {
   const rows = [];
   for (const idsChunk of chunk(ids, 500)) {
     if (idsChunk.length === 0) {
@@ -621,9 +666,10 @@ async function main() {
 
   try {
     await connection.query("SET time_zone = '+03:00'");
-    const [lockRows] = await connection.query('SELECT GET_LOCK(?, 5) AS gotLock', [
-      lockName,
-    ]);
+    const [lockRows] = await connection.query(
+      'SELECT GET_LOCK(?, 5) AS gotLock',
+      [lockName],
+    );
     lockAcquired = Number(lockRows[0]?.gotLock || 0) === 1;
     if (!lockAcquired) {
       throw new Error(`Another Agape demo seed run is active (${lockName}).`);
@@ -658,6 +704,9 @@ async function runSeed(connection, options) {
     existingDailyContributions: 0,
     existingDailyTotal: 0,
     plannedDailyTotal: 0,
+    dueDailyContributions: 0,
+    pendingDailyContributions: 0,
+    missingDueContributions: 0,
   };
 
   const [churchRows] = await connection.query(
@@ -695,7 +744,7 @@ async function runSeed(connection, options) {
   summary.funds = funds.length;
 
   if (options.dryRun) {
-    await collectDryRunSummary(connection, options, summary);
+    await collectDryRunSummary(connection, options, funds, summary);
     printSummary(options, summary);
     return;
   }
@@ -747,7 +796,7 @@ async function runSeed(connection, options) {
   printSummary(options, summary);
 }
 
-async function collectDryRunSummary(connection, options, summary) {
+async function collectDryRunSummary(connection, options, funds, summary) {
   const [contributorRows] = await connection.query(
     `SELECT COUNT(*) AS count
      FROM contributors
@@ -773,16 +822,66 @@ async function collectDryRunSummary(connection, options, summary) {
   summary.membersCreated = Math.max(0, options.memberTarget - existingMembers);
 
   await collectExistingDailySummary(connection, options, summary);
-  if (!options.membersOnly && !summary.existingDailyContributions) {
-    summary.plannedDailyTotal = calculateDailyPlan(
+  if (!options.membersOnly) {
+    const [contributors] = await connection.query(
+      `SELECT id, name, phone, memberNumber, gender
+       FROM contributors
+       WHERE churchId = ?
+         AND memberNumber LIKE ?
+       ORDER BY memberNumber ASC
+       LIMIT ?`,
+      [options.churchId, `${MEMBER_PREFIX}-%`, options.memberTarget],
+    );
+    const plan = calculateDailyPlan(
       options,
-      [],
-      [],
+      buildDryRunContributorPool(contributors, options.memberTarget),
+      funds,
       new Map(),
-    ).targetTotal;
-    summary.contributionsCreated = options.dailyContributors;
-    summary.attendanceCreated = options.dailyContributors;
+    );
+    const eligibleEntries = getEligiblePlanEntries(plan, options);
+    summary.plannedDailyTotal = plan.targetTotal;
+    summary.dueDailyContributions = eligibleEntries.length;
+    summary.pendingDailyContributions =
+      plan.entries.length - eligibleEntries.length;
+    summary.missingDueContributions = Math.max(
+      0,
+      eligibleEntries.length - summary.existingDailyContributions,
+    );
+    if (!summary.existingDailyContributions || options.progressive) {
+      summary.contributionsCreated = options.progressive
+        ? summary.missingDueContributions
+        : options.dailyContributors;
+      summary.attendanceCreated = summary.contributionsCreated;
+    }
   }
+}
+
+function buildDryRunContributorPool(existingContributors, target) {
+  const byMemberNumber = new Map(
+    existingContributors.map((contributor) => [
+      contributor.memberNumber,
+      contributor,
+    ]),
+  );
+  const contributors = [...existingContributors];
+
+  for (let seq = 1; seq <= target; seq += 1) {
+    const profile = demoProfile(seq);
+    if (byMemberNumber.has(profile.memberNumber)) {
+      continue;
+    }
+    contributors.push({
+      id: `dry-run-${profile.memberNumber}`,
+      name: profile.name,
+      phone: profile.phone,
+      memberNumber: profile.memberNumber,
+      gender: profile.gender,
+    });
+  }
+
+  return contributors
+    .sort((a, b) => String(a.memberNumber).localeCompare(b.memberNumber))
+    .slice(0, target);
 }
 
 async function ensureDemoContributors(connection, churchId, target, summary) {
@@ -1155,7 +1254,11 @@ async function seedDailyContributions(
 ) {
   await collectExistingDailySummary(connection, options, summary);
 
-  if (summary.existingDailyContributions > 0 && !options.refreshDate) {
+  if (
+    summary.existingDailyContributions > 0 &&
+    !options.refreshDate &&
+    !options.progressive
+  ) {
     summary.skippedDailySeed = true;
     return;
   }
@@ -1182,14 +1285,29 @@ async function seedDailyContributions(
   }
 
   const plan = calculateDailyPlan(options, contributors, funds, memberships);
+  const eligibleEntries = getEligiblePlanEntries(plan, options);
   summary.plannedDailyTotal = plan.targetTotal;
+  summary.dueDailyContributions = eligibleEntries.length;
+  summary.pendingDailyContributions =
+    plan.entries.length - eligibleEntries.length;
+
+  const existingProviderRequestIds = await getExistingDailyProviderRequestIds(
+    connection,
+    church.id,
+    options.date,
+  );
+  const entriesToCreate = options.progressive
+    ? eligibleEntries.filter(
+        (entry) => !existingProviderRequestIds.has(entry.providerRequestId),
+      )
+    : eligibleEntries;
+  summary.missingDueContributions = entriesToCreate.length;
 
   const contributionRows = [];
   const attendanceRows = [];
   const weekday = weekdayName(options.date);
 
-  for (let index = 0; index < plan.entries.length; index += 1) {
-    const entry = plan.entries[index];
+  for (const entry of entriesToCreate) {
     const contributor = entry.contributor;
     const fund = entry.fund;
     const memberId = memberLinks.get(contributor.id);
@@ -1199,7 +1317,7 @@ async function seedDailyContributions(
       );
     }
     const receivedAt = entry.receivedAt;
-    const paymentReference = demoPaymentReference(options.date, index + 1);
+    const paymentReference = entry.paymentReference;
     const groupId = memberships.get(memberId) || null;
 
     contributionRows.push({
@@ -1215,9 +1333,7 @@ async function seedDailyContributions(
       sourceType: 'mpesa_c2b',
       commissionRatePctApplied: 0,
       commissionAmount: 0,
-      providerRequestId: `${demoPaymentPrefix(options.date)}:${String(
-        index + 1,
-      ).padStart(4, '0')}`,
+      providerRequestId: entry.providerRequestId,
       paymentReference,
       payerName: contributor.name,
       providerPayerId: contributor.phone,
@@ -1311,6 +1427,18 @@ async function collectExistingDailySummary(connection, options, summary) {
   summary.existingDailyTotal = Number(rows[0]?.total || 0);
 }
 
+async function getExistingDailyProviderRequestIds(connection, churchId, date) {
+  const [rows] = await connection.query(
+    `SELECT providerRequestId
+     FROM contributions
+     WHERE churchId = ?
+       AND providerRequestId LIKE ?`,
+    [churchId, `${demoPaymentPrefix(date)}:%`],
+  );
+
+  return new Set(rows.map((row) => row.providerRequestId).filter(Boolean));
+}
+
 function calculateDailyPlan(options, contributors, funds, memberships) {
   const rng = createRng(hashString(`agape:${options.date}`));
   const range = options.maxDailyTotal - options.minDailyTotal;
@@ -1351,16 +1479,38 @@ function calculateDailyPlan(options, contributors, funds, memberships) {
   const entries = selected.map((contributor, index) => {
     const seconds =
       7 * 3600 + 30 * 60 + Math.floor(rng() * (13 * 3600 + 45 * 60));
+    const sequence = index + 1;
     return {
+      sequence,
       contributor,
       amount: amounts[index],
       fund: pickFund(funds, contributor, index, rng),
       groupId: memberships.get(contributor.id) || null,
+      secondsFromMidnight: seconds,
       receivedAt: kenyaTimestamp(options.date, seconds),
+      providerRequestId: `${demoPaymentPrefix(options.date)}:${String(
+        sequence,
+      ).padStart(4, '0')}`,
+      paymentReference: demoPaymentReference(options.date, sequence),
     };
   });
 
   return { targetTotal, entries };
+}
+
+function getEligiblePlanEntries(plan, options) {
+  if (!options.progressive) {
+    return plan.entries;
+  }
+
+  const now = kenyaTimeNow();
+  if (now.date !== options.date) {
+    return [];
+  }
+
+  return plan.entries.filter(
+    (entry) => entry.secondsFromMidnight <= now.secondsFromMidnight,
+  );
 }
 
 function selectDailyContributors(contributors, count, rng) {
@@ -1392,7 +1542,9 @@ function pickFund(funds, contributor, index, rng) {
   const seq = sequenceFromMemberNumber(contributor.memberNumber);
   const preferredCode = weightedCodes[(seq + index) % weightedCodes.length];
   const preferred = funds.find((fund) =>
-    String(fund.code || fund.name).toLowerCase().includes(preferredCode),
+    String(fund.code || fund.name)
+      .toLowerCase()
+      .includes(preferredCode),
   );
   if (preferred && rng() < 0.72) {
     return preferred;
@@ -1415,8 +1567,12 @@ function printSummary(options, summary) {
   console.log(`Mode: ${options.dryRun ? 'dry-run' : 'write'}`);
   console.log(`Church: ${summary.church.name} (${summary.church.slug})`);
   console.log(`Date: ${options.date}`);
+  console.log(
+    `Daily mode: ${options.progressive ? 'progressive through the day' : 'full day'}`,
+  );
   console.log(`Active funds available: ${summary.funds}`);
-  console.log(`Target demo members: ${options.memberTarget}`);
+  console.log(`Target members: ${options.memberTarget}`);
+  console.log(`Daily contributor target: ${options.dailyContributors}`);
   console.log(`Contributors created: ${summary.contributorsCreated}`);
   console.log(`Discipleship members created: ${summary.membersCreated}`);
   console.log(`Member links created: ${summary.linksCreated}`);
@@ -1461,6 +1617,11 @@ function printSummary(options, summary) {
       'en-KE',
     )}`,
   );
+  if (options.progressive) {
+    console.log(
+      `Due now: ${summary.dueDailyContributions} contributions; pending later: ${summary.pendingDailyContributions}.`,
+    );
+  }
   console.log(`Contributions created: ${summary.contributionsCreated}`);
   console.log(`Attendance records created: ${summary.attendanceCreated}`);
 }
