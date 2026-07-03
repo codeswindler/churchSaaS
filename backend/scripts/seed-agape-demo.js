@@ -916,36 +916,40 @@ async function getAgapeMemberSeedTargets(
   options,
   summary,
 ) {
-  const generatedMemberExists = `EXISTS (
-    SELECT 1
-    FROM contributors contributor
-    LEFT JOIN discipleship_member_contributors link
-      ON link.churchId = member.churchId
-     AND link.memberId = member.id
-     AND link.contributorId = contributor.id
-     AND link.isConfirmed = 1
-    WHERE contributor.churchId = member.churchId
-      AND contributor.memberNumber LIKE ?
-      AND (
-        contributor.id = member.contributorId
-        OR link.id IS NOT NULL
-      )
-  )`;
   const [rows] = await connection.query(
     `SELECT
        COUNT(member.id) AS totalMembers,
        SUM(CASE WHEN member.status = 'active' THEN 1 ELSE 0 END) AS activeMembers,
-       SUM(CASE WHEN ${generatedMemberExists} THEN 1 ELSE 0 END) AS generatedMembers,
-       SUM(CASE WHEN ${generatedMemberExists} AND member.status = 'active' THEN 1 ELSE 0 END) AS generatedActiveMembers,
-       SUM(CASE WHEN NOT ${generatedMemberExists} THEN 1 ELSE 0 END) AS nonGeneratedMembers,
-       SUM(CASE WHEN NOT ${generatedMemberExists} AND member.status = 'active' THEN 1 ELSE 0 END) AS nonGeneratedActiveMembers
+       SUM(CASE WHEN generated.memberId IS NOT NULL THEN 1 ELSE 0 END) AS generatedMembers,
+       SUM(CASE WHEN generated.memberId IS NOT NULL AND member.status = 'active' THEN 1 ELSE 0 END) AS generatedActiveMembers,
+       SUM(CASE WHEN generated.memberId IS NULL THEN 1 ELSE 0 END) AS nonGeneratedMembers,
+       SUM(CASE WHEN generated.memberId IS NULL AND member.status = 'active' THEN 1 ELSE 0 END) AS nonGeneratedActiveMembers
      FROM discipleship_members member
+     LEFT JOIN (
+       SELECT directMember.id AS memberId
+       FROM discipleship_members directMember
+       JOIN contributors contributor
+         ON contributor.id = directMember.contributorId
+        AND contributor.churchId = directMember.churchId
+        AND contributor.memberNumber LIKE ?
+       WHERE directMember.churchId = ?
+       UNION
+       SELECT link.memberId AS memberId
+       FROM discipleship_member_contributors link
+       JOIN contributors contributor
+         ON contributor.id = link.contributorId
+        AND contributor.churchId = link.churchId
+        AND contributor.memberNumber LIKE ?
+       WHERE link.churchId = ?
+         AND link.isConfirmed = 1
+     ) generated
+       ON generated.memberId = member.id
      WHERE member.churchId = ?`,
     [
       `${MEMBER_PREFIX}-%`,
+      churchId,
       `${MEMBER_PREFIX}-%`,
-      `${MEMBER_PREFIX}-%`,
-      `${MEMBER_PREFIX}-%`,
+      churchId,
       churchId,
     ],
   );
