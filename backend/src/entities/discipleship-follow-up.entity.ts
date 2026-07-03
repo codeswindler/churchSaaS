@@ -57,6 +57,12 @@ export class DiscipleshipFollowUp {
   @Column({ type: 'text', nullable: true })
   nextVisitNotes: string | null;
 
+  @Column({ type: 'boolean', nullable: true })
+  isParent: boolean | null;
+
+  @Column({ type: 'boolean', nullable: true })
+  childInSundaySchool: boolean | null;
+
   @Column({
     type: 'varchar',
     length: 20,

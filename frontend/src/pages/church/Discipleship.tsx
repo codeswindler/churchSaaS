@@ -11,6 +11,7 @@ import {
   Search,
   Upload,
   UserCheck,
+  Users,
   X,
 } from 'lucide-react';
 import {
@@ -22,8 +23,10 @@ import {
 } from 'react';
 import toast from 'react-hot-toast';
 import api, { getSession } from '../../services/api';
+import ChurchOneOnOne from './OneOnOne';
 
-type DiscipleshipTab = 'attendance' | 'members';
+type DiscipleshipModule = 'discipleship' | 'oneOnOne';
+type DiscipleshipTab = 'attendance' | 'members' | 'groups';
 type MemberDetailSection = 'attendance' | 'contributions';
 
 interface DiscipleshipGroup {
@@ -942,6 +945,7 @@ const discipleshipTabs: {
 }[] = [
   { value: 'attendance', label: 'Attendance', icon: CalendarCheck2 },
   { value: 'members', label: 'Members', icon: UserCheck },
+  { value: 'groups', label: 'Groups', icon: Users },
 ];
 
 export default function ChurchDiscipleship() {
@@ -950,6 +954,8 @@ export default function ChurchDiscipleship() {
   const isPriest =
     session?.user?.role === 'priest' ||
     session?.user?.role === 'church_admin';
+  const [activeModule, setActiveModule] =
+    useState<DiscipleshipModule>('discipleship');
   const [activeTab, setActiveTab] = useState<DiscipleshipTab>('attendance');
   const [memberSearch, setMemberSearch] = useState('');
   const [memberGroupFilter, setMemberGroupFilter] = useState('');
@@ -1609,7 +1615,31 @@ export default function ChurchDiscipleship() {
 
   return (
     <div className="space-y-4 discipleship-page">
-      <section className="discipleship-stat-grid grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="panel p-2">
+        <div className="grid gap-2 sm:grid-cols-2">
+          {[
+            ['discipleship', 'Discipleship'],
+            ['oneOnOne', 'One-on-one'],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                activeModule === value
+                  ? 'bg-amber-200 text-stone-950'
+                  : 'border border-white/10 text-stone-200 hover:bg-white/5'
+              }`}
+              type="button"
+              onClick={() => setActiveModule(value as DiscipleshipModule)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {activeModule === 'discipleship' ? (
+        <>
+          <section className="discipleship-stat-grid grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {statCards.map(([label, value]) => {
           const isDuplicateReview = label === 'Duplicate reviews';
           const content = (
@@ -1640,8 +1670,8 @@ export default function ChurchDiscipleship() {
         })}
       </section>
 
-      <section className="panel discipleship-tabs p-3">
-        <div className="grid gap-2 sm:grid-cols-2">
+          <section className="panel discipleship-tabs p-3">
+        <div className="grid gap-2 sm:grid-cols-3">
           {discipleshipTabs.map(({ value, label, icon: TabIcon }) => {
             return (
               <button
@@ -1939,14 +1969,6 @@ export default function ChurchDiscipleship() {
               <button
                 className="btn-secondary justify-center"
                 type="button"
-                onClick={() => openGroupEditor()}
-              >
-                <Plus size={17} />
-                Add group
-              </button>
-              <button
-                className="btn-secondary justify-center"
-                type="button"
                 onClick={() => {
                   setBatchSummary(null);
                   setBatchFile(null);
@@ -2174,52 +2196,6 @@ export default function ChurchDiscipleship() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
-                  Groups
-                </p>
-                <h3 className="mt-2 text-lg font-semibold text-white">
-                  Member categories
-                </h3>
-                <p className="mt-1 text-xs text-stone-400">
-                  Create and edit groups used for attendance and member filters.
-                </p>
-              </div>
-              <button
-                className="btn-primary px-3 py-2"
-                type="button"
-                onClick={() => openGroupEditor()}
-              >
-                <Plus size={16} />
-                Add
-              </button>
-            </div>
-            <div className="mt-4 space-y-2">
-              {groups.slice(0, 8).map((group) => (
-                <button
-                  key={group.id}
-                  className="w-full rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-left transition hover:bg-white/5"
-                  type="button"
-                  onClick={() => openGroupEditor(group)}
-                >
-                  <span className="block font-semibold text-white">
-                    {group.name}
-                  </span>
-                  <span className="mt-1 block text-xs text-stone-400">
-                    {group.memberCount || 0} members
-                  </span>
-                </button>
-              ))}
-              {groups.length === 0 ? (
-                <p className="rounded-2xl border border-white/10 p-3 text-sm text-stone-300">
-                  No groups created yet.
-                </p>
-              ) : null}
-            </div>
-          </section>
-
-          <section className="panel p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
                   Selected disciple
                 </p>
                 <h3 className="mt-2 text-xl font-semibold text-white">
@@ -2286,6 +2262,75 @@ export default function ChurchDiscipleship() {
 
         </aside>
         </section>
+      )}
+
+      {activeTab === 'groups' && (
+        <section className="panel overflow-hidden">
+          <div className="flex flex-col gap-4 border-b border-white/10 p-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+                Groups
+              </p>
+              <h3 className="mt-2 text-xl font-semibold text-white">
+                Discipleship groups
+              </h3>
+              <p className="mt-2 text-sm text-stone-300">
+                Create and edit the groups used for attendance, member filters,
+                and discipleship reporting.
+              </p>
+            </div>
+            <button
+              className="btn-primary justify-center"
+              type="button"
+              onClick={() => openGroupEditor()}
+            >
+              <Plus size={17} />
+              Add group
+            </button>
+          </div>
+
+          {groups.length === 0 ? (
+            <p className="p-4 text-sm text-stone-300">
+              No groups created yet.
+            </p>
+          ) : (
+            <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+              {groups.map((group) => (
+                <button
+                  key={group.id}
+                  className="rounded-3xl border border-white/10 bg-black/10 p-4 text-left transition hover:bg-white/5"
+                  type="button"
+                  onClick={() => openGroupEditor(group)}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-white">{group.name}</p>
+                      <p className="mt-2 text-sm text-stone-300">
+                        {group.description || 'No description yet.'}
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                        group.isActive
+                          ? 'border-emerald-300/30 text-emerald-100'
+                          : 'border-stone-300/20 text-stone-300'
+                      }`}
+                    >
+                      {group.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+                  <p className="mt-4 text-xs uppercase tracking-[0.18em] text-stone-400">
+                    {(group.memberCount || 0).toLocaleString()} members
+                  </p>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+        </>
+      ) : (
+        <ChurchOneOnOne />
       )}
 
       {isMemberModalOpen ? (

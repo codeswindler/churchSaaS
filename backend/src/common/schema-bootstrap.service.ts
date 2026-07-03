@@ -1269,6 +1269,8 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
             \`proposedSolutions\` text NULL,
             \`nextProposedVisitDate\` date NULL,
             \`nextVisitNotes\` text NULL,
+            \`isParent\` tinyint NULL,
+            \`childInSundaySchool\` tinyint NULL,
             \`status\` varchar(20) NOT NULL DEFAULT 'open',
             \`recordedByUserId\` varchar(36) NULL,
             \`completedAt\` timestamp NULL,
@@ -1310,9 +1312,19 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
             'ADD COLUMN `nextVisitNotes` text NULL AFTER `nextProposedVisitDate`',
           );
         }
+        if (!followUps.findColumnByName('isParent')) {
+          statements.push(
+            'ADD COLUMN `isParent` tinyint NULL AFTER `nextVisitNotes`',
+          );
+        }
+        if (!followUps.findColumnByName('childInSundaySchool')) {
+          statements.push(
+            'ADD COLUMN `childInSundaySchool` tinyint NULL AFTER `isParent`',
+          );
+        }
         if (!followUps.findColumnByName('status')) {
           statements.push(
-            "ADD COLUMN `status` varchar(20) NOT NULL DEFAULT 'open' AFTER `nextVisitNotes`",
+            "ADD COLUMN `status` varchar(20) NOT NULL DEFAULT 'open' AFTER `childInSundaySchool`",
           );
         }
         if (!followUps.findColumnByName('recordedByUserId')) {

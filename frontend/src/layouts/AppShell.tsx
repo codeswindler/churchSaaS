@@ -94,12 +94,6 @@ const churchLinks: ShellLink[] = [
     permission: "discipleship.view",
   },
   {
-    to: "/church/one-on-one",
-    label: "One-on-one",
-    icon: MessageSquareText,
-    permission: "discipleship.view",
-  },
-  {
     to: "/church/dashboard",
     label: "Overview",
     icon: ChartColumn,
@@ -250,11 +244,6 @@ const pageMeta = {
     {
       prefix: "/church/discipleship",
       title: "Discipleship",
-      variant: "compact",
-    },
-    {
-      prefix: "/church/one-on-one",
-      title: "One-on-one",
       variant: "compact",
     },
     { prefix: "/church/users", title: "Staff users", variant: "compact" },

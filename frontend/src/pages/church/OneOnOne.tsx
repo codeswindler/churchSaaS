@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, PencilLine, Plus, Search, UserCheck } from 'lucide-react';
-import { type FormEvent, useEffect, useMemo, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import api, { getSession, hasChurchPermission } from '../../services/api';
 
@@ -36,6 +36,8 @@ interface FollowUpRecord {
   proposedSolutions?: string | null;
   nextProposedVisitDate?: string | null;
   nextVisitNotes?: string | null;
+  isParent?: boolean | null;
+  childInSundaySchool?: boolean | null;
   status: FollowUpStatus;
   recordedByUser?: {
     id: string;
@@ -73,8 +75,40 @@ function createFollowUpForm() {
     proposedSolutions: '',
     nextProposedVisitDate: '',
     nextVisitNotes: '',
+    isParent: '',
+    childInSundaySchool: '',
     status: 'open' as FollowUpStatus,
   };
+}
+
+function booleanToFormValue(value?: boolean | null) {
+  if (value === true) {
+    return 'yes';
+  }
+  if (value === false) {
+    return 'no';
+  }
+  return '';
+}
+
+function formValueToNullableBoolean(value: string) {
+  if (value === 'yes') {
+    return true;
+  }
+  if (value === 'no') {
+    return false;
+  }
+  return null;
+}
+
+function formatNullableBoolean(value?: boolean | null) {
+  if (value === true) {
+    return 'Yes';
+  }
+  if (value === false) {
+    return 'No';
+  }
+  return 'Not recorded';
 }
 
 function formatStatus(status: FollowUpStatus) {
@@ -141,7 +175,11 @@ export default function ChurchOneOnOne() {
         .get(`/church/discipleship/members/${selectedMemberBase?.id}`)
         .then((response) => response.data),
   });
-  const selectedMember = selectedMemberDetail || selectedMemberBase;
+  const selectedMember =
+    selectedMemberDetail?.id === selectedMemberBase?.id
+      ? selectedMemberDetail
+      : selectedMemberBase;
+  const activeMemberId = selectedMemberId || selectedMember?.id || '';
 
   const { data: followUps = [], isLoading: followUpsLoading } = useQuery<
     FollowUpRecord[]
@@ -158,19 +196,14 @@ export default function ChurchOneOnOne() {
     setMemberPage(1);
   }, [groupFilter, memberSearch]);
 
-  const stats = useMemo(() => {
-    const open = followUps.filter((item) => item.status === 'open');
-    const nextVisit = open
-      .map((item) => item.nextProposedVisitDate)
-      .filter(Boolean)
-      .sort()[0];
-    return {
-      total: followUps.length,
-      open: open.length,
-      completed: followUps.filter((item) => item.status === 'completed').length,
-      nextVisit: nextVisit || 'Not set',
-    };
-  }, [followUps]);
+  useEffect(() => {
+    if (members.length === 0) {
+      return;
+    }
+    if (!selectedMemberId || !members.some((member) => member.id === selectedMemberId)) {
+      setSelectedMemberId(members[0].id);
+    }
+  }, [members, selectedMemberId]);
 
   const resetForm = () => {
     setEditingFollowUpId(null);
@@ -196,6 +229,10 @@ export default function ChurchOneOnOne() {
         proposedSolutions: form.proposedSolutions,
         nextProposedVisitDate: form.nextProposedVisitDate || null,
         nextVisitNotes: form.nextVisitNotes,
+        isParent: formValueToNullableBoolean(form.isParent),
+        childInSundaySchool: formValueToNullableBoolean(
+          form.childInSundaySchool,
+        ),
         status: form.status,
       };
       if (editingFollowUpId) {
@@ -256,6 +293,10 @@ export default function ChurchOneOnOne() {
             proposedSolutions: record.proposedSolutions || '',
             nextProposedVisitDate: record.nextProposedVisitDate || '',
             nextVisitNotes: record.nextVisitNotes || '',
+            isParent: booleanToFormValue(record.isParent),
+            childInSundaySchool: booleanToFormValue(
+              record.childInSundaySchool,
+            ),
             status: record.status || 'open',
           }
         : createFollowUpForm(),
@@ -270,34 +311,16 @@ export default function ChurchOneOnOne() {
 
   return (
     <div className="church-console-page discipleship-page space-y-4">
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          ['Open follow-ups', stats.open],
-          ['Completed', stats.completed],
-          ['Total records', stats.total],
-          ['Next proposed visit', stats.nextVisit],
-        ].map(([label, value]) => (
-          <div key={label} className="panel p-4">
-            <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-              {label}
-            </p>
-            <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
-          </div>
-        ))}
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[minmax(290px,0.85fr)_minmax(0,1.15fr)]">
+      <section className="grid gap-4 md:grid-cols-[minmax(7.5rem,10%)_minmax(0,1fr)]">
         <div className="panel overflow-hidden">
           <div className="border-b border-white/10 p-4">
             <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
-              Disciples
+              Members
             </p>
-            <h3 className="mt-2 text-xl font-semibold text-white">
-              Choose a member
-            </h3>
+            <h3 className="mt-2 text-lg font-semibold text-white">Choose</h3>
           </div>
 
-          <div className="grid gap-3 border-b border-white/10 p-3 md:grid-cols-2">
+          <div className="space-y-2 border-b border-white/10 p-3">
             <div className="relative">
               <Search
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
@@ -334,17 +357,13 @@ export default function ChurchOneOnOne() {
                 <button
                   key={member.id}
                   className={`block w-full p-4 text-left transition hover:bg-white/5 ${
-                    selectedMember?.id === member.id ? 'bg-amber-200/10' : ''
+                    activeMemberId === member.id ? 'bg-amber-200/10' : ''
                   }`}
                   type="button"
                   onClick={() => setSelectedMemberId(member.id)}
                 >
-                  <span className="block font-semibold text-white">
+                  <span className="block truncate font-semibold text-white">
                     {member.fullName}
-                  </span>
-                  <span className="mt-1 block text-xs text-stone-400">
-                    {(member.groups || []).map((group) => group.name).join(', ') ||
-                      'No group assigned'}
                   </span>
                 </button>
               ))
@@ -470,6 +489,44 @@ export default function ChurchOneOnOne() {
                         <option value="open">Open</option>
                         <option value="completed">Completed</option>
                         <option value="cancelled">Cancelled</option>
+                      </select>
+                    </label>
+                    <label className="space-y-2">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                        Is member a parent?
+                      </span>
+                      <select
+                        className="input-compact"
+                        value={form.isParent}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            isParent: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Not recorded</option>
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                      </select>
+                    </label>
+                    <label className="space-y-2">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                        Child in Sunday school?
+                      </span>
+                      <select
+                        className="input-compact"
+                        value={form.childInSundaySchool}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            childInSundaySchool: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Not recorded</option>
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
                       </select>
                     </label>
                   </div>
@@ -629,6 +686,16 @@ export default function ChurchOneOnOne() {
                             }`}
                           >
                             {formatStatus(record.status)}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-stone-300">
+                          <span className="rounded-full border border-white/10 bg-black/10 px-3 py-1">
+                            Parent: {formatNullableBoolean(record.isParent)}
+                          </span>
+                          <span className="rounded-full border border-white/10 bg-black/10 px-3 py-1">
+                            Sunday school child:{' '}
+                            {formatNullableBoolean(record.childInSundaySchool)}
                           </span>
                         </div>
 

@@ -2,7 +2,6 @@ import {
   ChartColumn,
   Clock4,
   Coins,
-  MessageSquareText,
   MonitorPlay,
   Send,
   ShieldCheck,
@@ -54,13 +53,6 @@ const accessCards = [
     description: 'Track members, groups, and Sunday attendance.',
     to: '/church/discipleship',
     icon: UserCheck,
-  },
-  {
-    permission: 'discipleship.view',
-    title: 'One-on-one',
-    description: 'Record pastoral visits, proposed solutions, and next visits.',
-    to: '/church/one-on-one',
-    icon: MessageSquareText,
   },
   {
     permission: 'users.view',

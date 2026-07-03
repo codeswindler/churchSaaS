@@ -16,7 +16,6 @@ import ChurchDiscipleship from './pages/church/Discipleship';
 import ChurchFundAccounts from './pages/church/FundAccounts';
 import ChurchFundDisplays from './pages/church/FundDisplays';
 import ChurchMessaging from './pages/church/Messaging';
-import ChurchOneOnOne from './pages/church/OneOnOne';
 import ChurchPresentation from './pages/church/Presentation';
 import ChurchReports from './pages/church/Reports';
 import ChurchUsers from './pages/church/Users';
@@ -146,14 +145,6 @@ export default function App() {
             element={
               <ChurchPermissionRoute permission="discipleship.view">
                 <ChurchDiscipleship />
-              </ChurchPermissionRoute>
-            }
-          />
-          <Route
-            path="one-on-one"
-            element={
-              <ChurchPermissionRoute permission="discipleship.view">
-                <ChurchOneOnOne />
               </ChurchPermissionRoute>
             }
           />

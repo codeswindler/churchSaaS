@@ -1616,13 +1616,19 @@ export class ChurchService {
       body?.nextVisitNotes,
       2000,
     );
+    const isParent = this.normalizeNullableBoolean(body?.isParent);
+    const childInSundaySchool = this.normalizeNullableBoolean(
+      body?.childInSundaySchool,
+    );
 
     if (
       !discussionSummary &&
       !issueRaised &&
       !proposedSolutions &&
       !nextProposedVisitDate &&
-      !nextVisitNotes
+      !nextVisitNotes &&
+      isParent === null &&
+      childInSundaySchool === null
     ) {
       throw new BadRequestException(
         'Record a summary, issue, proposed solution, or next proposed visit',
@@ -1640,6 +1646,8 @@ export class ChurchService {
         proposedSolutions,
         nextProposedVisitDate,
         nextVisitNotes,
+        isParent,
+        childInSundaySchool,
         status,
         recordedByUserId,
         completedAt:
@@ -1708,6 +1716,16 @@ export class ChurchService {
       record.nextVisitNotes = this.normalizeOptionalText(
         body.nextVisitNotes,
         2000,
+      );
+    }
+    if (Object.prototype.hasOwnProperty.call(body || {}, 'isParent')) {
+      record.isParent = this.normalizeNullableBoolean(body.isParent);
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(body || {}, 'childInSundaySchool')
+    ) {
+      record.childInSundaySchool = this.normalizeNullableBoolean(
+        body.childInSundaySchool,
       );
     }
     if (Object.prototype.hasOwnProperty.call(body || {}, 'status')) {
@@ -5786,6 +5804,8 @@ export class ChurchService {
       proposedSolutions: record.proposedSolutions,
       nextProposedVisitDate: record.nextProposedVisitDate,
       nextVisitNotes: record.nextVisitNotes,
+      isParent: record.isParent,
+      childInSundaySchool: record.childInSundaySchool,
       status: record.status,
       completedAt: record.completedAt,
       createdAt: record.createdAt,
