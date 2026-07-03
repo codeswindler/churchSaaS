@@ -1080,7 +1080,7 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
         }
       }
       await queryRunner.query(
-        "UPDATE `discipleship_members` SET `status` = 'active' WHERE `status` <> 'active'",
+        "UPDATE `discipleship_members` SET `status` = 'active' WHERE `status` IS NULL OR TRIM(`status`) = ''",
       );
 
       const memberAliases = await queryRunner.getTable(
@@ -1254,6 +1254,113 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `);
         this.logger.log('Created discipleship attendance table.');
+      }
+
+      const followUps = await queryRunner.getTable('discipleship_follow_ups');
+      if (!followUps) {
+        await queryRunner.query(`
+          CREATE TABLE \`discipleship_follow_ups\` (
+            \`id\` varchar(36) NOT NULL,
+            \`churchId\` varchar(36) NOT NULL,
+            \`memberId\` varchar(36) NOT NULL,
+            \`sessionDate\` date NOT NULL,
+            \`discussionSummary\` text NULL,
+            \`issueRaised\` text NULL,
+            \`proposedSolutions\` text NULL,
+            \`nextProposedVisitDate\` date NULL,
+            \`nextVisitNotes\` text NULL,
+            \`status\` varchar(20) NOT NULL DEFAULT 'open',
+            \`recordedByUserId\` varchar(36) NULL,
+            \`completedAt\` timestamp NULL,
+            \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            \`updatedAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+            PRIMARY KEY (\`id\`),
+            INDEX \`IDX_discipleship_followups_church_member_date\` (\`churchId\`, \`memberId\`, \`sessionDate\`),
+            INDEX \`IDX_discipleship_followups_next_visit\` (\`churchId\`, \`status\`, \`nextProposedVisitDate\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        this.logger.log('Created discipleship one-on-one follow-ups table.');
+      } else {
+        const statements: string[] = [];
+        if (!followUps.findColumnByName('sessionDate')) {
+          statements.push('ADD COLUMN `sessionDate` date NULL AFTER `memberId`');
+        }
+        if (!followUps.findColumnByName('discussionSummary')) {
+          statements.push(
+            'ADD COLUMN `discussionSummary` text NULL AFTER `sessionDate`',
+          );
+        }
+        if (!followUps.findColumnByName('issueRaised')) {
+          statements.push(
+            'ADD COLUMN `issueRaised` text NULL AFTER `discussionSummary`',
+          );
+        }
+        if (!followUps.findColumnByName('proposedSolutions')) {
+          statements.push(
+            'ADD COLUMN `proposedSolutions` text NULL AFTER `issueRaised`',
+          );
+        }
+        if (!followUps.findColumnByName('nextProposedVisitDate')) {
+          statements.push(
+            'ADD COLUMN `nextProposedVisitDate` date NULL AFTER `proposedSolutions`',
+          );
+        }
+        if (!followUps.findColumnByName('nextVisitNotes')) {
+          statements.push(
+            'ADD COLUMN `nextVisitNotes` text NULL AFTER `nextProposedVisitDate`',
+          );
+        }
+        if (!followUps.findColumnByName('status')) {
+          statements.push(
+            "ADD COLUMN `status` varchar(20) NOT NULL DEFAULT 'open' AFTER `nextVisitNotes`",
+          );
+        }
+        if (!followUps.findColumnByName('recordedByUserId')) {
+          statements.push(
+            'ADD COLUMN `recordedByUserId` varchar(36) NULL AFTER `status`',
+          );
+        }
+        if (!followUps.findColumnByName('completedAt')) {
+          statements.push(
+            'ADD COLUMN `completedAt` timestamp NULL AFTER `recordedByUserId`',
+          );
+        }
+        if (!followUps.findColumnByName('createdAt')) {
+          statements.push(
+            'ADD COLUMN `createdAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) AFTER `completedAt`',
+          );
+        }
+        if (!followUps.findColumnByName('updatedAt')) {
+          statements.push(
+            'ADD COLUMN `updatedAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) AFTER `createdAt`',
+          );
+        }
+        if (statements.length > 0) {
+          await queryRunner.query(
+            `ALTER TABLE \`discipleship_follow_ups\` ${statements.join(', ')}`,
+          );
+          this.logger.log('Updated discipleship one-on-one follow-up schema.');
+        }
+        if (
+          !followUps.indices.some(
+            (index) =>
+              index.name === 'IDX_discipleship_followups_church_member_date',
+          )
+        ) {
+          await queryRunner.query(
+            'CREATE INDEX `IDX_discipleship_followups_church_member_date` ON `discipleship_follow_ups` (`churchId`, `memberId`, `sessionDate`)',
+          );
+        }
+        if (
+          !followUps.indices.some(
+            (index) =>
+              index.name === 'IDX_discipleship_followups_next_visit',
+          )
+        ) {
+          await queryRunner.query(
+            'CREATE INDEX `IDX_discipleship_followups_next_visit` ON `discipleship_follow_ups` (`churchId`, `status`, `nextProposedVisitDate`)',
+          );
+        }
       }
     } finally {
       await queryRunner.release();

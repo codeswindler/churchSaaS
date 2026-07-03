@@ -22,6 +22,7 @@ import { Contribution } from './entities/contribution.entity';
 import { Contributor } from './entities/contributor.entity';
 import { DiscipleshipAttendance } from './entities/discipleship-attendance.entity';
 import { DiscipleshipDuplicateReview } from './entities/discipleship-duplicate-review.entity';
+import { DiscipleshipFollowUp } from './entities/discipleship-follow-up.entity';
 import { DiscipleshipGroup } from './entities/discipleship-group.entity';
 import { DiscipleshipMatchCandidate } from './entities/discipleship-match-candidate.entity';
 import { DiscipleshipMemberAlias } from './entities/discipleship-member-alias.entity';
@@ -69,6 +70,7 @@ import { SchemaBootstrapService } from './common/schema-bootstrap.service';
         Contributor,
         DiscipleshipAttendance,
         DiscipleshipDuplicateReview,
+        DiscipleshipFollowUp,
         DiscipleshipGroup,
         DiscipleshipMatchCandidate,
         DiscipleshipMemberAlias,

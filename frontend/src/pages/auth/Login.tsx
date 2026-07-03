@@ -2,6 +2,8 @@ import { useMutation } from '@tanstack/react-query';
 import {
   ArrowRight,
   Clock4,
+  Eye,
+  EyeOff,
   Facebook,
   Globe2,
   Instagram,
@@ -107,6 +109,7 @@ export default function Login() {
   const navigate = useNavigate();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [showLoginSheet, setShowLoginSheet] = useState(false);
   const [showEnquiryModal, setShowEnquiryModal] = useState(false);
   const [activeHeroPill, setActiveHeroPill] = useState(0);
@@ -702,13 +705,25 @@ export default function Login() {
 
                 <div>
                   <label className="label">Password</label>
-                  <input
-                    className="input"
-                    type="password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    placeholder="Enter your password"
-                  />
+                  <div className="relative">
+                    <input
+                      className="input pr-12"
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      placeholder="Enter your password"
+                    />
+                    <button
+                      aria-label={
+                        showPassword ? 'Hide password' : 'Show password'
+                      }
+                      className="absolute right-3 top-1/2 inline-flex -translate-y-1/2 items-center justify-center rounded-full p-2 text-stone-400 transition hover:bg-white/10 hover:text-white"
+                      type="button"
+                      onClick={() => setShowPassword((current) => !current)}
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex flex-col gap-3 sm:flex-row">

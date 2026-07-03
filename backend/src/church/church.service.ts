@@ -57,6 +57,10 @@ import {
   DiscipleshipDuplicateReview,
   DiscipleshipDuplicateReviewStatus,
 } from '../entities/discipleship-duplicate-review.entity';
+import {
+  DiscipleshipFollowUp,
+  DiscipleshipFollowUpStatus,
+} from '../entities/discipleship-follow-up.entity';
 import { DiscipleshipGroup } from '../entities/discipleship-group.entity';
 import {
   DiscipleshipMatchCandidate,
@@ -176,6 +180,8 @@ export class ChurchService {
     private readonly discipleshipAttendanceRepo: Repository<DiscipleshipAttendance>,
     @InjectRepository(DiscipleshipDuplicateReview)
     private readonly discipleshipDuplicateReviewRepo: Repository<DiscipleshipDuplicateReview>,
+    @InjectRepository(DiscipleshipFollowUp)
+    private readonly discipleshipFollowUpRepo: Repository<DiscipleshipFollowUp>,
     @InjectRepository(SmsAddressBook)
     private readonly addressBookRepo: Repository<SmsAddressBook>,
     @InjectRepository(SmsAddressBookContact)
@@ -1563,6 +1569,166 @@ export class ChurchService {
         ),
       },
     };
+  }
+
+  async listDiscipleshipFollowUps(churchId: string, memberId: string) {
+    const member = await this.ensureDiscipleshipMemberExists(
+      churchId,
+      memberId,
+    );
+    const records = await this.discipleshipFollowUpRepo.find({
+      where: { churchId, memberId: member.id },
+      relations: ['recordedByUser'],
+      order: { sessionDate: 'DESC', createdAt: 'DESC' },
+      take: 100,
+    });
+
+    return records.map((record) => this.mapDiscipleshipFollowUp(record));
+  }
+
+  async createDiscipleshipFollowUp(
+    churchId: string,
+    recordedByUserId: string,
+    memberId: string,
+    body: any,
+  ) {
+    const member = await this.ensureDiscipleshipMemberExists(
+      churchId,
+      memberId,
+    );
+    const sessionDate =
+      this.normalizeDateOnly(body?.sessionDate) ||
+      this.getNairobiDateParts().date;
+    const discussionSummary = this.normalizeOptionalText(
+      body?.discussionSummary || body?.summary,
+      2000,
+    );
+    const issueRaised = this.normalizeOptionalText(body?.issueRaised, 2000);
+    const proposedSolutions = this.normalizeOptionalText(
+      body?.proposedSolutions,
+      2000,
+    );
+    const nextProposedVisitDate =
+      this.normalizeDateOnly(
+        body?.nextProposedVisitDate || body?.nextVisitDate,
+      ) || null;
+    const nextVisitNotes = this.normalizeOptionalText(
+      body?.nextVisitNotes,
+      2000,
+    );
+
+    if (
+      !discussionSummary &&
+      !issueRaised &&
+      !proposedSolutions &&
+      !nextProposedVisitDate &&
+      !nextVisitNotes
+    ) {
+      throw new BadRequestException(
+        'Record a summary, issue, proposed solution, or next proposed visit',
+      );
+    }
+
+    const status = this.normalizeDiscipleshipFollowUpStatus(body?.status);
+    const saved = await this.discipleshipFollowUpRepo.save(
+      this.discipleshipFollowUpRepo.create({
+        churchId,
+        memberId: member.id,
+        sessionDate,
+        discussionSummary,
+        issueRaised,
+        proposedSolutions,
+        nextProposedVisitDate,
+        nextVisitNotes,
+        status,
+        recordedByUserId,
+        completedAt:
+          status === DiscipleshipFollowUpStatus.COMPLETED ? new Date() : null,
+      }),
+    );
+
+    const record = await this.discipleshipFollowUpRepo.findOne({
+      where: { id: saved.id, churchId },
+      relations: ['recordedByUser'],
+    });
+    return this.mapDiscipleshipFollowUp(record || saved);
+  }
+
+  async updateDiscipleshipFollowUp(
+    churchId: string,
+    _updatedByUserId: string,
+    followUpId: string,
+    body: any,
+  ) {
+    const id = this.normalizeOptionalText(followUpId, 36);
+    if (!id) {
+      throw new BadRequestException('Follow-up record is required');
+    }
+    const record = await this.discipleshipFollowUpRepo.findOne({
+      where: { id, churchId },
+      relations: ['recordedByUser'],
+    });
+    if (!record) {
+      throw new NotFoundException('One-on-one follow-up record not found');
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body || {}, 'sessionDate')) {
+      record.sessionDate =
+        this.normalizeDateOnly(body.sessionDate) ||
+        this.getNairobiDateParts().date;
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(body || {}, 'discussionSummary') ||
+      Object.prototype.hasOwnProperty.call(body || {}, 'summary')
+    ) {
+      record.discussionSummary = this.normalizeOptionalText(
+        body.discussionSummary || body.summary,
+        2000,
+      );
+    }
+    if (Object.prototype.hasOwnProperty.call(body || {}, 'issueRaised')) {
+      record.issueRaised = this.normalizeOptionalText(body.issueRaised, 2000);
+    }
+    if (Object.prototype.hasOwnProperty.call(body || {}, 'proposedSolutions')) {
+      record.proposedSolutions = this.normalizeOptionalText(
+        body.proposedSolutions,
+        2000,
+      );
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(body || {}, 'nextProposedVisitDate') ||
+      Object.prototype.hasOwnProperty.call(body || {}, 'nextVisitDate')
+    ) {
+      record.nextProposedVisitDate =
+        this.normalizeDateOnly(
+          body.nextProposedVisitDate || body.nextVisitDate,
+        ) || null;
+    }
+    if (Object.prototype.hasOwnProperty.call(body || {}, 'nextVisitNotes')) {
+      record.nextVisitNotes = this.normalizeOptionalText(
+        body.nextVisitNotes,
+        2000,
+      );
+    }
+    if (Object.prototype.hasOwnProperty.call(body || {}, 'status')) {
+      const nextStatus = this.normalizeDiscipleshipFollowUpStatus(
+        body.status,
+        record.status,
+      );
+      if (
+        nextStatus === DiscipleshipFollowUpStatus.COMPLETED &&
+        record.status !== DiscipleshipFollowUpStatus.COMPLETED
+      ) {
+        record.completedAt = new Date();
+      }
+      if (nextStatus !== DiscipleshipFollowUpStatus.COMPLETED) {
+        record.completedAt = null;
+      }
+      record.status = nextStatus;
+    }
+
+    const saved = await this.discipleshipFollowUpRepo.save(record);
+    return this.mapDiscipleshipFollowUp(saved);
   }
 
   async markDiscipleshipAttendance(
@@ -5568,6 +5734,69 @@ export class ChurchService {
     }
 
     throw new BadRequestException('Member status must be active or inactive');
+  }
+
+  private normalizeDiscipleshipFollowUpStatus(
+    value: unknown,
+    fallback: DiscipleshipFollowUpStatus = DiscipleshipFollowUpStatus.OPEN,
+  ) {
+    const status = this.normalizeOptionalText(value, 20);
+    if (!status) {
+      return fallback;
+    }
+
+    if (
+      status === DiscipleshipFollowUpStatus.OPEN ||
+      status === DiscipleshipFollowUpStatus.COMPLETED ||
+      status === DiscipleshipFollowUpStatus.CANCELLED
+    ) {
+      return status;
+    }
+
+    throw new BadRequestException(
+      'Follow-up status must be open, completed, or cancelled',
+    );
+  }
+
+  private async ensureDiscipleshipMemberExists(
+    churchId: string,
+    memberId: string,
+  ) {
+    const id = this.normalizeOptionalText(memberId, 36);
+    if (!id) {
+      throw new BadRequestException('Discipleship member is required');
+    }
+    const member = await this.discipleshipMemberRepo.findOne({
+      where: { id, churchId },
+    });
+    if (!member) {
+      throw new NotFoundException('Discipleship member not found');
+    }
+    return member;
+  }
+
+  private mapDiscipleshipFollowUp(record: DiscipleshipFollowUp) {
+    return {
+      id: record.id,
+      churchId: record.churchId,
+      memberId: record.memberId,
+      sessionDate: record.sessionDate,
+      discussionSummary: record.discussionSummary,
+      issueRaised: record.issueRaised,
+      proposedSolutions: record.proposedSolutions,
+      nextProposedVisitDate: record.nextProposedVisitDate,
+      nextVisitNotes: record.nextVisitNotes,
+      status: record.status,
+      completedAt: record.completedAt,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      recordedByUser: record.recordedByUser
+        ? {
+            id: record.recordedByUser.id,
+            name: record.recordedByUser.name,
+          }
+        : null,
+    };
   }
 
   private normalizeDateOnly(value: unknown) {

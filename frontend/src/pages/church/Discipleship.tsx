@@ -21,7 +21,7 @@ import {
   useState,
 } from 'react';
 import toast from 'react-hot-toast';
-import api, { getSession } from '../../services/api';
+import api, { getSession, hasChurchPermission } from '../../services/api';
 
 type DiscipleshipTab = 'attendance' | 'members';
 type MemberDetailSection = 'attendance' | 'contributions';
@@ -118,6 +118,27 @@ interface DiscipleshipAttendance {
   eventName?: string | null;
   member?: DiscipleshipMember;
   group?: DiscipleshipGroup | null;
+}
+
+type DiscipleshipFollowUpStatus = 'open' | 'completed' | 'cancelled';
+
+interface DiscipleshipFollowUp {
+  id: string;
+  memberId: string;
+  sessionDate: string;
+  discussionSummary?: string | null;
+  issueRaised?: string | null;
+  proposedSolutions?: string | null;
+  nextProposedVisitDate?: string | null;
+  nextVisitNotes?: string | null;
+  status: DiscipleshipFollowUpStatus;
+  completedAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  recordedByUser?: {
+    id: string;
+    name: string;
+  } | null;
 }
 
 interface BatchImportSummary {
@@ -252,6 +273,432 @@ function MemberBioSummary({ member }: { member: DiscipleshipMember }) {
         <span className="text-stone-400">Bio notes:</span>{' '}
         {member.notes || 'No notes recorded'}
       </p>
+    </div>
+  );
+}
+
+function createFollowUpForm() {
+  return {
+    sessionDate: getNairobiToday(),
+    discussionSummary: '',
+    issueRaised: '',
+    proposedSolutions: '',
+    nextProposedVisitDate: '',
+    nextVisitNotes: '',
+    status: 'open' as DiscipleshipFollowUpStatus,
+  };
+}
+
+function formatFollowUpStatus(status: DiscipleshipFollowUpStatus) {
+  if (status === 'completed') {
+    return 'Completed';
+  }
+  if (status === 'cancelled') {
+    return 'Cancelled';
+  }
+  return 'Open';
+}
+
+function MemberFollowUpPanel({
+  memberId,
+  canManage,
+}: {
+  memberId: string;
+  canManage: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingFollowUpId, setEditingFollowUpId] = useState<string | null>(
+    null,
+  );
+  const [form, setForm] = useState(createFollowUpForm);
+  const { data: followUps = [], isLoading } = useQuery<DiscipleshipFollowUp[]>({
+    queryKey: ['discipleship-follow-ups', memberId],
+    enabled: Boolean(memberId),
+    queryFn: () =>
+      api
+        .get(`/church/discipleship/members/${memberId}/follow-ups`)
+        .then((response) => response.data),
+  });
+
+  const refreshFollowUps = () => {
+    queryClient.invalidateQueries({
+      queryKey: ['discipleship-follow-ups', memberId],
+    });
+    queryClient.invalidateQueries({ queryKey: ['discipleship-member-detail'] });
+    queryClient.invalidateQueries({
+      queryKey: ['discipleship-panel-member-detail'],
+    });
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        sessionDate: form.sessionDate,
+        discussionSummary: form.discussionSummary,
+        issueRaised: form.issueRaised,
+        proposedSolutions: form.proposedSolutions,
+        nextProposedVisitDate: form.nextProposedVisitDate || null,
+        nextVisitNotes: form.nextVisitNotes,
+        status: form.status,
+      };
+      if (editingFollowUpId) {
+        return api
+          .patch(`/church/discipleship/follow-ups/${editingFollowUpId}`, payload)
+          .then((response) => response.data);
+      }
+      return api
+        .post(`/church/discipleship/members/${memberId}/follow-ups`, payload)
+        .then((response) => response.data);
+    },
+    onSuccess: () => {
+      toast.success(
+        editingFollowUpId ? 'One-on-one updated' : 'One-on-one recorded',
+      );
+      setIsFormOpen(false);
+      setEditingFollowUpId(null);
+      setForm(createFollowUpForm());
+      refreshFollowUps();
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message || 'Unable to save one-on-one follow-up',
+      );
+    },
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: ({
+      followUpId,
+      status,
+    }: {
+      followUpId: string;
+      status: DiscipleshipFollowUpStatus;
+    }) =>
+      api
+        .patch(`/church/discipleship/follow-ups/${followUpId}`, { status })
+        .then((response) => response.data),
+    onSuccess: (_data, variables) => {
+      toast.success(
+        variables.status === 'completed'
+          ? 'Follow-up marked completed'
+          : 'Follow-up reopened',
+      );
+      refreshFollowUps();
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message || 'Unable to update follow-up status',
+      );
+    },
+  });
+
+  const openEditor = (record?: DiscipleshipFollowUp) => {
+    setEditingFollowUpId(record?.id || null);
+    setForm(
+      record
+        ? {
+            sessionDate: record.sessionDate || getNairobiToday(),
+            discussionSummary: record.discussionSummary || '',
+            issueRaised: record.issueRaised || '',
+            proposedSolutions: record.proposedSolutions || '',
+            nextProposedVisitDate: record.nextProposedVisitDate || '',
+            nextVisitNotes: record.nextVisitNotes || '',
+            status: record.status || 'open',
+          }
+        : createFollowUpForm(),
+    );
+    setIsFormOpen(true);
+  };
+
+  const submitFollowUp = (event: FormEvent) => {
+    event.preventDefault();
+    saveMutation.mutate();
+  };
+
+  const latestOpenFollowUp = followUps.find((item) => item.status === 'open');
+
+  return (
+    <div className="rounded-3xl border border-white/10 bg-black/10 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
+            One-on-one
+          </p>
+          <h4 className="mt-1 font-semibold text-white">
+            Pastoral follow-up
+          </h4>
+          {latestOpenFollowUp?.nextProposedVisitDate ? (
+            <p className="mt-1 text-xs text-amber-100">
+              Next proposed visit: {latestOpenFollowUp.nextProposedVisitDate}
+            </p>
+          ) : null}
+        </div>
+        {canManage ? (
+          <button
+            className="btn-secondary px-3 py-2 text-xs"
+            type="button"
+            onClick={() => openEditor()}
+          >
+            <Plus size={15} />
+            Record
+          </button>
+        ) : null}
+      </div>
+
+      {isFormOpen ? (
+        <form className="mt-4 space-y-3" onSubmit={submitFollowUp}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-2">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                Session date
+              </span>
+              <input
+                className="input-compact"
+                required
+                type="date"
+                value={form.sessionDate}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    sessionDate: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                Status
+              </span>
+              <select
+                className="input-compact"
+                value={form.status}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    status: event.target.value as DiscipleshipFollowUpStatus,
+                  }))
+                }
+              >
+                <option value="open">Open</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </label>
+          </div>
+
+          <label className="space-y-2">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+              Discussion summary
+            </span>
+            <textarea
+              className="input min-h-20"
+              placeholder="What was discussed?"
+              value={form.discussionSummary}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  discussionSummary: event.target.value,
+                }))
+              }
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+              Issue raised
+            </span>
+            <textarea
+              className="input min-h-16"
+              placeholder="Need, concern, prayer request, or situation"
+              value={form.issueRaised}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  issueRaised: event.target.value,
+                }))
+              }
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+              Proposed solutions
+            </span>
+            <textarea
+              className="input min-h-20"
+              placeholder="Agreed next steps, support plan, or referral"
+              value={form.proposedSolutions}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  proposedSolutions: event.target.value,
+                }))
+              }
+            />
+          </label>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-2">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                Next proposed visit
+              </span>
+              <input
+                className="input-compact"
+                type="date"
+                value={form.nextProposedVisitDate}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    nextProposedVisitDate: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                Visit notes
+              </span>
+              <input
+                className="input-compact"
+                placeholder="Optional visit note"
+                value={form.nextVisitNotes}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    nextVisitNotes: event.target.value,
+                  }))
+                }
+              />
+            </label>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              className="btn-secondary justify-center sm:flex-1"
+              disabled={saveMutation.isPending}
+              type="button"
+              onClick={() => {
+                setIsFormOpen(false);
+                setEditingFollowUpId(null);
+                setForm(createFollowUpForm());
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              className="btn-primary justify-center sm:flex-1"
+              disabled={saveMutation.isPending}
+              type="submit"
+            >
+              {editingFollowUpId ? 'Save follow-up' : 'Record follow-up'}
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      <div className="mt-4 max-h-72 space-y-2 overflow-y-auto pr-1">
+        {isLoading ? (
+          <p className="rounded-2xl border border-white/10 p-3 text-sm text-stone-300">
+            Loading follow-ups...
+          </p>
+        ) : followUps.length === 0 ? (
+          <p className="rounded-2xl border border-white/10 p-3 text-sm text-stone-300">
+            No one-on-one follow-up has been recorded yet.
+          </p>
+        ) : (
+          followUps.map((item) => (
+            <div
+              key={item.id}
+              className="rounded-2xl border border-white/10 bg-white/[0.04] p-3"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-white">
+                    {item.sessionDate}
+                  </p>
+                  <p className="mt-1 text-xs text-stone-400">
+                    {formatFollowUpStatus(item.status)}
+                    {item.recordedByUser?.name
+                      ? ` by ${item.recordedByUser.name}`
+                      : ''}
+                  </p>
+                </div>
+                <span
+                  className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                    item.status === 'completed'
+                      ? 'border-emerald-300/30 text-emerald-100'
+                      : item.status === 'cancelled'
+                        ? 'border-stone-300/20 text-stone-300'
+                        : 'border-amber-200/30 text-amber-100'
+                  }`}
+                >
+                  {formatFollowUpStatus(item.status)}
+                </span>
+              </div>
+
+              {item.issueRaised ? (
+                <p className="mt-3 text-sm text-stone-200">
+                  <span className="text-stone-400">Issue:</span>{' '}
+                  {item.issueRaised}
+                </p>
+              ) : null}
+              {item.proposedSolutions ? (
+                <p className="mt-2 text-sm text-stone-200">
+                  <span className="text-stone-400">Proposed solution:</span>{' '}
+                  {item.proposedSolutions}
+                </p>
+              ) : null}
+              {item.nextProposedVisitDate ? (
+                <p className="mt-2 text-xs font-semibold text-amber-100">
+                  Next proposed visit: {item.nextProposedVisitDate}
+                </p>
+              ) : null}
+
+              {canManage ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    className="btn-secondary px-3 py-2 text-xs"
+                    type="button"
+                    onClick={() => openEditor(item)}
+                  >
+                    Edit
+                  </button>
+                  {item.status === 'completed' ? (
+                    <button
+                      className="btn-secondary px-3 py-2 text-xs"
+                      disabled={statusMutation.isPending}
+                      type="button"
+                      onClick={() =>
+                        statusMutation.mutate({
+                          followUpId: item.id,
+                          status: 'open',
+                        })
+                      }
+                    >
+                      Reopen
+                    </button>
+                  ) : (
+                    <button
+                      className="btn-secondary px-3 py-2 text-xs"
+                      disabled={statusMutation.isPending}
+                      type="button"
+                      onClick={() =>
+                        statusMutation.mutate({
+                          followUpId: item.id,
+                          status: 'completed',
+                        })
+                      }
+                    >
+                      Mark completed
+                    </button>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }
@@ -503,6 +950,10 @@ export default function ChurchDiscipleship() {
   const isPriest =
     session?.user?.role === 'priest' ||
     session?.user?.role === 'church_admin';
+  const canManageDiscipleship = hasChurchPermission(
+    session?.user,
+    'discipleship.manage',
+  );
   const [activeTab, setActiveTab] = useState<DiscipleshipTab>('attendance');
   const [memberSearch, setMemberSearch] = useState('');
   const [memberGroupFilter, setMemberGroupFilter] = useState('');
@@ -567,6 +1018,9 @@ export default function ChurchDiscipleship() {
     });
     queryClient.invalidateQueries({
       queryKey: ['discipleship-duplicate-members'],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ['discipleship-follow-ups'],
     });
   }, [queryClient, summary?.syncing]);
 
@@ -729,6 +1183,9 @@ export default function ChurchDiscipleship() {
     });
     queryClient.invalidateQueries({
       queryKey: ['discipleship-panel-member-attendance'],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ['discipleship-follow-ups'],
     });
   };
 
@@ -1738,6 +2195,10 @@ export default function ChurchDiscipleship() {
                 <MemberActivitySummary
                   member={panelMember}
                   showContributions={isPriest}
+                />
+                <MemberFollowUpPanel
+                  canManage={canManageDiscipleship}
+                  memberId={panelMember.id}
                 />
                 <div>
                   <p className="text-xs uppercase tracking-[0.18em] text-stone-400">

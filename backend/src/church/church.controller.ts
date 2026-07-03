@@ -182,6 +182,51 @@ export class ChurchController {
     );
   }
 
+  @Get('discipleship/members/:memberId/follow-ups')
+  @Permissions(ChurchPermission.DISCIPLESHIP_VIEW)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
+  listDiscipleshipFollowUps(
+    @Request() req: any,
+    @Param('memberId') memberId: string,
+  ) {
+    return this.churchService.listDiscipleshipFollowUps(
+      req.user.churchId,
+      memberId,
+    );
+  }
+
+  @Post('discipleship/members/:memberId/follow-ups')
+  @Permissions(ChurchPermission.DISCIPLESHIP_MANAGE)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
+  createDiscipleshipFollowUp(
+    @Request() req: any,
+    @Param('memberId') memberId: string,
+    @Body() body: any,
+  ) {
+    return this.churchService.createDiscipleshipFollowUp(
+      req.user.churchId,
+      req.user.id,
+      memberId,
+      body,
+    );
+  }
+
+  @Patch('discipleship/follow-ups/:followUpId')
+  @Permissions(ChurchPermission.DISCIPLESHIP_MANAGE)
+  @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
+  updateDiscipleshipFollowUp(
+    @Request() req: any,
+    @Param('followUpId') followUpId: string,
+    @Body() body: any,
+  ) {
+    return this.churchService.updateDiscipleshipFollowUp(
+      req.user.churchId,
+      req.user.id,
+      followUpId,
+      body,
+    );
+  }
+
   @Patch('discipleship/members/:memberId')
   @Permissions(ChurchPermission.DISCIPLESHIP_MANAGE)
   @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
