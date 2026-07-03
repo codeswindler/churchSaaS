@@ -719,6 +719,7 @@ async function runSeed(connection, options) {
     generatedActiveTarget: 0,
     generatedMembersActivated: 0,
     generatedMembersDeactivated: 0,
+    memberContributorLinksBackfilled: 0,
     linksCreated: 0,
     groupsCreated: 0,
     membershipsCreated: 0,
@@ -805,6 +806,7 @@ async function runSeed(connection, options) {
       contributors,
       summary,
     );
+    await backfillDemoMemberContributorLinks(connection, church.id, summary);
     await rebalanceGeneratedMemberStatuses(
       connection,
       church.id,
@@ -854,18 +856,30 @@ async function getAgapeMemberSeedTargets(
   options,
   summary,
 ) {
+  const generatedMemberExists = `EXISTS (
+    SELECT 1
+    FROM contributors contributor
+    LEFT JOIN discipleship_member_contributors link
+      ON link.churchId = member.churchId
+     AND link.memberId = member.id
+     AND link.contributorId = contributor.id
+     AND link.isConfirmed = 1
+    WHERE contributor.churchId = member.churchId
+      AND contributor.memberNumber LIKE ?
+      AND (
+        contributor.id = member.contributorId
+        OR link.id IS NOT NULL
+      )
+  )`;
   const [rows] = await connection.query(
     `SELECT
        COUNT(member.id) AS totalMembers,
        SUM(CASE WHEN member.status = 'active' THEN 1 ELSE 0 END) AS activeMembers,
-       SUM(CASE WHEN contributor.memberNumber LIKE ? THEN 1 ELSE 0 END) AS generatedMembers,
-       SUM(CASE WHEN contributor.memberNumber LIKE ? AND member.status = 'active' THEN 1 ELSE 0 END) AS generatedActiveMembers,
-       SUM(CASE WHEN contributor.id IS NULL OR contributor.memberNumber NOT LIKE ? THEN 1 ELSE 0 END) AS nonGeneratedMembers,
-       SUM(CASE WHEN (contributor.id IS NULL OR contributor.memberNumber NOT LIKE ?) AND member.status = 'active' THEN 1 ELSE 0 END) AS nonGeneratedActiveMembers
+       SUM(CASE WHEN ${generatedMemberExists} THEN 1 ELSE 0 END) AS generatedMembers,
+       SUM(CASE WHEN ${generatedMemberExists} AND member.status = 'active' THEN 1 ELSE 0 END) AS generatedActiveMembers,
+       SUM(CASE WHEN NOT ${generatedMemberExists} THEN 1 ELSE 0 END) AS nonGeneratedMembers,
+       SUM(CASE WHEN NOT ${generatedMemberExists} AND member.status = 'active' THEN 1 ELSE 0 END) AS nonGeneratedActiveMembers
      FROM discipleship_members member
-     LEFT JOIN contributors contributor
-       ON contributor.id = member.contributorId
-      AND contributor.churchId = member.churchId
      WHERE member.churchId = ?`,
     [
       `${MEMBER_PREFIX}-%`,
@@ -886,12 +900,15 @@ async function getAgapeMemberSeedTargets(
   summary.nonGeneratedMembers = nonGeneratedMembers;
   summary.nonGeneratedActiveMembers = nonGeneratedActiveMembers;
   summary.generatedMemberTarget = Math.max(
-    0,
+    options.dailyContributors,
     options.memberTarget - nonGeneratedMembers,
   );
   summary.generatedActiveTarget = Math.min(
     summary.generatedMemberTarget,
-    Math.max(0, options.activeMemberTarget - nonGeneratedActiveMembers),
+    Math.max(
+      options.dailyContributors,
+      options.activeMemberTarget - nonGeneratedActiveMembers,
+    ),
   );
 
   return {
@@ -1245,6 +1262,27 @@ async function ensureDiscipleshipMembers(
   );
 
   return linkByContributorId;
+}
+
+async function backfillDemoMemberContributorLinks(connection, churchId, summary) {
+  const [result] = await connection.query(
+    `UPDATE discipleship_members member
+     JOIN discipleship_member_contributors link
+       ON link.churchId = member.churchId
+      AND link.memberId = member.id
+      AND link.isConfirmed = 1
+     JOIN contributors contributor
+       ON contributor.id = link.contributorId
+      AND contributor.churchId = member.churchId
+      AND contributor.memberNumber LIKE ?
+     SET member.contributorId = contributor.id,
+         member.updatedAt = NOW(6)
+     WHERE member.churchId = ?
+       AND member.contributorId IS NULL`,
+    [`${MEMBER_PREFIX}-%`, churchId],
+  );
+
+  summary.memberContributorLinksBackfilled = result.affectedRows || 0;
 }
 
 async function rebalanceGeneratedMemberStatuses(
@@ -1799,6 +1837,11 @@ function printSummary(options, summary) {
   console.log(
     `Generated member status balanced: ${summary.generatedMembersActivated} activated, ${summary.generatedMembersDeactivated} deactivated`,
   );
+  if (summary.memberContributorLinksBackfilled) {
+    console.log(
+      `Member contributor links backfilled: ${summary.memberContributorLinksBackfilled}`,
+    );
+  }
   console.log(`Member links created: ${summary.linksCreated}`);
   console.log(`Groups created: ${summary.groupsCreated}`);
   console.log(`Memberships created: ${summary.membershipsCreated}`);

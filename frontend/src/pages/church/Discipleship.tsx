@@ -21,7 +21,7 @@ import {
   useState,
 } from 'react';
 import toast from 'react-hot-toast';
-import api, { getSession, hasChurchPermission } from '../../services/api';
+import api, { getSession } from '../../services/api';
 
 type DiscipleshipTab = 'attendance' | 'members';
 type MemberDetailSection = 'attendance' | 'contributions';
@@ -950,10 +950,6 @@ export default function ChurchDiscipleship() {
   const isPriest =
     session?.user?.role === 'priest' ||
     session?.user?.role === 'church_admin';
-  const canManageDiscipleship = hasChurchPermission(
-    session?.user,
-    'discipleship.manage',
-  );
   const [activeTab, setActiveTab] = useState<DiscipleshipTab>('attendance');
   const [memberSearch, setMemberSearch] = useState('');
   const [memberGroupFilter, setMemberGroupFilter] = useState('');
@@ -1943,6 +1939,14 @@ export default function ChurchDiscipleship() {
               <button
                 className="btn-secondary justify-center"
                 type="button"
+                onClick={() => openGroupEditor()}
+              >
+                <Plus size={17} />
+                Add group
+              </button>
+              <button
+                className="btn-secondary justify-center"
+                type="button"
                 onClick={() => {
                   setBatchSummary(null);
                   setBatchFile(null);
@@ -2170,6 +2174,52 @@ export default function ChurchDiscipleship() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                  Groups
+                </p>
+                <h3 className="mt-2 text-lg font-semibold text-white">
+                  Member categories
+                </h3>
+                <p className="mt-1 text-xs text-stone-400">
+                  Create and edit groups used for attendance and member filters.
+                </p>
+              </div>
+              <button
+                className="btn-primary px-3 py-2"
+                type="button"
+                onClick={() => openGroupEditor()}
+              >
+                <Plus size={16} />
+                Add
+              </button>
+            </div>
+            <div className="mt-4 space-y-2">
+              {groups.slice(0, 8).map((group) => (
+                <button
+                  key={group.id}
+                  className="w-full rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-left transition hover:bg-white/5"
+                  type="button"
+                  onClick={() => openGroupEditor(group)}
+                >
+                  <span className="block font-semibold text-white">
+                    {group.name}
+                  </span>
+                  <span className="mt-1 block text-xs text-stone-400">
+                    {group.memberCount || 0} members
+                  </span>
+                </button>
+              ))}
+              {groups.length === 0 ? (
+                <p className="rounded-2xl border border-white/10 p-3 text-sm text-stone-300">
+                  No groups created yet.
+                </p>
+              ) : null}
+            </div>
+          </section>
+
+          <section className="panel p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
                   Selected disciple
                 </p>
                 <h3 className="mt-2 text-xl font-semibold text-white">
@@ -2195,10 +2245,6 @@ export default function ChurchDiscipleship() {
                 <MemberActivitySummary
                   member={panelMember}
                   showContributions={isPriest}
-                />
-                <MemberFollowUpPanel
-                  canManage={canManageDiscipleship}
-                  memberId={panelMember.id}
                 />
                 <div>
                   <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
@@ -2238,48 +2284,6 @@ export default function ChurchDiscipleship() {
             )}
           </section>
 
-          <section className="panel p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-stone-400">
-                  Groups
-                </p>
-                <h3 className="mt-2 text-lg font-semibold text-white">
-                  Member categories
-                </h3>
-              </div>
-              <button
-                className="btn-primary px-3 py-2"
-                type="button"
-                onClick={() => openGroupEditor()}
-              >
-                <Plus size={16} />
-                Add
-              </button>
-            </div>
-            <div className="mt-4 space-y-2">
-              {groups.slice(0, 8).map((group) => (
-                <button
-                  key={group.id}
-                  className="w-full rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-left transition hover:bg-white/5"
-                  type="button"
-                  onClick={() => openGroupEditor(group)}
-                >
-                  <span className="block font-semibold text-white">
-                    {group.name}
-                  </span>
-                  <span className="mt-1 block text-xs text-stone-400">
-                    {group.memberCount || 0} members
-                  </span>
-                </button>
-              ))}
-              {groups.length === 0 ? (
-                <p className="rounded-2xl border border-white/10 p-3 text-sm text-stone-300">
-                  No groups created yet.
-                </p>
-              ) : null}
-            </div>
-          </section>
         </aside>
         </section>
       )}
