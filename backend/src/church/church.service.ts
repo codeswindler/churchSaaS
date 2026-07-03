@@ -430,7 +430,9 @@ export class ChurchService {
     const qb = this.discipleshipMemberRepo
       .createQueryBuilder('member')
       .where('member.churchId = :churchId', { churchId })
-      .orderBy('member.fullName', 'ASC');
+      .orderBy('member.enrollmentDate', 'ASC')
+      .addOrderBy('member.createdAt', 'ASC')
+      .addOrderBy('member.fullName', 'ASC');
 
     if (query.search) {
       const search = `%${query.search}%`;
@@ -868,7 +870,7 @@ export class ChurchService {
 
   async listDiscipleshipMatchCandidates(churchId: string) {
     this.triggerDiscipleshipTransactionSync(churchId);
-    return this.discipleshipMatchCandidateRepo.find({
+    const candidates = await this.discipleshipMatchCandidateRepo.find({
       where: {
         churchId,
         status: DiscipleshipMatchCandidateStatus.PENDING,
@@ -876,6 +878,26 @@ export class ChurchService {
       relations: ['contributor', 'candidateMember'],
       order: { matchScore: 'DESC', createdAt: 'ASC' },
     });
+    const contributorIds = [
+      ...new Set(candidates.map((candidate) => candidate.contributorId)),
+    ].filter(Boolean);
+    if (contributorIds.length === 0) {
+      return candidates;
+    }
+    const confirmedLinks = await this.discipleshipMemberContributorRepo.find({
+      where: {
+        churchId,
+        contributorId: In(contributorIds),
+        isConfirmed: true,
+      },
+      select: ['contributorId'],
+    });
+    const resolvedContributorIds = new Set(
+      confirmedLinks.map((link) => link.contributorId),
+    );
+    return candidates.filter(
+      (candidate) => !resolvedContributorIds.has(candidate.contributorId),
+    );
   }
 
   private async buildDiscipleshipDuplicateClusterCandidates(churchId: string) {
@@ -1085,8 +1107,6 @@ export class ChurchService {
         union(left.id, right.id, 400, 'same phone number');
       } else if (!identityConflict && nameScore >= 180) {
         union(left.id, right.id, nameScore, 'matching name parts');
-      } else if (!identityConflict && nameScore >= 70) {
-        union(left.id, right.id, nameScore, 'same first name');
       }
     });
 
@@ -4032,9 +4052,6 @@ export class ChurchService {
     const shared = [...leftSet].filter((part) => rightSet.has(part));
     if (shared.length >= 2) {
       return shared.length * 80 - Math.abs(leftSet.size - rightSet.size) * 10;
-    }
-    if (leftParts.length === 1 || rightParts.length === 1) {
-      return 70;
     }
     return 0;
   }

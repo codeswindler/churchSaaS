@@ -236,6 +236,10 @@ const FAMILY_NAMES = [
 
 const UNIQUE_FEMALE_FIRST_NAMES = [...new Set(FEMALE_FIRST_NAMES)];
 const UNIQUE_MALE_FIRST_NAMES = [...new Set(MALE_FIRST_NAMES)];
+const GIVEN_NAME_VARIANTS = [
+  ...UNIQUE_MALE_FIRST_NAMES,
+  ...UNIQUE_FEMALE_FIRST_NAMES,
+].filter((name, index, items) => items.indexOf(name) === index);
 
 const GROUP_DEFINITIONS = [
   ['Agape Home Cell 01 - Uplands', 'Cell group for Uplands families.'],
@@ -574,13 +578,14 @@ function demoPaymentReference(date, seq) {
 }
 
 function demoProfile(seq) {
-  const gender = seq % 2 === 0 ? 'female' : 'male';
-  const firstNames =
-    gender === 'female' ? UNIQUE_FEMALE_FIRST_NAMES : UNIQUE_MALE_FIRST_NAMES;
-  const genderOrdinal = Math.floor((seq - 1) / 2);
+  const firstNames = GIVEN_NAME_VARIANTS;
+  const displayIndex = seq - 1;
   const pairCount = firstNames.length * FAMILY_NAMES.length;
-  const pairIndex = (genderOrdinal * 7919) % pairCount;
+  const pairIndex = (displayIndex * 7919) % pairCount;
   const firstName = firstNames[pairIndex % firstNames.length];
+  const gender = UNIQUE_FEMALE_FIRST_NAMES.includes(firstName)
+    ? 'female'
+    : 'male';
   const familyIndex = Math.floor(pairIndex / firstNames.length);
   const familyName = FAMILY_NAMES[familyIndex];
   let middleName = null;
@@ -751,6 +756,7 @@ async function runSeed(connection, options) {
     refreshedContributionsDeleted: 0,
     refreshedAttendanceDeleted: 0,
     seedContributionsConfirmed: 0,
+    resolvedMatchCandidatesDismissed: 0,
     contributionsCreated: 0,
     attendanceCreated: 0,
     skippedDailySeed: false,
@@ -870,6 +876,8 @@ async function runSeed(connection, options) {
     );
     logStep('Confirming existing Agape seed contributions...');
     await normalizeSeedContributionStatuses(connection, church.id, summary);
+    logStep('Dismissing resolved Agape demo match candidates...');
+    await dismissResolvedGeneratedMatchCandidates(connection, church.id, summary);
     if (!options.membersOnly) {
       logStep('Loading active daily contributor pool...');
       const activeContributors = await getActiveDemoContributors(
@@ -1264,6 +1272,32 @@ async function normalizeSeedContributionStatuses(connection, churchId, summary) 
   );
 
   summary.seedContributionsConfirmed = result.affectedRows || 0;
+}
+
+async function dismissResolvedGeneratedMatchCandidates(
+  connection,
+  churchId,
+  summary,
+) {
+  const [result] = await connection.query(
+    `UPDATE discipleship_match_candidates candidate
+     JOIN contributors contributor
+       ON contributor.id = candidate.contributorId
+      AND contributor.churchId = candidate.churchId
+      AND contributor.memberNumber LIKE ?
+     JOIN discipleship_member_contributors link
+       ON link.churchId = candidate.churchId
+      AND link.contributorId = candidate.contributorId
+      AND link.isConfirmed = 1
+     SET candidate.status = 'dismissed',
+         candidate.reviewedAt = NOW(6),
+         candidate.updatedAt = NOW(6)
+     WHERE candidate.churchId = ?
+       AND candidate.status = 'pending'`,
+    [`${MEMBER_PREFIX}-%`, churchId],
+  );
+
+  summary.resolvedMatchCandidatesDismissed = result.affectedRows || 0;
 }
 
 async function sanitizeLegacyVisibleMarkers(connection, churchId, summary) {
@@ -2072,6 +2106,11 @@ function printSummary(options, summary) {
   console.log(`Member links created: ${summary.linksCreated}`);
   console.log(`Groups created: ${summary.groupsCreated}`);
   console.log(`Memberships created: ${summary.membershipsCreated}`);
+  if (summary.resolvedMatchCandidatesDismissed) {
+    console.log(
+      `Resolved match candidates dismissed: ${summary.resolvedMatchCandidatesDismissed}`,
+    );
+  }
   if (
     summary.legacyContributionNotesSanitized ||
     summary.legacyMemberNotesSanitized ||

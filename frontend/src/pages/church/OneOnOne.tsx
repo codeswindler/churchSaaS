@@ -362,7 +362,7 @@ export default function ChurchOneOnOne() {
                   type="button"
                   onClick={() => setSelectedMemberId(member.id)}
                 >
-                  <span className="block truncate font-semibold text-white">
+                  <span className="block text-sm font-semibold leading-tight text-white">
                     {member.fullName}
                   </span>
                 </button>

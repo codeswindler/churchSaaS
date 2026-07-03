@@ -88,19 +88,6 @@ interface DiscipleshipMember {
   };
 }
 
-interface DiscipleshipMatchCandidate {
-  id: string;
-  observedName: string;
-  matchReason: string;
-  matchScore: number;
-  contributor?: {
-    id: string;
-    name: string;
-    phone?: string | null;
-  };
-  candidateMember?: DiscipleshipMember;
-}
-
 interface DiscipleshipDuplicateCluster {
   id: string;
   clusterKey: string;
@@ -1076,16 +1063,6 @@ export default function ChurchDiscipleship() {
         .then((response) => response.data),
   });
 
-  const { data: matchCandidates = [] } = useQuery<
-    DiscipleshipMatchCandidate[]
-  >({
-    queryKey: ['discipleship-matches'],
-    enabled: reviewDataEnabled,
-    queryFn: () =>
-      api
-        .get('/church/discipleship/matches')
-        .then((response) => response.data),
-  });
   const { data: duplicateClusters = [] } = useQuery<
     DiscipleshipDuplicateCluster[]
   >({
@@ -1154,16 +1131,10 @@ export default function ChurchDiscipleship() {
     if (duplicateClusters.length > 0) {
       setDuplicateReviewRequested(false);
       openDuplicateReview(duplicateClusters[0]);
-      return;
-    }
-    if (matchCandidates.length > 0) {
-      setDuplicateReviewRequested(false);
-      setActiveTab('members');
     }
   }, [
     duplicateClusters,
     duplicateReviewRequested,
-    matchCandidates.length,
     reviewDataEnabled,
   ]);
 
@@ -1172,7 +1143,6 @@ export default function ChurchDiscipleship() {
     queryClient.invalidateQueries({ queryKey: ['discipleship-members'] });
     queryClient.invalidateQueries({ queryKey: ['discipleship-groups'] });
     queryClient.invalidateQueries({ queryKey: ['discipleship-attendance'] });
-    queryClient.invalidateQueries({ queryKey: ['discipleship-matches'] });
     queryClient.invalidateQueries({
       queryKey: ['discipleship-duplicate-members'],
     });
@@ -1288,30 +1258,6 @@ export default function ChurchDiscipleship() {
           error?.message ||
           'Unable to import members',
       );
-    },
-  });
-
-  const matchReviewMutation = useMutation({
-    mutationFn: ({
-      candidateId,
-      action,
-    }: {
-      candidateId: string;
-      action: 'confirm' | 'dismiss';
-    }) =>
-      api
-        .post(`/church/discipleship/matches/${candidateId}/review`, { action })
-        .then((response) => response.data),
-    onSuccess: (_data, variables) => {
-      refreshDiscipleship();
-      toast.success(
-        variables.action === 'confirm'
-          ? 'Member identities linked'
-          : 'Potential match dismissed',
-      );
-    },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Unable to review match');
     },
   });
 
@@ -1988,91 +1934,6 @@ export default function ChurchDiscipleship() {
               </button>
             </div>
           </div>
-
-          {matchCandidates.length > 0 ? (
-            <div className="border-b border-white/10 bg-amber-200/5 p-4 sm:p-5">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.22em] text-amber-100">
-                    Potential matches
-                  </p>
-                  <h4 className="mt-1 font-semibold text-white">
-                    Confirm people whose transaction names look related
-                  </h4>
-                  <p className="mt-1 text-sm text-stone-300">
-                    These were not merged automatically because the match needs
-                    a person to confirm it.
-                  </p>
-                </div>
-                <span className="rounded-full border border-amber-200/30 px-3 py-1 text-sm font-semibold text-amber-100">
-                  {matchCandidates.length} pending
-                </span>
-              </div>
-              <div className="mt-4 grid gap-3 xl:grid-cols-2">
-                {matchCandidates.map((candidate) => (
-                  <div
-                    key={candidate.id}
-                    className="rounded-2xl border border-white/10 bg-black/10 p-4"
-                  >
-                    <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
-                      <div>
-                        <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
-                          Transaction name
-                        </p>
-                        <p className="mt-1 font-semibold text-white">
-                          {candidate.observedName ||
-                            candidate.contributor?.name ||
-                            'Unknown payer'}
-                        </p>
-                      </div>
-                      <span className="text-center text-amber-100">→</span>
-                      <div>
-                        <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
-                          Existing disciple
-                        </p>
-                        <p className="mt-1 font-semibold text-white">
-                          {candidate.candidateMember?.fullName || 'Member'}
-                        </p>
-                      </div>
-                    </div>
-                    <p className="mt-3 text-xs text-stone-400">
-                      {candidate.matchReason}
-                    </p>
-                    <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                      <button
-                        className="btn-secondary justify-center"
-                        disabled={matchReviewMutation.isPending}
-                        type="button"
-                        onClick={() =>
-                          matchReviewMutation.mutate({
-                            candidateId: candidate.id,
-                            action: 'dismiss',
-                          })
-                        }
-                      >
-                        Keep separate
-                      </button>
-                      <button
-                        className="btn-primary justify-center"
-                        disabled={matchReviewMutation.isPending}
-                        type="button"
-                        onClick={() =>
-                          matchReviewMutation.mutate({
-                            candidateId: candidate.id,
-                            action: 'confirm',
-                          })
-                        }
-                      >
-                        <CheckCircle2 size={17} />
-                        Confirm match
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
           <div className="grid gap-3 border-b border-white/10 p-3 md:grid-cols-2">
             <input
               className="input-compact"
@@ -3309,3 +3170,4 @@ export default function ChurchDiscipleship() {
     </div>
   );
 }
+
