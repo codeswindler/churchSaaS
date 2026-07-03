@@ -1289,8 +1289,12 @@ async function deleteStaleMemberContributorLinks(connection, churchId, contribut
          ON member.id = link.memberId
         AND member.churchId = link.churchId
        WHERE link.churchId = ?
-         AND member.id IS NULL
-         AND link.contributorId IN (${marks})`,
+         AND link.contributorId IN (${marks})
+         AND (
+           member.id IS NULL
+           OR member.contributorId IS NULL
+           OR member.contributorId <> link.contributorId
+         )`,
       [churchId, ...idsChunk],
     );
     deleted += result.affectedRows || 0;
