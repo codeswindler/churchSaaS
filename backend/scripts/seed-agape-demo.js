@@ -234,6 +234,9 @@ const FAMILY_NAMES = [
   'Mitei',
 ];
 
+const UNIQUE_FEMALE_FIRST_NAMES = [...new Set(FEMALE_FIRST_NAMES)];
+const UNIQUE_MALE_FIRST_NAMES = [...new Set(MALE_FIRST_NAMES)];
+
 const GROUP_DEFINITIONS = [
   ['Agape Home Cell 01 - Uplands', 'Cell group for Uplands families.'],
   ['Agape Home Cell 02 - Town', 'Cell group for town-side members.'],
@@ -573,10 +576,20 @@ function demoPaymentReference(date, seq) {
 function demoProfile(seq) {
   const gender = seq % 2 === 0 ? 'female' : 'male';
   const firstNames =
-    gender === 'female' ? FEMALE_FIRST_NAMES : MALE_FIRST_NAMES;
-  const firstName = firstNames[(seq * 7) % firstNames.length];
-  const middleName = FAMILY_NAMES[(seq * 11) % FAMILY_NAMES.length];
-  const familyName = FAMILY_NAMES[(seq * 17 + 13) % FAMILY_NAMES.length];
+    gender === 'female' ? UNIQUE_FEMALE_FIRST_NAMES : UNIQUE_MALE_FIRST_NAMES;
+  const genderOrdinal = Math.floor((seq - 1) / 2);
+  const pairCount = firstNames.length * FAMILY_NAMES.length;
+  const pairIndex = (genderOrdinal * 7919) % pairCount;
+  const firstName = firstNames[pairIndex % firstNames.length];
+  const familyIndex = Math.floor(pairIndex / firstNames.length);
+  const familyName = FAMILY_NAMES[familyIndex];
+  let middleName = null;
+  if (seq % 11 === 0) {
+    middleName = FAMILY_NAMES[(familyIndex + 17) % FAMILY_NAMES.length];
+    if (middleName === familyName) {
+      middleName = FAMILY_NAMES[(familyIndex + 18) % FAMILY_NAMES.length];
+    }
+  }
   const memberNumber = demoMemberNumber(seq);
   const localNumber = String(10000000 + ((seq * 7919) % 8999999)).padStart(
     8,
@@ -591,7 +604,9 @@ function demoProfile(seq) {
   return {
     seq,
     memberNumber,
-    name: `${firstName} ${middleName} ${familyName}`,
+    name: middleName
+      ? `${firstName} ${middleName} ${familyName}`
+      : `${firstName} ${familyName}`,
     phone: `2547${localNumber.slice(0, 8)}`,
     gender,
     email: null,
@@ -715,6 +730,8 @@ async function runSeed(connection, options) {
     funds: 0,
     contributorsCreated: 0,
     membersCreated: 0,
+    generatedContributorNamesUpdated: 0,
+    generatedMemberNamesUpdated: 0,
     totalMembersBefore: 0,
     activeMembersBefore: 0,
     nonGeneratedMembers: 0,
@@ -733,6 +750,7 @@ async function runSeed(connection, options) {
     legacyGroupDescriptionsSanitized: 0,
     refreshedContributionsDeleted: 0,
     refreshedAttendanceDeleted: 0,
+    seedContributionsConfirmed: 0,
     contributionsCreated: 0,
     attendanceCreated: 0,
     skippedDailySeed: false,
@@ -809,6 +827,13 @@ async function runSeed(connection, options) {
     logStep(
       `Loaded ${contributors.length.toLocaleString('en-KE')} generated contributors.`,
     );
+    logStep('Normalizing generated member names...');
+    await normalizeGeneratedContributorProfiles(
+      connection,
+      church.id,
+      contributors,
+      summary,
+    );
     logStep('Cleaning old visible demo labels...');
     await sanitizeLegacyVisibleMarkers(connection, church.id, summary);
     logStep('Reconciling discipleship members and contributor links...');
@@ -819,6 +844,7 @@ async function runSeed(connection, options) {
       summary,
     );
     logStep(`Resolved ${memberLinks.size.toLocaleString('en-KE')} member links.`);
+    await normalizeGeneratedMemberProfiles(connection, church.id, summary);
     logStep('Backfilling direct member contributor links...');
     await backfillDemoMemberContributorLinks(connection, church.id, summary);
     logStep('Balancing generated member active/inactive status...');
@@ -842,6 +868,8 @@ async function runSeed(connection, options) {
     logStep(
       `Resolved ${memberships.size.toLocaleString('en-KE')} group memberships.`,
     );
+    logStep('Confirming existing Agape seed contributions...');
+    await normalizeSeedContributionStatuses(connection, church.id, summary);
     if (!options.membersOnly) {
       logStep('Loading active daily contributor pool...');
       const activeContributors = await getActiveDemoContributors(
@@ -1112,6 +1140,130 @@ async function ensureDemoContributors(connection, churchId, target, summary) {
   }
 
   return contributors;
+}
+
+async function normalizeGeneratedContributorProfiles(
+  connection,
+  churchId,
+  contributors,
+  summary,
+) {
+  const rowsToUpdate = [];
+
+  for (const contributor of contributors) {
+    const seq = sequenceFromMemberNumber(contributor.memberNumber);
+    const profile = demoProfile(seq);
+    if (
+      contributor.name !== profile.name ||
+      contributor.phone !== profile.phone ||
+      contributor.gender !== profile.gender
+    ) {
+      rowsToUpdate.push({
+        id: contributor.id,
+        name: profile.name,
+        phone: profile.phone,
+        gender: profile.gender,
+      });
+      contributor.name = profile.name;
+      contributor.phone = profile.phone;
+      contributor.gender = profile.gender;
+    }
+  }
+
+  summary.generatedContributorNamesUpdated = await updateContributorProfilesById(
+    connection,
+    churchId,
+    rowsToUpdate,
+  );
+}
+
+async function updateContributorProfilesById(connection, churchId, rows) {
+  let updated = 0;
+  for (const rowsChunk of chunk(rows, 500)) {
+    if (rowsChunk.length === 0) {
+      continue;
+    }
+    const marks = rowsChunk.map(() => '?').join(', ');
+    const nameCases = rowsChunk.map(() => 'WHEN ? THEN ?').join(' ');
+    const phoneCases = rowsChunk.map(() => 'WHEN ? THEN ?').join(' ');
+    const genderCases = rowsChunk.map(() => 'WHEN ? THEN ?').join(' ');
+    const nameParams = rowsChunk.flatMap((row) => [row.id, row.name]);
+    const phoneParams = rowsChunk.flatMap((row) => [row.id, row.phone]);
+    const genderParams = rowsChunk.flatMap((row) => [row.id, row.gender]);
+    const ids = rowsChunk.map((row) => row.id);
+    const [result] = await connection.query(
+      `UPDATE contributors
+       SET name = CASE id ${nameCases} ELSE name END,
+           phone = CASE id ${phoneCases} ELSE phone END,
+           gender = CASE id ${genderCases} ELSE gender END,
+           updatedAt = NOW(6)
+       WHERE churchId = ?
+         AND id IN (${marks})`,
+      [...nameParams, ...phoneParams, ...genderParams, churchId, ...ids],
+    );
+    updated += result.affectedRows || 0;
+  }
+  return updated;
+}
+
+async function normalizeGeneratedMemberProfiles(connection, churchId, summary) {
+  const [result] = await connection.query(
+    `UPDATE discipleship_members member
+     JOIN contributors contributor
+       ON contributor.id = member.contributorId
+      AND contributor.churchId = member.churchId
+      AND contributor.memberNumber LIKE ?
+     SET member.fullName = contributor.name,
+         member.phone = contributor.phone,
+         member.gender = contributor.gender,
+         member.updatedAt = NOW(6)
+     WHERE member.churchId = ?
+       AND (
+         member.fullName <> contributor.name
+         OR COALESCE(member.phone, '') <> COALESCE(contributor.phone, '')
+         OR COALESCE(member.gender, '') <> COALESCE(contributor.gender, '')
+       )`,
+    [`${MEMBER_PREFIX}-%`, churchId],
+  );
+
+  summary.generatedMemberNamesUpdated = result.affectedRows || 0;
+}
+
+async function normalizeSeedContributionStatuses(connection, churchId, summary) {
+  const [result] = await connection.query(
+    `UPDATE contributions contribution
+     LEFT JOIN contributors contributor
+       ON contributor.id = contribution.contributorId
+      AND contributor.churchId = contribution.churchId
+     SET contribution.status = 'confirmed',
+         contribution.channel = 'mpesa',
+         contribution.sourceType = 'mpesa_c2b',
+         contribution.commissionRatePctApplied = 0,
+         contribution.commissionAmount = 0,
+         contribution.updatedAt = NOW(6)
+     WHERE contribution.churchId = ?
+       AND (
+         contribution.providerRequestId LIKE ?
+         OR contributor.memberNumber LIKE ?
+         OR contribution.notes LIKE 'Demo seed:%'
+         OR contribution.notes LIKE '%simulated M-Pesa C2B%'
+       )
+       AND (
+         contribution.status <> 'confirmed'
+         OR contribution.status IS NULL
+         OR contribution.channel <> 'mpesa'
+         OR contribution.channel IS NULL
+         OR contribution.sourceType <> 'mpesa_c2b'
+         OR contribution.sourceType IS NULL
+         OR contribution.commissionRatePctApplied <> 0
+         OR contribution.commissionRatePctApplied IS NULL
+         OR contribution.commissionAmount <> 0
+         OR contribution.commissionAmount IS NULL
+       )`,
+    [churchId, `${INTERNAL_SEED_MARKER}:%`, `${MEMBER_PREFIX}-%`],
+  );
+
+  summary.seedContributionsConfirmed = result.affectedRows || 0;
 }
 
 async function sanitizeLegacyVisibleMarkers(connection, churchId, summary) {
@@ -1896,6 +2048,14 @@ function printSummary(options, summary) {
   console.log(`Daily contributor target: ${options.dailyContributors}`);
   console.log(`Contributors created: ${summary.contributorsCreated}`);
   console.log(`Discipleship members created: ${summary.membersCreated}`);
+  if (
+    summary.generatedContributorNamesUpdated ||
+    summary.generatedMemberNamesUpdated
+  ) {
+    console.log(
+      `Generated names repaired: ${summary.generatedContributorNamesUpdated || 0} contributors, ${summary.generatedMemberNamesUpdated || 0} members`,
+    );
+  }
   console.log(
     `Generated member status balanced: ${summary.generatedMembersActivated} activated, ${summary.generatedMembersDeactivated} deactivated`,
   );
@@ -1923,6 +2083,11 @@ function printSummary(options, summary) {
   }
 
   if (options.membersOnly) {
+    if (summary.seedContributionsConfirmed) {
+      console.log(
+        `Existing seed contributions confirmed: ${summary.seedContributionsConfirmed}`,
+      );
+    }
     console.log('Daily contribution seeding: skipped (--members-only)');
     return;
   }
@@ -1954,6 +2119,11 @@ function printSummary(options, summary) {
   if (options.progressive) {
     console.log(
       `Due now: ${summary.dueDailyContributions} contributions; pending later: ${summary.pendingDailyContributions}.`,
+    );
+  }
+  if (summary.seedContributionsConfirmed) {
+    console.log(
+      `Existing seed contributions confirmed: ${summary.seedContributionsConfirmed}`,
     );
   }
   console.log(`Contributions created: ${summary.contributionsCreated}`);
