@@ -554,6 +554,10 @@ function demoPaymentPrefix(date) {
   return `${INTERNAL_SEED_MARKER}:${date}`;
 }
 
+function logStep(message) {
+  console.log(`[agape-demo] ${message}`);
+}
+
 function demoPaymentReference(date, seq) {
   const month = Number.parseInt(date.slice(5, 7), 10);
   const monthCode = String.fromCharCode('A'.charCodeAt(0) + month - 1);
@@ -773,6 +777,7 @@ async function runSeed(connection, options) {
   }
 
   summary.funds = funds.length;
+  logStep('Calculating Agape member targets...');
   const memberTargets = await getAgapeMemberSeedTargets(
     connection,
     church.id,
@@ -794,27 +799,38 @@ async function runSeed(connection, options) {
 
   await connection.beginTransaction();
   try {
+    logStep('Reconciling generated contributors...');
     const contributors = await ensureDemoContributors(
       connection,
       church.id,
       memberTargets.generatedMemberTarget,
       summary,
     );
+    logStep(
+      `Loaded ${contributors.length.toLocaleString('en-KE')} generated contributors.`,
+    );
+    logStep('Cleaning old visible demo labels...');
     await sanitizeLegacyVisibleMarkers(connection, church.id, summary);
+    logStep('Reconciling discipleship members and contributor links...');
     const memberLinks = await ensureDiscipleshipMembers(
       connection,
       church.id,
       contributors,
       summary,
     );
+    logStep(`Resolved ${memberLinks.size.toLocaleString('en-KE')} member links.`);
+    logStep('Backfilling direct member contributor links...');
     await backfillDemoMemberContributorLinks(connection, church.id, summary);
+    logStep('Balancing generated member active/inactive status...');
     await rebalanceGeneratedMemberStatuses(
       connection,
       church.id,
       memberTargets.generatedActiveTarget,
       summary,
     );
+    logStep('Ensuring demo groups...');
     const groups = await ensureDemoGroups(connection, church.id, summary);
+    logStep('Ensuring demo group memberships...');
     const memberships = await ensureDemoMemberships(
       connection,
       church.id,
@@ -823,11 +839,18 @@ async function runSeed(connection, options) {
       groups,
       summary,
     );
+    logStep(
+      `Resolved ${memberships.size.toLocaleString('en-KE')} group memberships.`,
+    );
     if (!options.membersOnly) {
+      logStep('Loading active daily contributor pool...');
       const activeContributors = await getActiveDemoContributors(
         connection,
         church.id,
         options.dailyContributors,
+      );
+      logStep(
+        `Seeding ${options.progressive ? 'progressive' : 'full-day'} daily contributions...`,
       );
       await seedDailyContributions(
         connection,
@@ -841,6 +864,7 @@ async function runSeed(connection, options) {
       );
     }
 
+    logStep('Committing Agape demo seed changes...');
     await connection.commit();
   } catch (error) {
     await connection.rollback();
