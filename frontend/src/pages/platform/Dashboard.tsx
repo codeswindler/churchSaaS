@@ -24,6 +24,23 @@ export default function PlatformDashboard() {
     queryFn: () =>
       api.get('/platform/dashboard/summary').then((response) => response.data),
   });
+  const { data: smsBalanceInfo } = useQuery<{
+    balance: number;
+    intelligence?: {
+      status: 'healthy' | 'watch' | 'low' | 'empty';
+      label: string;
+      hint: string;
+      last24hUnits: number;
+      sevenDayUnits: number;
+      averageDailyUnits: number;
+      estimatedDaysRemaining: number | null;
+      pendingUnits: number;
+    } | null;
+  }>({
+    queryKey: ['platform-dashboard-sms-balance'],
+    queryFn: () => api.get('/sms/balance').then((response) => response.data),
+    refetchInterval: 30000,
+  });
 
   if (isLoading) {
     return <div className="panel p-6 text-stone-300">Loading dashboard...</div>;
@@ -33,6 +50,20 @@ export default function PlatformDashboard() {
   const churches = data?.churches || [];
   const revenueBreakdown = data?.revenueBreakdown || [];
   const smsPurchaseBreakdown = data?.smsPurchaseBreakdown || [];
+  const smsBalance = Number(smsBalanceInfo?.balance || 0);
+  const smsBalanceStatus = smsBalanceInfo?.intelligence?.status || 'healthy';
+  const smsBalanceClass =
+    smsBalanceStatus === 'empty' || smsBalanceStatus === 'low'
+      ? 'border-red-500/25 bg-red-500/10 text-red-100'
+      : smsBalanceStatus === 'watch'
+        ? 'border-amber-400/25 bg-amber-400/10 text-amber-100'
+        : 'border-emerald-400/25 bg-emerald-400/10 text-emerald-100';
+  const smsBalanceDotClass =
+    smsBalanceStatus === 'empty' || smsBalanceStatus === 'low'
+      ? 'bg-red-400'
+      : smsBalanceStatus === 'watch'
+        ? 'bg-amber-300'
+        : 'bg-emerald-300';
   const statCards = [
     {
       label: 'Customer Churches',
@@ -72,6 +103,32 @@ export default function PlatformDashboard() {
 
   return (
     <div className="space-y-6">
+      <section className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
+            Platform dashboard
+          </p>
+          <h1 className="mt-2 text-3xl font-semibold text-white">
+            Operations overview
+          </h1>
+        </div>
+        <div
+          className={`inline-flex w-fit items-center gap-3 rounded-full border px-4 py-2 shadow-lg ${smsBalanceClass}`}
+          title={smsBalanceInfo?.intelligence?.hint || 'SMS provider balance'}
+        >
+          <span
+            className={`h-2 w-2 rounded-full ${smsBalanceDotClass} animate-pulse`}
+          />
+          <span className="text-[11px] font-black uppercase tracking-[0.18em]">
+            SMS balance
+          </span>
+          <span className="text-sm font-semibold">
+            {smsBalance.toLocaleString()} units ·{' '}
+            {smsBalanceInfo?.intelligence?.label || 'Healthy'}
+          </span>
+        </div>
+      </section>
+
       <div className="overview-stat-grid">
         {statCards.map((item) =>
           item.onClick ? (

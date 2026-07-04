@@ -1,5 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, PencilLine, Plus, Search, UserCheck } from 'lucide-react';
+import {
+  CheckCircle2,
+  PencilLine,
+  Plus,
+  Search,
+  UserCheck,
+  X,
+} from 'lucide-react';
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import api, { getSession, hasChurchPermission } from '../../services/api';
@@ -654,10 +661,10 @@ export default function ChurchOneOnOne() {
                     <button
                       className="btn-secondary px-3 py-2 text-xs"
                       type="button"
-                      onClick={() => setIsBioEditorOpen((current) => !current)}
+                      onClick={() => setIsBioEditorOpen(true)}
                     >
                       <PencilLine size={14} />
-                      {isBioEditorOpen ? 'Close' : 'Edit biodata'}
+                      Edit family/biodata
                     </button>
                   ) : null}
                 </div>
@@ -730,7 +737,27 @@ export default function ChurchOneOnOne() {
                 </div>
 
                 {isBioEditorOpen ? (
-                  <div className="mt-4 grid gap-3">
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm">
+                    <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-3xl border border-white/10 bg-stone-950 p-4 shadow-2xl sm:p-5">
+                      <div className="mb-4 flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.2em] text-stone-400">
+                            Family and biodata
+                          </p>
+                          <h4 className="mt-1 text-xl font-semibold text-white">
+                            Edit {selectedMember.fullName}
+                          </h4>
+                        </div>
+                        <button
+                          className="rounded-full border border-white/10 p-2 text-stone-300 hover:bg-white/10"
+                          type="button"
+                          onClick={() => setIsBioEditorOpen(false)}
+                          aria-label="Close biodata editor"
+                        >
+                          <X size={18} />
+                        </button>
+                      </div>
+                      <div className="grid gap-3">
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                       <label className="space-y-2">
                         <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
@@ -916,6 +943,8 @@ export default function ChurchOneOnOne() {
                     >
                       Save biodata
                     </button>
+                      </div>
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -1026,10 +1055,30 @@ export default function ChurchOneOnOne() {
               ) : null}
 
               {isFormOpen ? (
-                <form
-                  className="rounded-3xl border border-white/10 bg-black/10 p-4"
-                  onSubmit={submitFollowUp}
-                >
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm">
+                  <form
+                    className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-white/10 bg-stone-950 p-4 shadow-2xl sm:p-5"
+                    onSubmit={submitFollowUp}
+                  >
+                    <div className="mb-4 flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.2em] text-stone-400">
+                          One-on-one visit
+                        </p>
+                        <h4 className="mt-1 text-xl font-semibold text-white">
+                          {editingFollowUpId ? 'Edit visit' : 'Record visit'} ·{' '}
+                          {selectedMember.fullName}
+                        </h4>
+                      </div>
+                      <button
+                        className="rounded-full border border-white/10 p-2 text-stone-300 hover:bg-white/10"
+                        type="button"
+                        onClick={resetForm}
+                        aria-label="Close visit form"
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="space-y-2">
                       <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
@@ -1172,7 +1221,8 @@ export default function ChurchOneOnOne() {
                       {editingFollowUpId ? 'Save record' : 'Record visit'}
                     </button>
                   </div>
-                </form>
+                  </form>
+                </div>
               ) : null}
 
               <div className="rounded-3xl border border-white/10 bg-black/10 p-4">
