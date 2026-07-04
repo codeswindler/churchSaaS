@@ -1321,6 +1321,11 @@ async function normalizeSeedContributionStatuses(connection, churchId, summary) 
          contribution.sourceType = 'mpesa_c2b',
          contribution.commissionRatePctApplied = 0,
          contribution.commissionAmount = 0,
+         contribution.payerName = CASE
+           WHEN contributor.name IS NOT NULL AND TRIM(contributor.name) <> ''
+             THEN contributor.name
+           ELSE contribution.payerName
+         END,
          contribution.updatedAt = NOW(6)
      WHERE contribution.churchId = ?
        AND (
@@ -1340,6 +1345,11 @@ async function normalizeSeedContributionStatuses(connection, churchId, summary) 
          OR contribution.commissionRatePctApplied IS NULL
          OR contribution.commissionAmount <> 0
          OR contribution.commissionAmount IS NULL
+         OR (
+           contributor.name IS NOT NULL
+           AND TRIM(contributor.name) <> ''
+           AND COALESCE(contribution.payerName, '') <> contributor.name
+         )
        )`,
     [churchId, `${INTERNAL_SEED_MARKER}:%`, `${MEMBER_PREFIX}-%`],
   );
