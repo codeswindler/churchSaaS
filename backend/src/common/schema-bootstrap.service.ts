@@ -576,6 +576,17 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
             'CREATE INDEX `IDX_contributions_church_fund_status_date` ON `contributions` (`churchId`, `fundAccountId`, `status`, `receivedAt`)',
           );
         }
+        if (
+          !contributions.indices.some(
+            (index) =>
+              index.name ===
+              'IDX_contributions_church_contributor_status_date',
+          )
+        ) {
+          await queryRunner.query(
+            'CREATE INDEX `IDX_contributions_church_contributor_status_date` ON `contributions` (`churchId`, `contributorId`, `status`, `receivedAt`)',
+          );
+        }
       }
     } finally {
       await queryRunner.release();
@@ -1036,7 +1047,8 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
             PRIMARY KEY (\`id\`),
             INDEX \`IDX_discipleship_members_church_name\` (\`churchId\`, \`fullName\`),
             INDEX \`IDX_discipleship_members_church_phone\` (\`churchId\`, \`phone\`),
-            INDEX \`IDX_discipleship_members_church_contributor\` (\`churchId\`, \`contributorId\`)
+            INDEX \`IDX_discipleship_members_church_contributor\` (\`churchId\`, \`contributorId\`),
+            INDEX \`IDX_discipleship_members_church_status_enrollment\` (\`churchId\`, \`status\`, \`enrollmentDate\`, \`createdAt\`)
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `);
         this.logger.log('Created discipleship members table.');
@@ -1089,6 +1101,20 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
             'CREATE INDEX `IDX_discipleship_members_church_contributor` ON `discipleship_members` (`churchId`, `contributorId`)',
           );
           this.logger.log('Indexed contributor link on discipleship members.');
+        }
+        if (
+          !members.indices.some(
+            (index) =>
+              index.name ===
+              'IDX_discipleship_members_church_status_enrollment',
+          )
+        ) {
+          await queryRunner.query(
+            'CREATE INDEX `IDX_discipleship_members_church_status_enrollment` ON `discipleship_members` (`churchId`, `status`, `enrollmentDate`, `createdAt`)',
+          );
+          this.logger.log(
+            'Indexed discipleship member status and enrollment sorting.',
+          );
         }
       }
       await queryRunner.query(
@@ -1271,10 +1297,22 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
             \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
             PRIMARY KEY (\`id\`),
             UNIQUE KEY \`UQ_discipleship_member_group\` (\`memberId\`, \`groupId\`),
-            INDEX \`IDX_discipleship_memberships_church_member\` (\`churchId\`, \`memberId\`)
+            INDEX \`IDX_discipleship_memberships_church_member\` (\`churchId\`, \`memberId\`),
+            INDEX \`IDX_discipleship_memberships_church_group_member\` (\`churchId\`, \`groupId\`, \`memberId\`)
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `);
         this.logger.log('Created discipleship memberships table.');
+      } else if (
+        !memberships.indices.some(
+          (index) =>
+            index.name ===
+            'IDX_discipleship_memberships_church_group_member',
+        )
+      ) {
+        await queryRunner.query(
+          'CREATE INDEX `IDX_discipleship_memberships_church_group_member` ON `discipleship_memberships` (`churchId`, `groupId`, `memberId`)',
+        );
+        this.logger.log('Indexed discipleship membership group filtering.');
       }
 
       const attendance = await queryRunner.getTable('discipleship_attendance');

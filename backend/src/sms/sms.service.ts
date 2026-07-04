@@ -400,6 +400,80 @@ export class SmsService {
     }
   }
 
+  async getBalanceIntelligence(config: ChurchSmsConfig = {}) {
+    const balance = await this.getBalance(config);
+    const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const last7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const [last24hUsage, sevenDayUsage, pendingUsage] = await Promise.all([
+      this.smsOutboxRepo
+        .createQueryBuilder('message')
+        .select('COALESCE(SUM(message.estimatedUnits), 0)', 'units')
+        .where('message.createdAt >= :since', { since: last24h })
+        .getRawOne(),
+      this.smsOutboxRepo
+        .createQueryBuilder('message')
+        .select('COALESCE(SUM(message.estimatedUnits), 0)', 'units')
+        .where('message.createdAt >= :since', { since: last7d })
+        .getRawOne(),
+      this.smsOutboxRepo
+        .createQueryBuilder('message')
+        .select('COALESCE(SUM(message.estimatedUnits), 0)', 'units')
+        .where('message.sendStatus = :status', {
+          status: SmsSendStatus.PENDING,
+        })
+        .getRawOne(),
+    ]);
+
+    const last24hUnits = Number(last24hUsage?.units || 0);
+    const sevenDayUnits = Number(sevenDayUsage?.units || 0);
+    const pendingUnits = Number(pendingUsage?.units || 0);
+    const averageDailyUnits = Number((sevenDayUnits / 7).toFixed(1));
+    const estimatedDaysRemaining =
+      averageDailyUnits > 0
+        ? Number((Number(balance || 0) / averageDailyUnits).toFixed(1))
+        : null;
+    const status =
+      Number(balance || 0) <= 0
+        ? 'empty'
+        : Number(balance || 0) <= pendingUnits
+          ? 'low'
+          : Number(balance || 0) < 200 ||
+              (estimatedDaysRemaining !== null && estimatedDaysRemaining < 2)
+            ? 'low'
+            : Number(balance || 0) < 1000 ||
+                (estimatedDaysRemaining !== null &&
+                  estimatedDaysRemaining < 7)
+              ? 'watch'
+              : 'healthy';
+    const label =
+      status === 'empty'
+        ? 'Empty'
+        : status === 'low'
+          ? 'Low'
+          : status === 'watch'
+            ? 'Watch'
+            : 'Healthy';
+    const hint =
+      estimatedDaysRemaining === null
+        ? `No recent SMS burn. ${Number(balance || 0).toLocaleString()} units available.`
+        : `${Number(balance || 0).toLocaleString()} units available; ${averageDailyUnits.toLocaleString()} avg/day; about ${estimatedDaysRemaining.toLocaleString()} day${estimatedDaysRemaining === 1 ? '' : 's'} remaining.`;
+
+    return {
+      balance,
+      intelligence: {
+        status,
+        label,
+        hint,
+        last24hUnits,
+        sevenDayUnits,
+        averageDailyUnits,
+        estimatedDaysRemaining,
+        pendingUnits,
+      },
+    };
+  }
+
   async sendBulkMessages(
     churchId: string,
     createdByUserId: string,

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, PencilLine, Plus, Search, UserCheck } from 'lucide-react';
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import api, { getSession, hasChurchPermission } from '../../services/api';
 
@@ -16,15 +16,45 @@ interface DiscipleshipMember {
   email?: string | null;
   gender?: string | null;
   enrollmentDate?: string | null;
+  isFirstTimeAtChurch?: boolean | null;
+  hasChurchRole?: boolean | null;
+  churchRoleNotes?: string | null;
   notes?: string | null;
   isParent?: boolean | null;
   childInSundaySchool?: boolean | null;
   groups?: DiscipleshipGroup[];
+  contributionSummary?: ContributionSummary;
+  titheSummary?: ContributionSummary;
   activitySummary?: {
+    enrollmentDate?: string | null;
+    firstContributionAt?: string | null;
+    latestContributionAt?: string | null;
+    contributionCount?: number;
+    contributionTotal?: number;
     latestAttendanceAt?: string | null;
     attendanceCount90Days: number;
     averageAttendancePerMonth: number;
   };
+}
+
+interface ContributionSummary {
+  totalAmount: number;
+  contributionCount: number;
+  latestContributionAt?: string | null;
+  dates: {
+    date: string;
+    amount: number;
+    count: number;
+  }[];
+  contributions: {
+    id: string;
+    date: string;
+    amount: number;
+    fundAccountName?: string | null;
+    fundAccountCode?: string | null;
+    paymentReference?: string | null;
+    channel?: string | null;
+  }[];
 }
 
 type FollowUpStatus = 'open' | 'completed' | 'cancelled';
@@ -109,6 +139,10 @@ function formatNullableBoolean(value?: boolean | null) {
   return 'Not recorded';
 }
 
+function formatKes(value: unknown) {
+  return `KES ${Number(value || 0).toLocaleString()}`;
+}
+
 function formatStatus(status: FollowUpStatus) {
   if (status === 'completed') {
     return 'Completed';
@@ -119,10 +153,62 @@ function formatStatus(status: FollowUpStatus) {
   return 'Open';
 }
 
+function MiniAmountBars({
+  emptyLabel,
+  items,
+}: {
+  emptyLabel: string;
+  items: ContributionSummary['dates'];
+}) {
+  const chartItems = items
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-8);
+  const maxValue = Math.max(
+    1,
+    ...chartItems.map((item) => Number(item.amount || 0)),
+  );
+
+  if (chartItems.length === 0) {
+    return (
+      <p className="rounded-2xl border border-white/10 p-3 text-sm text-stone-300">
+        {emptyLabel}
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-3 flex h-28 items-end gap-2 rounded-2xl border border-white/10 bg-black/10 p-3">
+      {chartItems.map((item) => {
+        const height = Math.max(8, (Number(item.amount || 0) / maxValue) * 88);
+        return (
+          <div
+            key={item.date}
+            className="flex min-w-0 flex-1 flex-col items-center justify-end gap-2"
+            title={`${item.date}: ${formatKes(item.amount)} from ${item.count} contribution${item.count === 1 ? '' : 's'}`}
+          >
+            <div
+              className="w-full rounded-t-xl bg-gradient-to-t from-emerald-500 to-amber-200"
+              style={{ height }}
+            />
+            <span className="max-w-full truncate text-[10px] text-stone-500">
+              {item.date.slice(5)}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function ChurchOneOnOne() {
   const queryClient = useQueryClient();
   const session = getSession();
   const canManage = hasChurchPermission(session?.user, 'discipleship.manage');
+  const isPriest =
+    session?.user?.role === 'priest' || session?.user?.role === 'church_admin';
+  const canViewContributions =
+    isPriest && hasChurchPermission(session?.user, 'contributions.view');
   const [memberSearch, setMemberSearch] = useState('');
   const [groupFilter, setGroupFilter] = useState('');
   const [memberPage, setMemberPage] = useState(1);
@@ -134,8 +220,16 @@ export default function ChurchOneOnOne() {
   const [form, setForm] = useState(createFollowUpForm);
   const [isBioEditorOpen, setIsBioEditorOpen] = useState(false);
   const [bioForm, setBioForm] = useState({
+    phone: '',
+    email: '',
+    gender: '',
+    enrollmentDate: '',
+    isFirstTimeAtChurch: '',
+    hasChurchRole: '',
+    churchRoleNotes: '',
     isParent: '',
     childInSundaySchool: '',
+    notes: '',
   });
 
   const { data: groups = [] } = useQuery<DiscipleshipGroup[]>({
@@ -189,16 +283,38 @@ export default function ChurchOneOnOne() {
       return;
     }
     setBioForm({
+      phone: selectedMember.phone || '',
+      email: selectedMember.email || '',
+      gender: selectedMember.gender || '',
+      enrollmentDate:
+        selectedMember.enrollmentDate ||
+        selectedMember.activitySummary?.enrollmentDate ||
+        '',
+      isFirstTimeAtChurch: booleanToFormValue(
+        selectedMember.isFirstTimeAtChurch,
+      ),
+      hasChurchRole: booleanToFormValue(selectedMember.hasChurchRole),
+      churchRoleNotes: selectedMember.churchRoleNotes || '',
       isParent: booleanToFormValue(selectedMember.isParent),
       childInSundaySchool: booleanToFormValue(
         selectedMember.childInSundaySchool,
       ),
+      notes: selectedMember.notes || '',
     });
     setIsBioEditorOpen(false);
   }, [
     selectedMember?.id,
+    selectedMember?.phone,
+    selectedMember?.email,
+    selectedMember?.gender,
+    selectedMember?.enrollmentDate,
+    selectedMember?.isFirstTimeAtChurch,
+    selectedMember?.hasChurchRole,
+    selectedMember?.churchRoleNotes,
     selectedMember?.isParent,
     selectedMember?.childInSundaySchool,
+    selectedMember?.notes,
+    selectedMember?.activitySummary?.enrollmentDate,
   ]);
 
   const { data: followUps = [], isLoading: followUpsLoading } = useQuery<
@@ -211,6 +327,24 @@ export default function ChurchOneOnOne() {
         .get(`/church/discipleship/members/${selectedMember?.id}/follow-ups`)
         .then((response) => response.data),
   });
+
+  const oneOnOneOverview = useMemo(() => {
+    const openRecords = followUps.filter((record) => record.status === 'open');
+    const nextVisit =
+      followUps
+        .map((record) => record.nextProposedVisitDate)
+        .filter(Boolean)
+        .sort((a, b) => String(a).localeCompare(String(b)))[0] || null;
+    return {
+      openFollowUps: openRecords.length,
+      totalRecords: followUps.length,
+      nextVisit,
+      latestRecord: followUps[0]?.sessionDate || null,
+    };
+  }, [followUps]);
+
+  const givingSummary = selectedMember?.contributionSummary;
+  const titheSummary = selectedMember?.titheSummary;
 
   useEffect(() => {
     setMemberPage(1);
@@ -250,10 +384,20 @@ export default function ChurchOneOnOne() {
       }
       return api
         .patch(`/church/discipleship/members/${selectedMember.id}`, {
+          phone: bioForm.phone.trim() || null,
+          email: bioForm.email.trim() || null,
+          gender: bioForm.gender || null,
+          enrollmentDate: bioForm.enrollmentDate || null,
+          isFirstTimeAtChurch: formValueToNullableBoolean(
+            bioForm.isFirstTimeAtChurch,
+          ),
+          hasChurchRole: formValueToNullableBoolean(bioForm.hasChurchRole),
+          churchRoleNotes: bioForm.churchRoleNotes.trim() || null,
           isParent: formValueToNullableBoolean(bioForm.isParent),
           childInSundaySchool: formValueToNullableBoolean(
             bioForm.childInSundaySchool,
           ),
+          notes: bioForm.notes.trim() || null,
         })
         .then((response) => response.data);
     },
@@ -357,7 +501,7 @@ export default function ChurchOneOnOne() {
 
   return (
     <div className="church-console-page discipleship-page space-y-4">
-      <section className="grid gap-4 md:grid-cols-[minmax(7.5rem,10%)_minmax(0,1fr)]">
+      <section className="grid gap-4 md:grid-cols-[minmax(12rem,1fr)_minmax(0,4fr)]">
         <div className="panel overflow-hidden">
           <div className="border-b border-white/10 p-4">
             <p className="text-xs uppercase tracking-[0.24em] text-stone-400">
@@ -471,15 +615,12 @@ export default function ChurchOneOnOne() {
                 ) : null}
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {[
-                  ['Phone', selectedMember.phone || 'Not captured'],
-                  ['Email', selectedMember.email || 'Not captured'],
-                  ['Groups', (selectedMember.groups || []).map((group) => group.name).join(', ') || 'No group assigned'],
-                  [
-                    'Recent attendance',
-                    selectedMember.activitySummary?.latestAttendanceAt || 'None',
-                  ],
+                  ['Open follow-ups', oneOnOneOverview.openFollowUps],
+                  ['Recorded visits', oneOnOneOverview.totalRecords],
+                  ['Next proposed visit', oneOnOneOverview.nextVisit || 'None'],
+                  ['Latest record', oneOnOneOverview.latestRecord || 'None'],
                 ].map(([label, value]) => (
                   <div
                     key={label}
@@ -521,29 +662,182 @@ export default function ChurchOneOnOne() {
                   ) : null}
                 </div>
 
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    ['Phone', selectedMember.phone || 'Not captured'],
+                    ['Email', selectedMember.email || 'Not captured'],
+                    ['Gender', selectedMember.gender || 'Not set'],
+                    [
+                      'Enrollment date',
+                      selectedMember.enrollmentDate ||
+                        selectedMember.activitySummary?.enrollmentDate ||
+                        'Not set',
+                    ],
+                    [
+                      'First time in church',
+                      formatNullableBoolean(selectedMember.isFirstTimeAtChurch),
+                    ],
+                    [
+                      'Is member a parent?',
+                      formatNullableBoolean(selectedMember.isParent),
+                    ],
+                    [
+                      'Child in Sunday school?',
+                      formatNullableBoolean(
+                        selectedMember.childInSundaySchool,
+                      ),
+                    ],
+                    [
+                      'Groups',
+                      (selectedMember.groups || [])
+                        .map((group) => group.name)
+                        .join(', ') || 'No group assigned',
+                    ],
+                  ].map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="rounded-2xl border border-white/10 bg-white/[0.04] p-3"
+                    >
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
+                        {label}
+                      </p>
+                      <p className="mt-1 break-words text-sm font-semibold text-white">
+                        {value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
                     <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
-                      Is member a parent?
+                      Community / church role
                     </p>
                     <p className="mt-1 text-sm font-semibold text-white">
-                      {formatNullableBoolean(selectedMember.isParent)}
+                      {selectedMember.hasChurchRole
+                        ? selectedMember.churchRoleNotes || 'Yes'
+                        : formatNullableBoolean(selectedMember.hasChurchRole)}
                     </p>
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
                     <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
-                      Child in Sunday school?
+                      Bio notes
                     </p>
                     <p className="mt-1 text-sm font-semibold text-white">
-                      {formatNullableBoolean(
-                        selectedMember.childInSundaySchool,
-                      )}
+                      {selectedMember.notes || 'No notes recorded'}
                     </p>
                   </div>
                 </div>
 
                 {isBioEditorOpen ? (
-                  <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                  <div className="mt-4 grid gap-3">
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      <label className="space-y-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                          Phone
+                        </span>
+                        <input
+                          className="input-compact"
+                          value={bioForm.phone}
+                          onChange={(event) =>
+                            setBioForm((current) => ({
+                              ...current,
+                              phone: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label className="space-y-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                          Email
+                        </span>
+                        <input
+                          className="input-compact"
+                          type="email"
+                          value={bioForm.email}
+                          onChange={(event) =>
+                            setBioForm((current) => ({
+                              ...current,
+                              email: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label className="space-y-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                          Gender
+                        </span>
+                        <select
+                          className="input-compact"
+                          value={bioForm.gender}
+                          onChange={(event) =>
+                            setBioForm((current) => ({
+                              ...current,
+                              gender: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">Not set</option>
+                          <option value="female">Female</option>
+                          <option value="male">Male</option>
+                        </select>
+                      </label>
+                      <label className="space-y-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                          Enrollment date
+                        </span>
+                        <input
+                          className="input-compact"
+                          type="date"
+                          value={bioForm.enrollmentDate}
+                          onChange={(event) =>
+                            setBioForm((current) => ({
+                              ...current,
+                              enrollmentDate: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      <label className="space-y-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                          First time in church?
+                        </span>
+                        <select
+                          className="input-compact"
+                          value={bioForm.isFirstTimeAtChurch}
+                          onChange={(event) =>
+                            setBioForm((current) => ({
+                              ...current,
+                              isFirstTimeAtChurch: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">Not recorded</option>
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      </label>
+                      <label className="space-y-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                          Has church role/community?
+                        </span>
+                        <select
+                          className="input-compact"
+                          value={bioForm.hasChurchRole}
+                          onChange={(event) =>
+                            setBioForm((current) => ({
+                              ...current,
+                              hasChurchRole: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">Not recorded</option>
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      </label>
                     <label className="space-y-2">
                       <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
                         Is member a parent?
@@ -582,8 +876,40 @@ export default function ChurchOneOnOne() {
                         <option value="no">No</option>
                       </select>
                     </label>
+                    </div>
+                    <label className="space-y-2">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                        Role / community notes
+                      </span>
+                      <input
+                        className="input-compact"
+                        placeholder="Small community, leadership role, ministry..."
+                        value={bioForm.churchRoleNotes}
+                        onChange={(event) =>
+                          setBioForm((current) => ({
+                            ...current,
+                            churchRoleNotes: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="space-y-2">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                        Bio notes
+                      </span>
+                      <textarea
+                        className="input min-h-20"
+                        value={bioForm.notes}
+                        onChange={(event) =>
+                          setBioForm((current) => ({
+                            ...current,
+                            notes: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
                     <button
-                      className="btn-primary justify-center"
+                      className="btn-primary justify-center sm:w-fit"
                       disabled={saveBioMutation.isPending}
                       type="button"
                       onClick={() => saveBioMutation.mutate()}
@@ -593,6 +919,111 @@ export default function ChurchOneOnOne() {
                   </div>
                 ) : null}
               </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                {[
+                  [
+                    'Latest attendance',
+                    selectedMember.activitySummary?.latestAttendanceAt ||
+                      'None',
+                  ],
+                  [
+                    'Attendance · 90 days',
+                    selectedMember.activitySummary?.attendanceCount90Days ?? 0,
+                  ],
+                  [
+                    'Average / month',
+                    selectedMember.activitySummary?.averageAttendancePerMonth ??
+                      0,
+                  ],
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="rounded-2xl border border-white/10 bg-black/10 p-3"
+                  >
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
+                      {label}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              {canViewContributions ? (
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <div className="rounded-3xl border border-white/10 bg-black/10 p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-stone-400">
+                      Giving overview
+                    </p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                      {[
+                        [
+                          'Total giving',
+                          formatKes(givingSummary?.totalAmount),
+                        ],
+                        [
+                          'Entries',
+                          givingSummary?.contributionCount || 0,
+                        ],
+                        [
+                          'Latest',
+                          givingSummary?.latestContributionAt || 'None',
+                        ],
+                      ].map(([label, value]) => (
+                        <div
+                          key={label}
+                          className="rounded-2xl border border-white/10 bg-white/[0.04] p-3"
+                        >
+                          <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">
+                            {label}
+                          </p>
+                          <p className="mt-1 text-sm font-semibold text-white">
+                            {value}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                    <MiniAmountBars
+                      emptyLabel="No linked giving records yet."
+                      items={givingSummary?.dates || []}
+                    />
+                  </div>
+
+                  <div className="rounded-3xl border border-emerald-300/20 bg-emerald-500/5 p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-emerald-100">
+                      Tithing pattern
+                    </p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                      {[
+                        ['Total tithe', formatKes(titheSummary?.totalAmount)],
+                        ['Tithe entries', titheSummary?.contributionCount || 0],
+                        [
+                          'Latest tithe',
+                          titheSummary?.latestContributionAt || 'None',
+                        ],
+                      ].map(([label, value]) => (
+                        <div
+                          key={label}
+                          className="rounded-2xl border border-emerald-200/10 bg-black/10 p-3"
+                        >
+                          <p className="text-[11px] uppercase tracking-[0.18em] text-emerald-100/70">
+                            {label}
+                          </p>
+                          <p className="mt-1 text-sm font-semibold text-white">
+                            {value}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                    <MiniAmountBars
+                      emptyLabel="No linked tithe records yet."
+                      items={titheSummary?.dates || []}
+                    />
+                  </div>
+                </div>
+              ) : null}
 
               {isFormOpen ? (
                 <form

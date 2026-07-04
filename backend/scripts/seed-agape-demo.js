@@ -632,6 +632,13 @@ function kenyaTimestamp(date, secondsFromMidnight) {
   )}:${String(seconds).padStart(2, '0')}`;
 }
 
+function normalizeAliasText(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
 function chunk(items, size) {
   const chunks = [];
   for (let i = 0; i < items.length; i += size) {
@@ -757,6 +764,8 @@ async function runSeed(connection, options) {
     refreshedAttendanceDeleted: 0,
     seedContributionsConfirmed: 0,
     resolvedMatchCandidatesDismissed: 0,
+    generatedAliasesRemoved: 0,
+    generatedManualAliasesCreated: 0,
     contributionsCreated: 0,
     attendanceCreated: 0,
     skippedDailySeed: false,
@@ -851,6 +860,8 @@ async function runSeed(connection, options) {
     );
     logStep(`Resolved ${memberLinks.size.toLocaleString('en-KE')} member links.`);
     await normalizeGeneratedMemberProfiles(connection, church.id, summary);
+    logStep('Repairing generated member aliases...');
+    await repairGeneratedMemberAliases(connection, church.id, summary);
     logStep('Backfilling direct member contributor links...');
     await backfillDemoMemberContributorLinks(connection, church.id, summary);
     logStep('Balancing generated member active/inactive status...');
@@ -1239,6 +1250,64 @@ async function normalizeGeneratedMemberProfiles(connection, churchId, summary) {
   );
 
   summary.generatedMemberNamesUpdated = result.affectedRows || 0;
+}
+
+async function repairGeneratedMemberAliases(connection, churchId, summary) {
+  const [deleteResult] = await connection.query(
+    `DELETE alias
+     FROM discipleship_member_aliases alias
+     JOIN discipleship_members member
+       ON member.id = alias.memberId
+      AND member.churchId = alias.churchId
+     JOIN contributors contributor
+       ON contributor.id = member.contributorId
+      AND contributor.churchId = member.churchId
+      AND contributor.memberNumber LIKE ?
+     WHERE alias.churchId = ?`,
+    [`${MEMBER_PREFIX}-%`, churchId],
+  );
+
+  const [members] = await connection.query(
+    `SELECT member.id, member.churchId, member.fullName
+     FROM discipleship_members member
+     JOIN contributors contributor
+       ON contributor.id = member.contributorId
+      AND contributor.churchId = member.churchId
+      AND contributor.memberNumber LIKE ?
+     WHERE member.churchId = ?
+       AND member.fullName IS NOT NULL
+       AND TRIM(member.fullName) <> ''`,
+    [`${MEMBER_PREFIX}-%`, churchId],
+  );
+
+  const now = kenyaTimestamp(kenyaDateToday(), 12 * 3600);
+  const aliases = members.map((member) => ({
+    id: randomUUID(),
+    churchId: member.churchId,
+    memberId: member.id,
+    contributorId: null,
+    alias: String(member.fullName).trim().replace(/\s+/g, ' '),
+    normalizedAlias: normalizeAliasText(member.fullName),
+    source: 'manual',
+    createdAt: now,
+  }));
+
+  summary.generatedAliasesRemoved = deleteResult.affectedRows || 0;
+  summary.generatedManualAliasesCreated = await bulkInsert(
+    connection,
+    'discipleship_member_aliases',
+    [
+      'id',
+      'churchId',
+      'memberId',
+      'contributorId',
+      'alias',
+      'normalizedAlias',
+      'source',
+      'createdAt',
+    ],
+    aliases,
+  );
 }
 
 async function normalizeSeedContributionStatuses(connection, churchId, summary) {
@@ -2092,6 +2161,11 @@ function printSummary(options, summary) {
   ) {
     console.log(
       `Generated names repaired: ${summary.generatedContributorNamesUpdated || 0} contributors, ${summary.generatedMemberNamesUpdated || 0} members`,
+    );
+  }
+  if (summary.generatedAliasesRemoved || summary.generatedManualAliasesCreated) {
+    console.log(
+      `Generated aliases repaired: ${summary.generatedAliasesRemoved || 0} old aliases removed, ${summary.generatedManualAliasesCreated || 0} current aliases created`,
     );
   }
   console.log(

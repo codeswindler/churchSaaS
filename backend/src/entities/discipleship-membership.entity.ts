@@ -13,6 +13,11 @@ import { DiscipleshipMember } from './discipleship-member.entity';
 
 @Entity('discipleship_memberships')
 @Index(['churchId', 'memberId'])
+@Index('IDX_discipleship_memberships_church_group_member', [
+  'churchId',
+  'groupId',
+  'memberId',
+])
 @Index(['memberId', 'groupId'], { unique: true })
 export class DiscipleshipMembership {
   @PrimaryGeneratedColumn('uuid')

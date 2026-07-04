@@ -354,18 +354,51 @@ export default function MainLayout({ role }: LayoutProps) {
     enabled: role === 'admin',
   });
 
-  const { data: smsBalance = 0 } = useQuery({
+  const { data: smsBalanceInfo = { balance: 0, intelligence: null } } =
+    useQuery<{
+      balance: number;
+      intelligence: {
+        status: 'healthy' | 'watch' | 'low' | 'empty';
+        label: string;
+        hint: string;
+        last24hUnits: number;
+        sevenDayUnits: number;
+        averageDailyUnits: number;
+        estimatedDaysRemaining: number | null;
+        pendingUnits: number;
+      } | null;
+    }>({
     queryKey: ['admin-sms-balance'],
     queryFn: async () => {
-      if (role !== 'admin') return 0;
+      if (role !== 'admin') return { balance: 0, intelligence: null };
       const res = await axios.get(`${API_URL}/sms/balance`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      return res.data.balance;
+      return res.data;
     },
     refetchInterval: 30000,
     enabled: role === 'admin',
   });
+  const smsBalance = Number(smsBalanceInfo?.balance || 0);
+  const smsBalanceStatus = smsBalanceInfo?.intelligence?.status || 'healthy';
+  const smsBalanceClass =
+    smsBalanceStatus === 'empty' || smsBalanceStatus === 'low'
+      ? 'bg-red-500/10 border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.1)]'
+      : smsBalanceStatus === 'watch'
+        ? 'bg-amber-500/10 border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.1)]'
+        : 'bg-emerald-500/10 border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.1)]';
+  const smsBalanceDotClass =
+    smsBalanceStatus === 'empty' || smsBalanceStatus === 'low'
+      ? 'bg-red-500'
+      : smsBalanceStatus === 'watch'
+        ? 'bg-amber-500'
+        : 'bg-emerald-500';
+  const smsBalanceTextClass =
+    smsBalanceStatus === 'empty' || smsBalanceStatus === 'low'
+      ? 'text-red-500'
+      : smsBalanceStatus === 'watch'
+        ? 'text-amber-500'
+        : 'text-emerald-500';
 
   const prevUnreadRef = useRef<number>(0);
   const initialToastDone = useRef<boolean>(false);
@@ -703,9 +736,15 @@ export default function MainLayout({ role }: LayoutProps) {
           {/* Icons Stack: Right aligned */}
           <div className="flex-1 flex items-center justify-end gap-4">
              {role === 'admin' && (
-               <div className="hidden md:flex items-center gap-2 px-4 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.1)]">
-                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                 <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest whitespace-nowrap">SMS: {smsBalance.toLocaleString()} Units</span>
+               <div
+                 className={`hidden md:flex items-center gap-2 px-4 py-1.5 border rounded-full ${smsBalanceClass}`}
+                 title={smsBalanceInfo?.intelligence?.hint || 'SMS provider balance'}
+               >
+                 <div className={`w-1.5 h-1.5 rounded-full ${smsBalanceDotClass} animate-pulse`} />
+                 <span className={`text-[10px] font-black uppercase tracking-widest whitespace-nowrap ${smsBalanceTextClass}`}>
+                   SMS: {smsBalance.toLocaleString()} Units ·{' '}
+                   {smsBalanceInfo?.intelligence?.label || 'Healthy'}
+                 </span>
                </div>
              )}
 

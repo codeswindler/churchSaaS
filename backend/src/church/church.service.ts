@@ -277,7 +277,6 @@ export class ChurchService {
   }
 
   async getDiscipleshipSummary(churchId: string) {
-    this.triggerDiscipleshipTransactionSync(churchId);
     const today = this.getNairobiDateParts();
     const monthStart = `${today.date.slice(0, 8)}01`;
     const [
@@ -286,7 +285,6 @@ export class ChurchService {
       newThisMonth,
       groups,
       presentToday,
-      duplicateClusterData,
     ] = await Promise.all([
       this.discipleshipMemberRepo.count({ where: { churchId } }),
       this.discipleshipMemberRepo.count({
@@ -303,7 +301,6 @@ export class ChurchService {
       this.discipleshipAttendanceRepo.count({
         where: { churchId, attendanceDate: today.date },
       }),
-      this.buildDiscipleshipDuplicateClusterCandidates(churchId),
     ]);
 
     const recentAttendance = await this.discipleshipAttendanceRepo.find({
@@ -322,7 +319,7 @@ export class ChurchService {
         newThisMonth,
         activeGroups: groups,
         presentToday,
-        duplicateReviews: duplicateClusterData.duplicateGroups.length,
+        duplicateReviews: null,
       },
       recentAttendance,
       syncing: this.discipleshipTransactionSyncs.has(churchId),
@@ -330,7 +327,6 @@ export class ChurchService {
   }
 
   async listDiscipleshipGroups(churchId: string) {
-    this.triggerDiscipleshipTransactionSync(churchId);
     const groups = await this.discipleshipGroupRepo.find({
       where: { churchId },
       order: { isActive: 'DESC', name: 'ASC' },
@@ -424,7 +420,6 @@ export class ChurchService {
   }
 
   async listDiscipleshipMembers(churchId: string, query: any = {}) {
-    this.triggerDiscipleshipTransactionSync(churchId);
     const page = Math.max(Number(query.page || 1), 1);
     const limit = Math.min(Math.max(Number(query.limit || 25), 1), 100);
     const qb = this.discipleshipMemberRepo
@@ -436,36 +431,25 @@ export class ChurchService {
 
     if (query.search) {
       const search = `%${query.search}%`;
-      const matchingAliases = await this.discipleshipMemberAliasRepo
-        .createQueryBuilder('alias')
-        .select('alias.memberId', 'memberId')
-        .where('alias.churchId = :churchId', { churchId })
-        .andWhere('alias.alias LIKE :search', { search })
-        .getRawMany();
-      const aliasMemberIds = matchingAliases.map((item) => item.memberId);
       qb.andWhere(
-        aliasMemberIds.length > 0
-          ? '(member.fullName LIKE :search OR member.phone LIKE :search OR member.email LIKE :search OR member.id IN (:...aliasMemberIds))'
-          : '(member.fullName LIKE :search OR member.phone LIKE :search OR member.email LIKE :search)',
-        { search, aliasMemberIds },
+        '(member.fullName LIKE :search OR member.phone LIKE :search OR member.email LIKE :search)',
+        { search },
       );
     }
     if (query.status === 'active' || query.status === 'inactive') {
       qb.andWhere('member.status = :status', { status: query.status });
     }
     if (query.groupId) {
-      const memberships = await this.discipleshipMembershipRepo.find({
-        where: { churchId, groupId: query.groupId },
-      });
-      const memberIds = memberships.map((item) => item.memberId);
-      if (memberIds.length === 0) {
-        return {
-          items: [],
-          pagination: { page, limit, total: 0, totalPages: 1 },
-          syncing: this.discipleshipTransactionSyncs.has(churchId),
-        };
-      }
-      qb.andWhere('member.id IN (:...memberIds)', { memberIds });
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1
+          FROM discipleship_memberships membership
+          WHERE membership.churchId = member.churchId
+            AND membership.memberId = member.id
+            AND membership.groupId = :groupId
+        )`,
+        { groupId: query.groupId },
+      );
     }
 
     const [members, total] = await qb
@@ -881,7 +865,6 @@ export class ChurchService {
   }
 
   async listDiscipleshipMatchCandidates(churchId: string) {
-    this.triggerDiscipleshipTransactionSync(churchId);
     const candidates = await this.discipleshipMatchCandidateRepo.find({
       where: {
         churchId,
@@ -1176,7 +1159,6 @@ export class ChurchService {
   }
 
   async listDiscipleshipDuplicateMemberClusters(churchId: string) {
-    this.triggerDiscipleshipTransactionSync(churchId);
     const { members, skippedKeys, duplicateGroups, clusterReasons } =
       await this.buildDiscipleshipDuplicateClusterCandidates(churchId);
     if (duplicateGroups.length === 0) {
@@ -1492,7 +1474,6 @@ export class ChurchService {
   }
 
   async listDiscipleshipAttendance(churchId: string, query: any = {}) {
-    this.triggerDiscipleshipTransactionSync(churchId);
     const qb = this.discipleshipAttendanceRepo
       .createQueryBuilder('attendance')
       .leftJoinAndSelect('attendance.member', 'member')
@@ -1532,7 +1513,6 @@ export class ChurchService {
     memberId: string,
     userRole?: string | null,
   ) {
-    this.triggerDiscipleshipTransactionSync(churchId);
     const member = await this.discipleshipMemberRepo.findOne({
       where: { id: memberId, churchId },
     });
@@ -1578,6 +1558,13 @@ export class ChurchService {
               dates: contributionDates.slice(0, 12),
               contributions: (
                 detailed.contributionSummary?.contributions || []
+              ).slice(0, 25),
+            },
+            titheSummary: {
+              ...detailed.titheSummary,
+              dates: (detailed.titheSummary?.dates || []).slice(0, 12),
+              contributions: (
+                detailed.titheSummary?.contributions || []
               ).slice(0, 25),
             },
           }
@@ -3438,6 +3425,10 @@ export class ChurchService {
         status: ContributionStatus.CONFIRMED,
       })
       .andWhere('contribution.updatedAt >= :cutoff', { cutoff })
+      .andWhere(
+        '(contribution.providerRequestId IS NULL OR contribution.providerRequestId NOT LIKE :demoSeedPrefix)',
+        { demoSeedPrefix: 'agape_daily_seed:%' },
+      )
       .getRawMany();
     rows.forEach((row) => {
       if (row.churchId) {
@@ -5990,7 +5981,11 @@ export class ChurchService {
 
   private async withDiscipleshipMemberGroups(
     members: DiscipleshipMember[],
-    options: { includeContributionSummary?: boolean } = {},
+    options: {
+      includeContributionSummary?: boolean;
+      includeAliases?: boolean;
+      includePendingMatches?: boolean;
+    } = {},
   ) {
     if (members.length === 0) {
       return [];
@@ -6001,19 +5996,25 @@ export class ChurchService {
       where: { memberId: In(memberIds) },
       relations: ['group'],
     });
-    const aliases = await this.discipleshipMemberAliasRepo.find({
-      where: { memberId: In(memberIds) },
-      order: { createdAt: 'ASC' },
-    });
     const contributorLinks = await this.discipleshipMemberContributorRepo.find({
       where: { memberId: In(memberIds) },
     });
-    const pendingMatches = await this.discipleshipMatchCandidateRepo.find({
-      where: {
-        candidateMemberId: In(memberIds),
-        status: DiscipleshipMatchCandidateStatus.PENDING,
-      },
-    });
+    const aliases =
+      options.includeAliases === true
+        ? await this.discipleshipMemberAliasRepo.find({
+            where: { memberId: In(memberIds), source: 'manual' },
+            order: { createdAt: 'ASC' },
+          })
+        : [];
+    const pendingMatches =
+      options.includePendingMatches === true
+        ? await this.discipleshipMatchCandidateRepo.find({
+            where: {
+              candidateMemberId: In(memberIds),
+              status: DiscipleshipMatchCandidateStatus.PENDING,
+            },
+          })
+        : [];
     const groupsByMemberId = new Map<string, DiscipleshipGroup[]>();
     const aliasesByMemberId = new Map<string, DiscipleshipMemberAlias[]>();
     const linksByMemberId = new Map<string, DiscipleshipMemberContributor[]>();
@@ -6035,6 +6036,13 @@ export class ChurchService {
       items.push(link);
       linksByMemberId.set(link.memberId, items);
     });
+    const emptyContributionSummary = {
+      totalAmount: 0,
+      contributionCount: 0,
+      latestContributionAt: null,
+      dates: [],
+      contributions: [],
+    };
     const contributionSummaryByMemberId =
       options.includeContributionSummary === false
         ? new Map<string, any>()
@@ -6054,15 +6062,11 @@ export class ChurchService {
       ...(options.includeContributionSummary === false
         ? {}
         : {
-            contributionSummary: contributionSummaryByMemberId.get(
-              member.id,
-            ) || {
-              totalAmount: 0,
-              contributionCount: 0,
-              latestContributionAt: null,
-              dates: [],
-              contributions: [],
-            },
+            contributionSummary:
+              contributionSummaryByMemberId.get(member.id)
+                ?.contributionSummary || emptyContributionSummary,
+            titheSummary: contributionSummaryByMemberId.get(member.id)
+              ?.titheSummary || emptyContributionSummary,
           }),
     }));
   }
@@ -6079,69 +6083,57 @@ export class ChurchService {
       return summaryByMemberId;
     }
 
-    const memberByContributorId = new Map<string, DiscipleshipMember>();
-    const memberByName = new Map<string, DiscipleshipMember>();
+    const memberById = new Map(members.map((member) => [member.id, member]));
+    const contributorIdToMemberId = new Map<string, string>();
     members.forEach((member) => {
-      if (
-        member.contributorId &&
-        !memberByContributorId.has(member.contributorId)
-      ) {
-        memberByContributorId.set(member.contributorId, member);
-      }
-      const nameKey = this.normalizeImportKey(member.fullName);
-      if (nameKey && !memberByName.has(nameKey)) {
-        memberByName.set(nameKey, member);
+      if (member.contributorId) {
+        contributorIdToMemberId.set(member.contributorId, member.id);
       }
     });
     const contributorLinks = await this.discipleshipMemberContributorRepo.find({
-      where: { memberId: In(members.map((member) => member.id)) },
-    });
-    const aliases = await this.discipleshipMemberAliasRepo.find({
-      where: { memberId: In(members.map((member) => member.id)) },
-    });
-    contributorLinks.forEach((link) => {
-      const member = members.find((item) => item.id === link.memberId);
-      if (member) {
-        memberByContributorId.set(link.contributorId, member);
-      }
-    });
-    aliases.forEach((alias) => {
-      const member = members.find((item) => item.id === alias.memberId);
-      if (member && alias.normalizedAlias) {
-        memberByName.set(alias.normalizedAlias, member);
-      }
-    });
-
-    const contributions = await this.contributionRepo.find({
       where: {
         churchId,
-        status: ContributionStatus.CONFIRMED,
+        memberId: In(members.map((member) => member.id)),
+        isConfirmed: true,
       },
-      relations: ['contributor'],
-      order: { receivedAt: 'DESC', createdAt: 'DESC' },
     });
-    const grouped = new Map<
-      string,
-      { member: DiscipleshipMember; items: Contribution[] }
-    >();
+    contributorLinks.forEach((link) => {
+      if (memberById.has(link.memberId)) {
+        contributorIdToMemberId.set(link.contributorId, link.memberId);
+      }
+    });
+    const contributorIds = [...contributorIdToMemberId.keys()];
+    if (contributorIds.length === 0) {
+      return summaryByMemberId;
+    }
+
+    const contributions = await this.contributionRepo
+      .createQueryBuilder('contribution')
+      .leftJoinAndSelect('contribution.fundAccount', 'fundAccount')
+      .where('contribution.churchId = :churchId', { churchId })
+      .andWhere('contribution.status = :status', {
+        status: ContributionStatus.CONFIRMED,
+      })
+      .andWhere('contribution.contributorId IN (:...contributorIds)', {
+        contributorIds,
+      })
+      .orderBy('contribution.receivedAt', 'DESC')
+      .addOrderBy('contribution.createdAt', 'DESC')
+      .getMany();
+    const grouped = new Map<string, Contribution[]>();
     contributions.forEach((contribution) => {
-      const member =
-        (contribution.contributorId
-          ? memberByContributorId.get(contribution.contributorId)
-          : null) ||
-        memberByName.get(this.normalizeImportKey(contribution.payerName)) ||
-        memberByName.get(
-          this.normalizeImportKey(contribution.contributor?.name),
-        );
-      if (!member) {
+      const memberId = contribution.contributorId
+        ? contributorIdToMemberId.get(contribution.contributorId)
+        : null;
+      if (!memberId) {
         return;
       }
-      const group = grouped.get(member.id) || { member, items: [] };
-      group.items.push(contribution);
-      grouped.set(member.id, group);
+      const items = grouped.get(memberId) || [];
+      items.push(contribution);
+      grouped.set(memberId, items);
     });
 
-    grouped.forEach(({ member, items }) => {
+    const buildSummary = (items: Contribution[]) => {
       const byDate = new Map<string, { amount: number; count: number }>();
       const contributionRows = items.map((item) => {
         const creditedAmount = Math.max(
@@ -6160,12 +6152,13 @@ export class ChurchService {
           date,
           amount: Number(creditedAmount.toFixed(2)),
           fundAccountName: item.fundAccountName,
+          fundAccountCode: item.fundAccount?.code || null,
           paymentReference: item.paymentReference,
           channel: item.channel,
         };
       });
 
-      summaryByMemberId.set(member.id, {
+      return {
         totalAmount: Number(
           items
             .reduce(
@@ -6189,10 +6182,31 @@ export class ChurchService {
           }))
           .sort((a, b) => b.date.localeCompare(a.date)),
         contributions: contributionRows,
+      };
+    };
+
+    grouped.forEach((items, memberId) => {
+      summaryByMemberId.set(memberId, {
+        contributionSummary: buildSummary(items),
+        titheSummary: buildSummary(
+          items.filter((item) => this.isTitheContribution(item)),
+        ),
       });
     });
 
     return summaryByMemberId;
+  }
+
+  private isTitheContribution(item: Contribution) {
+    const label = [
+      item.fundAccount?.code,
+      item.fundAccount?.name,
+      item.fundAccountName,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return label.includes('tithe') || label.includes('tithing');
   }
 
   private sanitizeChurchUser(

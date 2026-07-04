@@ -1433,7 +1433,7 @@ export default function ChurchDiscipleship() {
     ['Present today', summary?.totals?.presentToday ?? 0],
     [
       'Duplicate reviews',
-      summary?.totals?.duplicateReviews || 0,
+      summary?.totals?.duplicateReviews ?? 'Review',
     ],
   ];
   const activeGroups = groups.filter((group) => group.isActive !== false);
@@ -1574,7 +1574,7 @@ export default function ChurchDiscipleship() {
       <section className="panel p-2">
         <div className="grid gap-2 sm:grid-cols-2">
           {[
-            ['discipleship', 'Members & groups'],
+            ['discipleship', 'Discipleship'],
             ['oneOnOne', 'One-on-one'],
           ].map(([value, label]) => (
             <button
@@ -1991,25 +1991,6 @@ export default function ChurchDiscipleship() {
                     <p className="mt-1 text-xs text-stone-400">
                       Enrolled {member.enrollmentDate || 'not set'}
                     </p>
-                    {(member.aliases || []).filter(
-                      (alias) =>
-                        alias.source !== 'manual' &&
-                        alias.alias.toLowerCase() !==
-                          member.fullName.toLowerCase(),
-                    ).length > 0 ? (
-                      <p className="mt-1 text-xs text-amber-100/80">
-                        Also known as{' '}
-                        {(member.aliases || [])
-                          .filter(
-                            (alias) =>
-                              alias.source !== 'manual' &&
-                              alias.alias.toLowerCase() !==
-                                member.fullName.toLowerCase(),
-                          )
-                          .map((alias) => alias.alias)
-                          .join(', ')}
-                      </p>
-                    ) : null}
                   </div>
                   <p className="text-sm text-stone-300">
                     {(member.groups || [])
@@ -2823,17 +2804,6 @@ export default function ChurchDiscipleship() {
                         <p>
                           Attendance marks: {Number(member.attendanceCount || 0)}
                         </p>
-                        {(member.aliases || []).filter(
-                          (alias) => alias.source !== 'manual',
-                        ).length > 0 ? (
-                          <p className="text-xs text-amber-100/80">
-                            Also known as{' '}
-                            {(member.aliases || [])
-                              .filter((alias) => alias.source !== 'manual')
-                              .map((alias) => alias.alias)
-                              .join(', ')}
-                          </p>
-                        ) : null}
                       </div>
                       {duplicateCanonicalId === member.id && checked ? (
                         <span className="mt-4 inline-flex rounded-full border border-amber-200/40 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-amber-100">
@@ -3024,17 +2994,6 @@ export default function ChurchDiscipleship() {
                       ],
                       ...(isPriest
                         ? [
-                            [
-                              'Known transaction names',
-                              (detailMember?.aliases || [])
-                                .filter((alias) => alias.source !== 'manual')
-                                .map((alias) => alias.alias)
-                                .filter(
-                                  (alias, index, items) =>
-                                    items.indexOf(alias) === index,
-                                )
-                                .join(', ') || 'No transaction aliases',
-                            ],
                             [
                               'Linked transaction identities',
                               String(

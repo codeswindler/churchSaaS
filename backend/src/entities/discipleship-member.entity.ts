@@ -21,6 +21,12 @@ export enum DiscipleshipMemberStatus {
 @Index(['churchId', 'fullName'])
 @Index(['churchId', 'phone'])
 @Index(['churchId', 'contributorId'])
+@Index('IDX_discipleship_members_church_status_enrollment', [
+  'churchId',
+  'status',
+  'enrollmentDate',
+  'createdAt',
+])
 export class DiscipleshipMember {
   @PrimaryGeneratedColumn('uuid')
   id: string;

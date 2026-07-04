@@ -43,6 +43,12 @@ export enum ContributionSourceType {
   'status',
   'receivedAt',
 ])
+@Index('IDX_contributions_church_contributor_status_date', [
+  'churchId',
+  'contributorId',
+  'status',
+  'receivedAt',
+])
 export class Contribution {
   @PrimaryGeneratedColumn('uuid')
   id: string;
