@@ -400,6 +400,11 @@ export class SmsService {
     }
   }
 
+  async getPlatformBalanceIntelligence() {
+    const config = await this.resolveSystemSmsConfig('platform');
+    return this.getBalanceIntelligence(config);
+  }
+
   async getBalanceIntelligence(config: ChurchSmsConfig = {}) {
     const balance = await this.getBalance(config);
     const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);

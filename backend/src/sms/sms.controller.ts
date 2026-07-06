@@ -13,6 +13,6 @@ export class SmsController {
   @Get('balance')
   @Roles(PlatformUserRole.PLATFORM_ADMIN)
   async getBalance() {
-    return this.smsService.getBalanceIntelligence();
+    return this.smsService.getPlatformBalanceIntelligence();
   }
 }
