@@ -14,7 +14,7 @@ import { SmsAddressBook } from './sms-address-book.entity';
 
 @Entity('sms_address_book_contacts')
 @Index(['churchId', 'normalizedPhone'])
-@Index(['addressBookId', 'normalizedPhone'])
+@Index(['addressBookId', 'normalizedPhone'], { unique: true })
 export class SmsAddressBookContact {
   @PrimaryGeneratedColumn('uuid')
   id: string;

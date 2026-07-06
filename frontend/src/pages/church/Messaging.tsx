@@ -1586,6 +1586,7 @@ export default function ChurchMessaging() {
 
               <div>
                 <label className="label">Upload file</label>
+                <p className="mb-2 text-xs text-stone-400">Supports XLSX, CSV, or TXT files up to 100,000 contacts.</p>
                 <input
                   accept=".xlsx,.csv,.txt"
                   className="input"
@@ -1607,7 +1608,7 @@ export default function ChurchMessaging() {
                 {importContactsMutation.isPending
                   ? 'Importing...'
                   : uploadForm.file
-                    ? 'Upload Excel to group'
+                    ? 'Upload contacts to group'
                     : 'Upload to group'}
               </button>
             </div>

@@ -805,7 +805,7 @@ export class ChurchController {
   @Roles(ChurchUserRole.PRIEST, ChurchUserRole.ADMIN)
   @UseInterceptors(
     FileInterceptor('file', {
-      limits: { fileSize: 2 * 1024 * 1024 },
+      limits: { fileSize: 50 * 1024 * 1024 },
     }),
   )
   importAddressBookContactsFile(

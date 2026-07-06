@@ -119,6 +119,16 @@ const DEFAULT_CONGREGATION_GALLERY_IMAGES: CongregationGalleryImage[] = [
   },
 ];
 const DEFAULT_DISCIPLESHIP_SERVICE_GROUP = 'Church Service';
+const ADDRESS_BOOK_IMPORT_MAX_CONTACTS = 100_000;
+const ADDRESS_BOOK_IMPORT_BATCH_SIZE = 1000;
+
+type AddressBookImportContact = {
+  firstName: string | null;
+  lastName: string | null;
+  displayName: string | null;
+  gender: ReturnType<SmsService['normalizeGender']>;
+  normalizedPhone: string;
+};
 
 type TransactionDiscipleshipIdentity = {
   key: string;
@@ -2556,16 +2566,14 @@ export class ChurchService {
       throw new BadRequestException('Upload an XLSX, CSV, or TXT contact file');
     }
 
-    const contactsText =
+    const lines =
       extension === '.xlsx'
-        ? this.importMatrixToContactText(
+        ? this.importMatrixToContactLines(
             await this.parseExcelImportMatrix(file.buffer),
           )
-        : file.buffer.toString('utf8');
+        : this.extractAddressBookContactLines(file.buffer.toString('utf8'));
 
-    return this.importAddressBookContacts(churchId, addressBookId, {
-      contactsText,
-    });
+    return this.importAddressBookContactLines(churchId, addressBookId, lines);
   }
 
   async importAddressBookContacts(
@@ -2574,90 +2582,190 @@ export class ChurchService {
     body: any,
   ) {
     await this.ensureAddressBook(churchId, addressBookId);
-    const lines = `${body.contactsText || ''}`
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(
-        (line) => !/^first\s*name\s*,\s*last\s*name\s*,\s*phone/i.test(line),
-      )
-      .filter(Boolean);
+    return this.importAddressBookContactLines(
+      churchId,
+      addressBookId,
+      this.extractAddressBookContactLines(`${body.contactsText || ''}`),
+    );
+  }
+
+  private async importAddressBookContactLines(
+    churchId: string,
+    addressBookId: string,
+    lines: string[],
+  ) {
     if (lines.length === 0) {
       throw new BadRequestException('Paste at least one contact');
     }
+    if (lines.length > ADDRESS_BOOK_IMPORT_MAX_CONTACTS) {
+      throw new BadRequestException(
+        `Import can contain at most ${ADDRESS_BOOK_IMPORT_MAX_CONTACTS.toLocaleString()} contacts. Split the file and try again.`,
+      );
+    }
 
-    const unique = new Map<
-      string,
-      {
-        firstName: string | null;
-        lastName: string | null;
-        displayName: string | null;
-        gender: ReturnType<SmsService['normalizeGender']>;
-        normalizedPhone: string;
-      }
-    >();
+    const unique = new Map<string, AddressBookImportContact>();
     let invalid = 0;
 
     for (const line of lines) {
-      const parsed = this.smsService.parseContactLine(line);
-      const normalizedPhone = this.smsService.normalizeKenyanPhone(
-        parsed.phone,
-      );
-      if (!normalizedPhone) {
+      const contact = this.parseAddressBookImportContact(line);
+      if (!contact) {
         invalid += 1;
         continue;
       }
-
-      const nameParts = `${parsed.name || ''}`
-        .trim()
-        .split(/\s+/)
-        .filter(Boolean);
-      unique.set(normalizedPhone, {
-        firstName: parsed.firstName || nameParts[0] || null,
-        lastName: nameParts.length > 1 ? nameParts.slice(1).join(' ') : null,
-        displayName: parsed.name || parsed.firstName || null,
-        gender: this.smsService.normalizeGender(parsed.gender || ''),
-        normalizedPhone,
-      });
+      unique.set(contact.normalizedPhone, contact);
     }
 
-    let imported = 0;
-    let updated = 0;
-    for (const contact of unique.values()) {
-      const existing = await this.addressBookContactRepo.findOne({
-        where: {
-          churchId,
-          addressBookId,
-          normalizedPhone: contact.normalizedPhone,
-        },
-      });
-
-      if (existing) {
-        existing.firstName = contact.firstName;
-        existing.lastName = contact.lastName;
-        existing.displayName = contact.displayName;
-        existing.gender = contact.gender;
-        await this.addressBookContactRepo.save(existing);
-        updated += 1;
-        continue;
-      }
-
-      await this.addressBookContactRepo.save(
-        this.addressBookContactRepo.create({
-          churchId,
-          addressBookId,
-          ...contact,
-          sourceLabel: 'upload',
-        }),
-      );
-      imported += 1;
-    }
+    const { imported, updated } = await this.bulkUpsertAddressBookContacts(
+      churchId,
+      addressBookId,
+      Array.from(unique.values()),
+    );
 
     return {
       imported,
       updated,
       invalid,
       duplicatesDropped: Math.max(0, lines.length - invalid - unique.size),
+      totalRows: lines.length,
+      uniqueContacts: unique.size,
+      limit: ADDRESS_BOOK_IMPORT_MAX_CONTACTS,
     };
+  }
+
+  private extractAddressBookContactLines(contactsText: string) {
+    return `${contactsText || ''}`
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(
+        (line) => !/^first\s*name\s*,\s*last\s*name\s*,\s*phone/i.test(line),
+      )
+      .filter(Boolean);
+  }
+
+  private parseAddressBookImportContact(line: string) {
+    const parsed = this.smsService.parseContactLine(line);
+    const normalizedPhone = this.smsService.normalizeKenyanPhone(parsed.phone);
+    if (!normalizedPhone) {
+      return null;
+    }
+
+    const nameParts = `${parsed.name || ''}`
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    return {
+      firstName: this.normalizeOptionalText(
+        parsed.firstName || nameParts[0] || null,
+        120,
+      ),
+      lastName: this.normalizeOptionalText(
+        nameParts.length > 1 ? nameParts.slice(1).join(' ') : null,
+        120,
+      ),
+      displayName: this.normalizeOptionalText(
+        parsed.name || parsed.firstName || null,
+        180,
+      ),
+      gender: this.smsService.normalizeGender(parsed.gender || ''),
+      normalizedPhone,
+    };
+  }
+
+  private async bulkUpsertAddressBookContacts(
+    churchId: string,
+    addressBookId: string,
+    contacts: AddressBookImportContact[],
+  ) {
+    if (contacts.length === 0) {
+      return { imported: 0, updated: 0 };
+    }
+
+    const existingPhones = new Set<string>();
+    const phones = contacts.map((contact) => contact.normalizedPhone);
+    for (
+      let index = 0;
+      index < phones.length;
+      index += ADDRESS_BOOK_IMPORT_BATCH_SIZE
+    ) {
+      const chunk = phones.slice(index, index + ADDRESS_BOOK_IMPORT_BATCH_SIZE);
+      const placeholders = chunk.map(() => '?').join(', ');
+      const rows = await this.dataSource.query(
+        `SELECT \`normalizedPhone\` FROM \`sms_address_book_contacts\` WHERE \`churchId\` = ? AND \`addressBookId\` = ? AND \`normalizedPhone\` IN (${placeholders})`,
+        [churchId, addressBookId, ...chunk],
+      );
+      rows.forEach((row: { normalizedPhone?: string }) => {
+        if (row.normalizedPhone) {
+          existingPhones.add(row.normalizedPhone);
+        }
+      });
+    }
+
+    const now = new Date();
+    for (
+      let index = 0;
+      index < contacts.length;
+      index += ADDRESS_BOOK_IMPORT_BATCH_SIZE
+    ) {
+      const chunk = contacts.slice(
+        index,
+        index + ADDRESS_BOOK_IMPORT_BATCH_SIZE,
+      );
+      const placeholders = chunk
+        .map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .join(', ');
+      const params = chunk.flatMap((contact) => [
+        randomUUID(),
+        churchId,
+        addressBookId,
+        contact.firstName,
+        contact.lastName,
+        contact.displayName,
+        contact.gender,
+        contact.normalizedPhone,
+        'upload',
+        now,
+        now,
+      ]);
+
+      await this.dataSource.query(
+        `INSERT INTO \`sms_address_book_contacts\`
+          (\`id\`, \`churchId\`, \`addressBookId\`, \`firstName\`, \`lastName\`, \`displayName\`, \`gender\`, \`normalizedPhone\`, \`sourceLabel\`, \`createdAt\`, \`updatedAt\`)
+        VALUES ${placeholders}
+        ON DUPLICATE KEY UPDATE
+          \`firstName\` = VALUES(\`firstName\`),
+          \`lastName\` = VALUES(\`lastName\`),
+          \`displayName\` = VALUES(\`displayName\`),
+          \`gender\` = VALUES(\`gender\`),
+          \`sourceLabel\` = VALUES(\`sourceLabel\`),
+          \`updatedAt\` = VALUES(\`updatedAt\`)`,
+        params,
+      );
+    }
+
+    const updated = contacts.filter((contact) =>
+      existingPhones.has(contact.normalizedPhone),
+    ).length;
+    return {
+      imported: contacts.length - updated,
+      updated,
+    };
+  }
+
+  private importMatrixToContactLines(
+    matrix: { rowNumber: number; values: unknown[] }[],
+  ) {
+    return matrix
+      .map((row) =>
+        row.values
+          .map((value) => `${value ?? ''}`.trim())
+          .filter(Boolean)
+          .join(','),
+      )
+      .filter(
+        (line) => !/^first\s*name\s*,\s*last\s*name\s*,\s*phone/i.test(line),
+      )
+      .filter(Boolean);
   }
 
   private importMatrixToContactText(
