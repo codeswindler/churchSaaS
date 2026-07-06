@@ -42,6 +42,9 @@ export class SmsAddressBook {
   @Column({ type: 'boolean', default: true })
   isActive: boolean;
 
+  @Column({ type: 'boolean', default: false })
+  isDefault: boolean;
+
   @OneToMany(() => SmsAddressBookContact, (contact) => contact.addressBook)
   contacts: SmsAddressBookContact[];
 

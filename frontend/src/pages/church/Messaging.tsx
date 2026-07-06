@@ -146,6 +146,10 @@ export default function ChurchMessaging() {
   const [contactForm, setContactForm] = useState(initialContactForm);
   const [uploadForm, setUploadForm] = useState(initialUploadForm);
   const [selectedAddressBookId, setSelectedAddressBookId] = useState('');
+  const [isFundAccountsOpen, setIsFundAccountsOpen] = useState(false);
+  const [isAddressBooksOpen, setIsAddressBooksOpen] = useState(false);
+  const [fundAccountSearch, setFundAccountSearch] = useState('');
+  const [addressBookSearch, setAddressBookSearch] = useState('');
   const [filters, setFilters] = useState(initialOutboxFilters);
   const [isOutboxFiltersOpen, setIsOutboxFiltersOpen] = useState(false);
   const [outboxMode, setOutboxMode] = useState<'simple' | 'detailed'>(
@@ -207,28 +211,6 @@ export default function ChurchMessaging() {
   }, [outboxPageAction, setPageActions]);
 
   const messageMetrics = getGsm7SmsMetrics(form.message);
-  const hasSelectedAudience =
-    form.fundAccountIds.length > 0 ||
-    form.addressBookIds.length > 0 ||
-    form.pastedContacts.trim().length > 0;
-  const quotePayload = useMemo(
-    () => ({
-      genderFilter: form.genderFilter,
-      message: form.message,
-      pastedContacts: form.pastedContacts,
-      addressBookIds: [...form.addressBookIds],
-      fundAccountIds: [...form.fundAccountIds],
-      smsShortcode: form.smsShortcode,
-    }),
-    [
-      form.addressBookIds,
-      form.fundAccountIds,
-      form.genderFilter,
-      form.message,
-      form.pastedContacts,
-      form.smsShortcode,
-    ],
-  );
   const selectedOutboxMetrics = selectedOutboxMessage
     ? getGsm7SmsMetrics(selectedOutboxMessage.messageBody || '')
     : null;
@@ -266,6 +248,62 @@ export default function ChurchMessaging() {
       api.get('/church/fund-accounts').then((response) => response.data),
     retry: false,
   });
+
+  const shortcodes = messagingConfig?.smsShortcodes || [];
+  const isLoadingFundAccounts =
+    messagingConfigLoading || fundAccountsLoading;
+  const resolvedFundAccounts = useMemo(
+    () =>
+      Array.isArray(fundAccountList) && fundAccountList.length > 0
+        ? fundAccountList
+        : messagingConfig?.fundAccounts || fundAccountList || [],
+    [fundAccountList, messagingConfig?.fundAccounts],
+  );
+  const fundAccounts = useMemo(
+    () =>
+      resolvedFundAccounts.filter(
+        (fundAccount: any) => fundAccount.isActive !== false,
+      ),
+    [resolvedFundAccounts],
+  );
+  const books = useMemo(() => addressBooks || [], [addressBooks]);
+  const defaultBooks = useMemo(
+    () => books.filter((book: any) => book.isDefault),
+    [books],
+  );
+  const defaultAddressBookIds = useMemo(
+    () => defaultBooks.map((book: any) => book.id),
+    [defaultBooks],
+  );
+  const effectiveAddressBookIds = useMemo(
+    () =>
+      Array.from(
+        new Set([...form.addressBookIds, ...defaultAddressBookIds].filter(Boolean)),
+      ),
+    [defaultAddressBookIds, form.addressBookIds],
+  );
+  const hasSelectedAudience =
+    form.fundAccountIds.length > 0 ||
+    effectiveAddressBookIds.length > 0 ||
+    form.pastedContacts.trim().length > 0;
+  const quotePayload = useMemo(
+    () => ({
+      genderFilter: form.genderFilter,
+      message: form.message,
+      pastedContacts: form.pastedContacts,
+      addressBookIds: [...effectiveAddressBookIds],
+      fundAccountIds: [...form.fundAccountIds],
+      smsShortcode: form.smsShortcode,
+    }),
+    [
+      effectiveAddressBookIds,
+      form.fundAccountIds,
+      form.genderFilter,
+      form.message,
+      form.pastedContacts,
+      form.smsShortcode,
+    ],
+  );
 
   const { data: addressBookContacts, isLoading: contactsLoading } = useQuery({
     queryKey: ['church-address-book-contacts', selectedAddressBookId],
@@ -320,25 +358,32 @@ export default function ChurchMessaging() {
     staleTime: 5000,
   });
 
-  const shortcodes = messagingConfig?.smsShortcodes || [];
-  const isLoadingFundAccounts =
-    messagingConfigLoading || fundAccountsLoading;
-  const resolvedFundAccounts =
-    Array.isArray(fundAccountList) && fundAccountList.length > 0
-      ? fundAccountList
-      : messagingConfig?.fundAccounts || fundAccountList || [];
-  const fundAccounts = resolvedFundAccounts.filter(
-    (fundAccount: any) => fundAccount.isActive !== false,
-  );
   const defaultShortcode =
     messagingConfig?.defaultSmsShortcode || shortcodes[0] || '';
   const outboxRows = outbox?.items || [];
   const outboxPagination = outbox?.pagination;
-  const books = addressBooks || [];
   const messagePreview = renderSmsPreviewPlaceholders(form.message);
   const selectedBook =
     books.find((book: any) => book.id === selectedAddressBookId) || books[0];
   const contacts = addressBookContacts || [];
+  const normalizedFundAccountSearch = fundAccountSearch.trim().toLowerCase();
+  const normalizedAddressBookSearch = addressBookSearch.trim().toLowerCase();
+  const filteredFundAccounts = fundAccounts.filter((fundAccount: any) => {
+    if (!normalizedFundAccountSearch) return true;
+    return [fundAccount.name, fundAccount.code, fundAccount.description]
+      .filter(Boolean)
+      .some((value) =>
+        `${value}`.toLowerCase().includes(normalizedFundAccountSearch),
+      );
+  });
+  const filteredBooks = books.filter((book: any) => {
+    if (!normalizedAddressBookSearch) return true;
+    return [book.name, book.description]
+      .filter(Boolean)
+      .some((value) =>
+        `${value}`.toLowerCase().includes(normalizedAddressBookSearch),
+      );
+  });
 
   useEffect(() => {
     if (!form.smsShortcode && defaultShortcode) {
@@ -501,6 +546,32 @@ export default function ChurchMessaging() {
         error?.response?.data?.message ||
           error?.message ||
           'Unable to delete contact group',
+      );
+    },
+  });
+
+  const updateAddressBookMutation = useMutation({
+    mutationFn: async (payload: { addressBookId: string; isDefault: boolean }) => {
+      const response = await api.patch(
+        `/church/messaging/address-books/${payload.addressBookId}`,
+        { isDefault: payload.isDefault },
+      );
+      return response.data;
+    },
+    onSuccess: (data) => {
+      toast.success(
+        data?.isDefault
+          ? 'Default quality-control group set'
+          : 'Default quality-control group removed',
+      );
+      queryClient.invalidateQueries({ queryKey: ['church-address-books'] });
+      queryClient.invalidateQueries({ queryKey: ['church-bulk-sms-quote'] });
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message ||
+          error?.message ||
+          'Unable to update default group',
       );
     },
   });
@@ -767,6 +838,58 @@ export default function ChurchMessaging() {
     });
   };
 
+  const toggleAllFundAccounts = () => {
+    const visibleIds = filteredFundAccounts.map((fundAccount: any) => fundAccount.id);
+    if (visibleIds.length === 0) return;
+    setForm((current) => {
+      const selected = new Set(current.fundAccountIds);
+      const allVisibleSelected = visibleIds.every((id) => selected.has(id));
+      visibleIds.forEach((id) => {
+        if (allVisibleSelected) {
+          selected.delete(id);
+        } else {
+          selected.add(id);
+        }
+      });
+      return { ...current, fundAccountIds: Array.from(selected) };
+    });
+  };
+
+  const toggleAllAddressBooks = () => {
+    const visibleIds = filteredBooks.map((book: any) => book.id);
+    if (visibleIds.length === 0) return;
+    setForm((current) => {
+      const selected = new Set(current.addressBookIds);
+      const allVisibleSelected = visibleIds.every((id) => selected.has(id));
+      visibleIds.forEach((id) => {
+        if (allVisibleSelected) {
+          selected.delete(id);
+        } else {
+          selected.add(id);
+        }
+      });
+      return { ...current, addressBookIds: Array.from(selected) };
+    });
+  };
+
+  const selectAllSources = () => {
+    setForm((current) => ({
+      ...current,
+      fundAccountIds: fundAccounts.map((fundAccount: any) => fundAccount.id),
+      addressBookIds: books.map((book: any) => book.id),
+    }));
+    setIsFundAccountsOpen(true);
+    setIsAddressBooksOpen(true);
+  };
+
+  const clearSelectedSources = () => {
+    setForm((current) => ({
+      ...current,
+      fundAccountIds: [],
+      addressBookIds: [],
+    }));
+  };
+
   const setAudienceFilter = (gender: string) => {
     setForm((current) => {
       return { ...current, genderFilter: gender };
@@ -1007,69 +1130,227 @@ export default function ChurchMessaging() {
                 </div>
               </div>
 
-              <div className="lg:col-span-2">
-                <label className="label">Fund account contributors</label>
-                <div className="messaging-choice-grid grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                  {fundAccounts.map((fundAccount: any) => {
-                    const isSelected = form.fundAccountIds.includes(
-                      fundAccount.id,
-                    );
-                    return (
-                      <button
-                        key={fundAccount.id}
-                        className={`${selectableTileClass} ${
-                          isSelected ? selectedTileClass : idleTileClass
-                        }`}
-                        type="button"
-                        onClick={() => toggleFundAccount(fundAccount.id)}
-                      >
-                        <span className="block font-semibold">
-                          {fundAccount.name}
-                        </span>
-                        <span className="text-xs text-stone-400">
-                          People who contributed to {fundAccount.code}
-                        </span>
-                      </button>
-                    );
-                  })}
-                  {fundAccounts.length === 0 ? (
-                    <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-sm text-stone-400">
-                      {isLoadingFundAccounts
-                        ? 'Loading fund accounts...'
-                        : 'No active fund accounts found for this church.'}
-                    </div>
-                  ) : null}
-                </div>
+              <div className="lg:col-span-2 flex flex-wrap gap-2">
+                <button
+                  className="btn-secondary justify-center"
+                  type="button"
+                  onClick={selectAllSources}
+                >
+                  <CheckCircle2 size={16} />
+                  Select all funds + groups
+                </button>
+                <button
+                  className="btn-secondary justify-center"
+                  type="button"
+                  onClick={clearSelectedSources}
+                >
+                  <X size={16} />
+                  Clear manual selections
+                </button>
+                {defaultBooks.length > 0 ? (
+                  <span className="inline-flex items-center rounded-full border border-emerald-300/25 bg-emerald-300/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-100">
+                    {defaultBooks.length} default QC group
+                    {defaultBooks.length === 1 ? '' : 's'} always included
+                  </span>
+                ) : null}
               </div>
 
-              <div className="lg:col-span-2">
-                <label className="label">Address book groups</label>
-                <div className="messaging-choice-grid grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                  {books.map((book: any) => {
-                    const isSelected = form.addressBookIds.includes(book.id);
-                    return (
+              <div className="lg:col-span-2 rounded-3xl border border-white/10 bg-black/10 p-3">
+                <button
+                  aria-expanded={isFundAccountsOpen}
+                  className="flex w-full items-center justify-between gap-3 text-left"
+                  type="button"
+                  onClick={() => setIsFundAccountsOpen((current) => !current)}
+                >
+                  <span>
+                    <span className="block text-sm font-semibold text-white">
+                      Fund account contributors
+                    </span>
+                    <span className="text-xs text-stone-400">
+                      {form.fundAccountIds.length.toLocaleString()} selected
+                      from {fundAccounts.length.toLocaleString()} active fund
+                      account{fundAccounts.length === 1 ? '' : 's'}
+                    </span>
+                  </span>
+                  <ChevronDown
+                    className={`shrink-0 transition ${
+                      isFundAccountsOpen ? 'rotate-180' : ''
+                    }`}
+                    size={18}
+                  />
+                </button>
+
+                {isFundAccountsOpen ? (
+                  <div className="mt-3 space-y-3">
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <label className="relative flex-1">
+                        <Search
+                          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
+                          size={15}
+                        />
+                        <input
+                          className="input pl-9"
+                          placeholder="Search fund accounts..."
+                          value={fundAccountSearch}
+                          onChange={(event) =>
+                            setFundAccountSearch(event.target.value)
+                          }
+                        />
+                      </label>
                       <button
-                        key={book.id}
-                        className={`${selectableTileClass} ${
-                          isSelected ? selectedTileClass : idleTileClass
-                        }`}
+                        className="btn-secondary justify-center"
                         type="button"
-                        onClick={() => toggleAddressBook(book.id)}
+                        onClick={toggleAllFundAccounts}
                       >
-                        <span className="block font-semibold">{book.name}</span>
-                        <span className="text-xs text-stone-400">
-                          {Number(book.contactCount || 0).toLocaleString()}{' '}
-                          contacts
-                        </span>
+                        {filteredFundAccounts.length > 0 &&
+                        filteredFundAccounts.every((fundAccount: any) =>
+                          form.fundAccountIds.includes(fundAccount.id),
+                        )
+                          ? 'Unselect visible'
+                          : 'Select visible'}
                       </button>
-                    );
-                  })}
-                  {books.length === 0 ? (
-                    <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-sm text-stone-400">
-                      Create a contact group from the Address Books tab.
                     </div>
-                  ) : null}
-                </div>
+                    <div className="messaging-choice-grid grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                      {filteredFundAccounts.map((fundAccount: any) => {
+                        const isSelected = form.fundAccountIds.includes(
+                          fundAccount.id,
+                        );
+                        return (
+                          <button
+                            key={fundAccount.id}
+                            className={`${selectableTileClass} ${
+                              isSelected ? selectedTileClass : idleTileClass
+                            }`}
+                            type="button"
+                            onClick={() => toggleFundAccount(fundAccount.id)}
+                          >
+                            <span className="block font-semibold">
+                              {fundAccount.name}
+                            </span>
+                            <span className="text-xs text-stone-400">
+                              People who contributed to {fundAccount.code}
+                            </span>
+                          </button>
+                        );
+                      })}
+                      {fundAccounts.length === 0 ? (
+                        <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-sm text-stone-400">
+                          {isLoadingFundAccounts
+                            ? 'Loading fund accounts...'
+                            : 'No active fund accounts found for this church.'}
+                        </div>
+                      ) : null}
+                      {fundAccounts.length > 0 &&
+                      filteredFundAccounts.length === 0 ? (
+                        <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-sm text-stone-400">
+                          No fund accounts match that search.
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="lg:col-span-2 rounded-3xl border border-white/10 bg-black/10 p-3">
+                <button
+                  aria-expanded={isAddressBooksOpen}
+                  className="flex w-full items-center justify-between gap-3 text-left"
+                  type="button"
+                  onClick={() => setIsAddressBooksOpen((current) => !current)}
+                >
+                  <span>
+                    <span className="block text-sm font-semibold text-white">
+                      Address book groups
+                    </span>
+                    <span className="text-xs text-stone-400">
+                      {effectiveAddressBookIds.length.toLocaleString()}{' '}
+                      included ({form.addressBookIds.length.toLocaleString()}{' '}
+                      manual, {defaultBooks.length.toLocaleString()} default QC)
+                    </span>
+                  </span>
+                  <ChevronDown
+                    className={`shrink-0 transition ${
+                      isAddressBooksOpen ? 'rotate-180' : ''
+                    }`}
+                    size={18}
+                  />
+                </button>
+
+                {isAddressBooksOpen ? (
+                  <div className="mt-3 space-y-3">
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <label className="relative flex-1">
+                        <Search
+                          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
+                          size={15}
+                        />
+                        <input
+                          className="input pl-9"
+                          placeholder="Search groups..."
+                          value={addressBookSearch}
+                          onChange={(event) =>
+                            setAddressBookSearch(event.target.value)
+                          }
+                        />
+                      </label>
+                      <button
+                        className="btn-secondary justify-center"
+                        type="button"
+                        onClick={toggleAllAddressBooks}
+                      >
+                        {filteredBooks.length > 0 &&
+                        filteredBooks.every((book: any) =>
+                          form.addressBookIds.includes(book.id),
+                        )
+                          ? 'Unselect visible'
+                          : 'Select visible'}
+                      </button>
+                    </div>
+                    <div className="messaging-choice-grid grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                      {filteredBooks.map((book: any) => {
+                        const isDefault = Boolean(book.isDefault);
+                        const isSelected =
+                          isDefault || form.addressBookIds.includes(book.id);
+                        return (
+                          <button
+                            key={book.id}
+                            className={`${selectableTileClass} ${
+                              isSelected ? selectedTileClass : idleTileClass
+                            }`}
+                            type="button"
+                            onClick={() => toggleAddressBook(book.id)}
+                          >
+                            <span className="flex items-center gap-2">
+                              <span className="block truncate font-semibold">
+                                {book.name}
+                              </span>
+                              {isDefault ? (
+                                <span className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-100">
+                                  Default
+                                </span>
+                              ) : null}
+                            </span>
+                            <span className="text-xs text-stone-400">
+                              {Number(book.contactCount || 0).toLocaleString()}{' '}
+                              contacts
+                              {isDefault ? ' · always included' : ''}
+                            </span>
+                          </button>
+                        );
+                      })}
+                      {books.length === 0 ? (
+                        <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-sm text-stone-400">
+                          Create a contact group from the Address Books tab.
+                        </div>
+                      ) : null}
+                      {books.length > 0 && filteredBooks.length === 0 ? (
+                        <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-sm text-stone-400">
+                          No groups match that search.
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               <div className="lg:col-span-2">
@@ -1170,8 +1451,11 @@ export default function ChurchMessaging() {
                 <p className="mt-4 text-xs leading-5 text-stone-400">
                   Selected sources: {form.fundAccountIds.length} fund account
                   {form.fundAccountIds.length === 1 ? '' : 's'},{' '}
-                  {form.addressBookIds.length} address book
-                  {form.addressBookIds.length === 1 ? '' : 's'}
+                  {effectiveAddressBookIds.length} address book
+                  {effectiveAddressBookIds.length === 1 ? '' : 's'}
+                  {defaultBooks.length > 0
+                    ? ` (${defaultBooks.length} default QC included)`
+                    : ''}
                   {form.pastedContacts.trim() ? ', plus pasted contacts' : ''}.
                   The quote resolves every selected source and drops duplicate
                   recipients before payment and sending.
@@ -1305,16 +1589,43 @@ export default function ChurchMessaging() {
                       }}
                     >
                       <span>
-                        <span className="block truncate font-semibold">
-                          {book.name}
+                        <span className="flex items-center gap-2">
+                          <span className="block truncate font-semibold">
+                            {book.name}
+                          </span>
+                          {book.isDefault ? (
+                            <span className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-100">
+                              Default QC
+                            </span>
+                          ) : null}
                         </span>
                         <span className="text-xs text-stone-400">
                           {Number(book.contactCount || 0).toLocaleString()}{' '}
                           contacts
+                          {book.isDefault
+                            ? ' · always included in bulk messages'
+                            : ''}
                         </span>
                       </span>
                     </button>
                     <div className="ml-3 flex items-center gap-2">
+                      <button
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${
+                          book.isDefault
+                            ? 'border-emerald-300/35 bg-emerald-300/10 text-emerald-100'
+                            : 'border-white/10 text-stone-300 hover:border-emerald-300/40 hover:text-emerald-100'
+                        }`}
+                        disabled={updateAddressBookMutation.isPending}
+                        type="button"
+                        onClick={() =>
+                          updateAddressBookMutation.mutate({
+                            addressBookId: book.id,
+                            isDefault: !book.isDefault,
+                          })
+                        }
+                      >
+                        {book.isDefault ? 'Default' : 'Make default'}
+                      </button>
                       <button
                         className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]"
                         type="button"

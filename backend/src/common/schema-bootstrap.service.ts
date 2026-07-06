@@ -882,6 +882,7 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
             \`name\` varchar(160) NOT NULL,
             \`description\` text NULL,
             \`isActive\` tinyint NOT NULL DEFAULT 1,
+            \`isDefault\` tinyint NOT NULL DEFAULT 0,
             \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
             \`updatedAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
             PRIMARY KEY (\`id\`),
@@ -889,6 +890,11 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `);
         this.logger.log('Created SMS address books table.');
+      } else if (!addressBooks.findColumnByName('isDefault')) {
+        await queryRunner.query(
+          'ALTER TABLE `sms_address_books` ADD COLUMN `isDefault` tinyint NOT NULL DEFAULT 0 AFTER `isActive`',
+        );
+        this.logger.log('Added default flag to SMS address books.');
       }
 
       const addressBookContacts = await queryRunner.getTable(

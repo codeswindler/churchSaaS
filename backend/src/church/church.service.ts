@@ -2409,7 +2409,8 @@ export class ChurchService {
       .createQueryBuilder('book')
       .loadRelationCountAndMap('book.contactCount', 'book.contacts')
       .where('book.churchId = :churchId', { churchId })
-      .orderBy('book.createdAt', 'DESC')
+      .orderBy('book.isDefault', 'DESC')
+      .addOrderBy('book.createdAt', 'DESC')
       .getMany();
 
     return rows;
@@ -2420,6 +2421,10 @@ export class ChurchService {
     if (!name) {
       throw new BadRequestException('Address book name is required');
     }
+    const shouldBeDefault = Boolean(body.isDefault);
+    if (shouldBeDefault) {
+      await this.addressBookRepo.update({ churchId }, { isDefault: false });
+    }
 
     const book = await this.addressBookRepo.save(
       this.addressBookRepo.create({
@@ -2428,6 +2433,7 @@ export class ChurchService {
         name,
         description: body.description || null,
         isActive: body.isActive ?? true,
+        isDefault: shouldBeDefault,
       }),
     );
 
@@ -2463,6 +2469,17 @@ export class ChurchService {
     }
     if (body.isActive !== undefined) {
       book.isActive = Boolean(body.isActive);
+      if (!book.isActive) {
+        book.isDefault = false;
+      }
+    }
+    if (body.isDefault !== undefined) {
+      const shouldBeDefault = Boolean(body.isDefault);
+      if (shouldBeDefault) {
+        await this.addressBookRepo.update({ churchId }, { isDefault: false });
+        book.isActive = true;
+      }
+      book.isDefault = shouldBeDefault;
     }
 
     return this.addressBookRepo.save(book);

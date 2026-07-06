@@ -5,6 +5,7 @@ import { Church } from '../entities/church.entity';
 import { Contribution } from '../entities/contribution.entity';
 import { Contributor } from '../entities/contributor.entity';
 import { PlatformSmsConfig } from '../entities/platform-sms-config.entity';
+import { SmsAddressBook } from '../entities/sms-address-book.entity';
 import { SmsAddressBookContact } from '../entities/sms-address-book-contact.entity';
 import { SmsBatch } from '../entities/sms-batch.entity';
 import { SmsOutbox } from '../entities/sms-outbox.entity';
@@ -23,6 +24,7 @@ import { SmsService } from './sms.service';
       Contribution,
       Contributor,
       PlatformSmsConfig,
+      SmsAddressBook,
       SmsAddressBookContact,
       SmsBatch,
       SmsOutbox,

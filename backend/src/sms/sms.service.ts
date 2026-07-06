@@ -19,6 +19,7 @@ import {
   PLATFORM_SMS_CONFIG_ID,
   PlatformSmsConfig,
 } from '../entities/platform-sms-config.entity';
+import { SmsAddressBook } from '../entities/sms-address-book.entity';
 import { SmsAddressBookContact } from '../entities/sms-address-book-contact.entity';
 import { SmsBatch, SmsBatchAudience } from '../entities/sms-batch.entity';
 import {
@@ -72,6 +73,8 @@ export class SmsService {
     private readonly contributionRepo: Repository<Contribution>,
     @InjectRepository(SmsAddressBookContact)
     private readonly addressBookContactRepo: Repository<SmsAddressBookContact>,
+    @InjectRepository(SmsAddressBook)
+    private readonly addressBookRepo: Repository<SmsAddressBook>,
     @InjectRepository(SmsBatch)
     private readonly smsBatchRepo: Repository<SmsBatch>,
     @InjectRepository(SmsOutbox)
@@ -2031,9 +2034,13 @@ export class SmsService {
       );
     }
 
-    const addressBookIds = Array.isArray(body.addressBookIds)
+    const requestedAddressBookIds = Array.isArray(body.addressBookIds)
       ? body.addressBookIds.filter(Boolean)
       : [];
+    const addressBookIds = await this.resolveAddressBookIdsWithDefaults(
+      churchId,
+      requestedAddressBookIds,
+    );
     if (addressBookIds.length > 0) {
       recipients.push(
         ...(await this.resolveAddressBookRecipients(
@@ -2049,6 +2056,23 @@ export class SmsService {
     }
 
     return recipients;
+  }
+
+  private async resolveAddressBookIdsWithDefaults(
+    churchId: string,
+    requestedAddressBookIds: string[],
+  ) {
+    const selected = new Set(requestedAddressBookIds.filter(Boolean));
+    const defaultBooks = await this.addressBookRepo.find({
+      select: ['id'],
+      where: {
+        churchId,
+        isActive: true,
+        isDefault: true,
+      },
+    });
+    defaultBooks.forEach((book) => selected.add(book.id));
+    return Array.from(selected);
   }
 
   private async resolveContributorRecipients(
