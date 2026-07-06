@@ -65,6 +65,20 @@ const initialOutboxFilters = {
 
 type Workspace = 'outbox' | 'compose' | 'addressBooks';
 
+function getApiErrorMessage(error: any, fallback: string) {
+  const data = error?.response?.data;
+  const message = Array.isArray(data?.message)
+    ? data.message.join(', ')
+    : data?.message || data?.error || data?.statusDescription;
+  if (typeof message === 'string' && message.trim()) {
+    return message;
+  }
+  if (Number(error?.response?.status || 0) >= 500) {
+    return fallback;
+  }
+  return error?.message || fallback;
+}
+
 const audienceFilterOptions = [
   {
     id: '',
@@ -375,9 +389,7 @@ export default function ChurchMessaging() {
     },
     onError: (error: any) => {
       toast.error(
-        error?.response?.data?.message ||
-          error?.message ||
-          'Unable to start SMS unit payment',
+        getApiErrorMessage(error, 'Unable to start SMS unit payment'),
       );
     },
   });
@@ -402,9 +414,7 @@ export default function ChurchMessaging() {
     },
     onError: (error: any) => {
       toast.error(
-        error?.response?.data?.message ||
-          error?.message ||
-          'Payment confirmed, but SMS sending failed',
+        getApiErrorMessage(error, 'Payment confirmed, but SMS sending failed'),
       );
     },
   });
@@ -614,7 +624,7 @@ export default function ChurchMessaging() {
         setActivePurchase(response.data);
       } catch (error: any) {
         toast.error(
-          error?.response?.data?.message || 'Unable to check payment status',
+          getApiErrorMessage(error, 'Unable to check payment status'),
         );
       }
     }, 3000);

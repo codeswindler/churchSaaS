@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import axios from 'axios';
-import { Repository } from 'typeorm';
+import { MoreThan, Repository } from 'typeorm';
 import {
   ChurchMpesaConfig,
   ChurchSmsConfig,
@@ -793,6 +793,24 @@ export class SmsService {
       throw new BadRequestException('SMS unit amount must be greater than zero');
     }
 
+    const activeCutoff = new Date(Date.now() - this.getSmsUnitPaymentTimeoutMs());
+    const activePurchase = await this.smsUnitPurchaseRepo.findOne({
+      where: {
+        churchId,
+        createdByUserId,
+        payerPhone,
+        status: SmsUnitPurchaseStatus.STK_SENT,
+        createdAt: MoreThan(activeCutoff),
+      },
+      order: { createdAt: 'DESC' },
+    });
+    if (activePurchase) {
+      this.logger.warn(
+        `[SMS] Reusing active SMS unit STK request instead of starting duplicate | purchase=${activePurchase.id} | church=${churchId} | user=${createdByUserId} | phone=${this.maskPhone(payerPhone)}`,
+      );
+      return this.sanitizeSmsUnitPurchase(activePurchase);
+    }
+
     const messagePayload = {
       audiences: body.audiences || [],
       genderFilter: body.genderFilter || null,
@@ -858,12 +876,12 @@ export class SmsService {
 
       return this.sanitizeSmsUnitPurchase(purchase);
     } catch (error) {
+      const failureMessage = this.getExceptionMessage(
+        error,
+        'Unable to initiate SMS unit STK push',
+      );
       purchase.status = SmsUnitPurchaseStatus.FAILED;
-      purchase.statusDescription =
-        error?.response?.data?.errorMessage ||
-        error?.response?.data?.ResponseDescription ||
-        error?.message ||
-        'Unable to initiate SMS unit STK push';
+      purchase.statusDescription = failureMessage;
       purchase.providerRawResponse = {
         ...(purchase.providerRawResponse || {}),
         stkPushError: axios.isAxiosError(error)
@@ -872,7 +890,7 @@ export class SmsService {
       };
       await this.smsUnitPurchaseRepo.save(purchase);
       await this.smsBatchRepo.save({ ...batch, status: 'payment_failed' });
-      throw new BadRequestException(purchase.statusDescription);
+      throw new BadRequestException(failureMessage);
     }
   }
 
@@ -2543,6 +2561,42 @@ export class SmsService {
       `providerDescription=${responseDescription ?? 'n/a'}`,
       `messageId=${messageId ? this.maskSecret(String(messageId)) : 'n/a'}`,
     ].join(' | ');
+  }
+
+  private getExceptionMessage(error: any, fallback: string) {
+    if (typeof error?.getResponse === 'function') {
+      const response = error.getResponse();
+      if (typeof response === 'string' && response.trim()) {
+        return response;
+      }
+      if (Array.isArray(response?.message) && response.message.length > 0) {
+        return response.message.join(', ');
+      }
+      if (typeof response?.message === 'string' && response.message.trim()) {
+        return response.message;
+      }
+      if (typeof response?.error === 'string' && response.error.trim()) {
+        return response.error;
+      }
+    }
+
+    const axiosMessage =
+      error?.response?.data?.errorMessage ||
+      error?.response?.data?.ResponseDescription ||
+      error?.response?.data?.message;
+    if (typeof axiosMessage === 'string' && axiosMessage.trim()) {
+      return axiosMessage;
+    }
+
+    if (
+      typeof error?.message === 'string' &&
+      error.message.trim() &&
+      !/^Request failed with status code \d+$/i.test(error.message.trim())
+    ) {
+      return error.message;
+    }
+
+    return fallback;
   }
 
   private describeAxiosError(error: any) {

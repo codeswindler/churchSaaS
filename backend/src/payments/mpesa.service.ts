@@ -125,10 +125,7 @@ export class MpesaService {
           'Daraja rejected the STK push with Invalid Access Token. Check that the M-Pesa environment matches the saved credentials, shortcode, and passkey.',
         );
       }
-      throw new BadRequestException(
-        providerMessage ||
-          'Unable to initiate M-Pesa STK push. Check the M-Pesa configuration.',
-      );
+      throw new BadRequestException(this.buildStkFailureMessage(error));
     }
   }
 
@@ -318,6 +315,50 @@ export class MpesaService {
     );
   }
 
+  private getProviderCode(error: any) {
+    const data = axios.isAxiosError(error) ? error.response?.data : null;
+    return `${data?.errorCode || data?.ResponseCode || data?.responseCode || ''}`;
+  }
+
+  private buildStkFailureMessage(error: any) {
+    const providerMessage = this.getProviderMessage(error);
+    const providerCode = this.getProviderCode(error);
+    const combined = `${providerCode} ${providerMessage}`.trim();
+
+    if (
+      providerCode === '500.001.1001' ||
+      /duplicated\s+msisdn|existing\s+ussd\s+session|active\s+stk|active\s+ussd/i.test(
+        combined,
+      )
+    ) {
+      return 'M-Pesa could not start the prompt because this phone has another active STK/USSD session. Wait 1-2 minutes, cancel the old prompt, or try a different phone number.';
+    }
+
+    if (/request\s+cancelled|cancelled\s+by\s+user/i.test(combined)) {
+      return 'M-Pesa payment was cancelled on the phone. Retry when ready.';
+    }
+
+    if (/timeout|timed?\s*out/i.test(combined)) {
+      return 'M-Pesa did not respond in time. If no prompt appears, wait a moment then retry.';
+    }
+
+    if (/invalid\s+phone|msisdn|partyA/i.test(combined)) {
+      return 'M-Pesa rejected the payment phone number. Confirm it is a valid Safaricom number and retry.';
+    }
+
+    if (providerMessage && !/request failed with status code/i.test(providerMessage)) {
+      return providerCode
+        ? `M-Pesa rejected the STK push (${providerCode}): ${providerMessage}`
+        : providerMessage;
+    }
+
+    if (providerCode) {
+      return `M-Pesa rejected the STK push with provider code ${providerCode}. Please retry shortly or use a different phone number.`;
+    }
+
+    return 'Unable to initiate M-Pesa STK push. Check the M-Pesa configuration or try again shortly.';
+  }
+
   private describeAxiosError(error: any) {
     if (!axios.isAxiosError(error)) {
       return `message=${error?.message || 'Unknown error'}`;
@@ -328,7 +369,7 @@ export class MpesaService {
       `status=${error.response?.status || 'no-status'}`,
       `message=${error.message}`,
       `providerMessage=${this.getProviderMessage(error) || 'n/a'}`,
-      `providerCode=${data?.errorCode || data?.ResponseCode || 'n/a'}`,
+      `providerCode=${this.getProviderCode(error) || 'n/a'}`,
     ].join(' | ');
   }
 
