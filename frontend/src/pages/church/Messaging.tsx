@@ -54,6 +54,8 @@ const initialUploadForm = {
   file: null as File | null,
 };
 
+const CONTACT_UPLOAD_PREVIEW_BYTES = 1024 * 1024;
+
 const initialOutboxFilters = {
   search: '',
   from: '',
@@ -904,11 +906,40 @@ export default function ChurchMessaging() {
     }
 
     const isExcel = /\.xlsx$/i.test(file.name);
-    setUploadForm((current) => ({
-      ...current,
-      contactsText: `${isExcel ? 'Excel' : 'Contact'} file selected: ${file.name}\n\nThis file will upload directly to the server. CSV, TXT, and XLSX files are imported through the 50MB file-upload path, not the pasted-text box.`,
-      file,
-    }));
+    if (isExcel) {
+      setUploadForm((current) => ({
+        ...current,
+        contactsText: `Excel file selected: ${file.name}\n\nThe first worksheet will be imported using columns like firstName, lastName, phone, and gender.`,
+        file,
+      }));
+      return;
+    }
+
+    const previewBlob =
+      file.size > CONTACT_UPLOAD_PREVIEW_BYTES
+        ? file.slice(0, CONTACT_UPLOAD_PREVIEW_BYTES)
+        : file;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const preview = String(reader.result || '');
+      setUploadForm((current) => ({
+        ...current,
+        contactsText:
+          file.size > CONTACT_UPLOAD_PREVIEW_BYTES
+            ? `${preview}\n\n--- Preview truncated. The full ${file.name} file will still be uploaded. ---`
+            : preview,
+        file,
+      }));
+    };
+    reader.onerror = () => {
+      toast.error('Unable to preview that file, but it can still be uploaded.');
+      setUploadForm((current) => ({
+        ...current,
+        contactsText: `File selected: ${file.name}`,
+        file,
+      }));
+    };
+    reader.readAsText(previewBlob);
   };
 
   const downloadAddressBookTemplate = () => {
