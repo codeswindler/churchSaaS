@@ -7,7 +7,8 @@ import { AppModule } from './app.module';
 import { createCorsOriginHandler } from './common/cors-origin';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
+  const bodyLimit = process.env.REQUEST_BODY_LIMIT || '50mb';
   const allowedOrigins = (
     process.env.FRONTEND_URLS ||
     'http://localhost:5173,http://127.0.0.1:5173'
@@ -21,10 +22,12 @@ async function bootstrap() {
     mkdirSync(uploadRoot, { recursive: true });
   }
 
-  app.use('/api/uploads', express.static(uploadRoot));
   app.enableCors({
     origin: createCorsOriginHandler(allowedOrigins),
   });
+  app.use('/api/uploads', express.static(uploadRoot));
+  app.use(express.json({ limit: bodyLimit }));
+  app.use(express.urlencoded({ limit: bodyLimit, extended: true }));
   app.setGlobalPrefix('api');
   app.useGlobalPipes(
     new ValidationPipe({

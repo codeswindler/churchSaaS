@@ -903,24 +903,12 @@ export default function ChurchMessaging() {
       return;
     }
 
-    if (/\.xlsx$/i.test(file.name)) {
-      setUploadForm((current) => ({
-        ...current,
-        contactsText: `Excel file selected: ${file.name}\n\nThe first worksheet will be imported using columns like firstName, lastName, phone, and gender.`,
-        file,
-      }));
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      setUploadForm((current) => ({
-        ...current,
-        contactsText: String(reader.result || ''),
-        file: null,
-      }));
-    };
-    reader.readAsText(file);
+    const isExcel = /\.xlsx$/i.test(file.name);
+    setUploadForm((current) => ({
+      ...current,
+      contactsText: `${isExcel ? 'Excel' : 'Contact'} file selected: ${file.name}\n\nThis file will upload directly to the server. CSV, TXT, and XLSX files are imported through the 50MB file-upload path, not the pasted-text box.`,
+      file,
+    }));
   };
 
   const downloadAddressBookTemplate = () => {
@@ -1907,7 +1895,10 @@ export default function ChurchMessaging() {
 
               <div>
                 <label className="label">Upload file</label>
-                <p className="mb-2 text-xs text-stone-400">Supports XLSX, CSV, or TXT files up to 100,000 contacts.</p>
+                <p className="mb-2 text-xs text-stone-400">
+                  Supports XLSX, CSV, or TXT files up to 50MB and 100,000
+                  contacts.
+                </p>
                 <input
                   accept=".xlsx,.csv,.txt"
                   className="input"
