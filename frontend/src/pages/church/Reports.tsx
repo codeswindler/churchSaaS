@@ -46,8 +46,14 @@ export default function ChurchReports() {
   });
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
-  const generalFundAccountId =
-    (fundAccounts || []).find((item: any) => item.code === 'general')?.id || '';
+  // Legacy contributions with no fundAccountId are reported as "Unassigned".
+  // Clicking that row filters by whichever account is now the fallback, which
+  // is where the backend groups those rows.
+  const fallbackFundAccountId =
+    (fundAccounts || []).find((item: any) => item.isFallback)?.id ||
+    (fundAccounts || []).find((item: any) => item.code === 'offering')?.id ||
+    (fundAccounts || []).find((item: any) => item.code === 'general')?.id ||
+    '';
   const buildLedgerPath = (overrides: Partial<typeof filters> = {}) => {
     const params = new URLSearchParams();
     const status = overrides.status ?? filters.status;
@@ -289,10 +295,10 @@ export default function ChurchReports() {
                   key={item.fundAccountName}
                   className="block rounded-3xl border border-white/10 bg-black/10 p-4 transition hover:-translate-y-0.5 hover:bg-white/5"
                   to={buildLedgerPath(
-                    item.fundAccountId || item.code === 'general'
+                    item.fundAccountId || item.code === '__unassigned__'
                       ? {
                           fundAccountId:
-                            item.fundAccountId || generalFundAccountId,
+                            item.fundAccountId || fallbackFundAccountId,
                         }
                       : {},
                   )}

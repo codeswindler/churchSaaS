@@ -3081,7 +3081,7 @@ export default function ChurchDiscipleship() {
                             <div className="flex items-start justify-between gap-3">
                               <div>
                                 <p className="font-semibold text-white">
-                                  {item.fundAccountName || 'General contribution'}
+                                  {item.fundAccountName || 'Unassigned contribution'}
                                 </p>
                                 <p className="mt-1 text-xs text-stone-400">
                                   {item.date}

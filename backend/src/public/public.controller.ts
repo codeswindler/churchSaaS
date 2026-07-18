@@ -16,6 +16,7 @@ import {
   ChurchSmsConfig,
 } from '../common/church.utils';
 import { getDefaultReceiptTemplateForFundCode } from '../common/receipt-templates';
+import { DEFAULT_FUND_ACCOUNT_SEEDS } from '../common/fund-accounts';
 import { ContributionsService } from '../contributions/contributions.service';
 import { ChurchCongregationPage } from '../entities/church-congregation-page.entity';
 import { ChurchUser, ChurchUserRole } from '../entities/church-user.entity';
@@ -931,29 +932,7 @@ export class PublicController {
   }
 
   private async seedDefaultFundAccounts(churchId: string) {
-    const templates = [
-      {
-        name: 'Tithe',
-        code: 'tithe',
-        description: 'Regular tithe contributions',
-      },
-      {
-        name: 'Offering',
-        code: 'offering',
-        description: 'General church offering',
-      },
-      {
-        name: 'Harambee',
-        code: 'harambee',
-        description: 'Special fundraising support',
-      },
-      {
-        name: 'General',
-        code: 'general',
-        description:
-          'Fallback account for payments whose account reference does not match a configured fund account.',
-      },
-    ];
+    const templates = DEFAULT_FUND_ACCOUNT_SEEDS;
 
     for (let index = 0; index < templates.length; index += 1) {
       const template = templates[index];
@@ -972,6 +951,8 @@ export class PublicController {
           description: template.description,
           displayOrder: index + 1,
           isActive: true,
+          isFallback: template.isFallback === true,
+          aliases: template.aliases,
           receiptTemplate: getDefaultReceiptTemplateForFundCode(template.code),
         }),
       );

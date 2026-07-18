@@ -301,7 +301,135 @@ describe('ChurchService discipleship name matching', () => {
     expect(save).toHaveBeenCalledWith(account);
   });
 
-  it('does not archive the General fallback account', async () => {
+  it('does not archive the flagged fallback account', async () => {
+    (service as any).fundAccountRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'offering',
+        churchId: 'church-1',
+        code: 'offering',
+        name: 'Offering',
+        isActive: true,
+        isFallback: true,
+      }),
+    };
+
+    await expect(
+      service.archiveFundAccount('church-1', 'offering', 'priest-1', {}),
+    ).rejects.toThrow('fallback fund account cannot be archived');
+  });
+
+  describe('fund account alias validation', () => {
+    const existingAccounts = [
+      { id: 'fund-tithe', churchId: 'church-1', name: 'Tithe', code: 'tithe', aliases: ['Zaka'] },
+      { id: 'fund-harambee', churchId: 'church-1', name: 'Harambee', code: 'harambee', aliases: ['Fundraising'] },
+    ];
+
+    const resolveAliases = (
+      value: unknown,
+      self: { name?: string; code?: string },
+      excludeId?: string,
+    ) =>
+      (service as any).resolveFundAccountAliases(
+        'church-1',
+        value,
+        self,
+        excludeId,
+      ) as Promise<string[]>;
+
+    beforeEach(() => {
+      (service as any).fundAccountRepo = {
+        find: jest.fn().mockResolvedValue(existingAccounts),
+      };
+    });
+
+    it('accepts distinct aliases and normalizes the list', async () => {
+      await expect(
+        resolveAliases(
+          ['Sadaka ya Kumi', '  ', 'sadakayakumi', 'Michango'],
+          { name: 'Offering', code: 'offering' },
+        ),
+      ).resolves.toEqual(['Sadaka ya Kumi', 'Michango']);
+    });
+
+    it('accepts a comma-delimited string', async () => {
+      await expect(
+        resolveAliases('Offerings, Sadaka', {
+          name: 'Offering',
+          code: 'offering',
+        }),
+      ).resolves.toEqual(['Offerings', 'Sadaka']);
+    });
+
+    it('returns an empty list without querying when nothing is supplied', async () => {
+      await expect(
+        resolveAliases('', { name: 'Offering', code: 'offering' }),
+      ).resolves.toEqual([]);
+      expect((service as any).fundAccountRepo.find).not.toHaveBeenCalled();
+    });
+
+    it('rejects an alias already used by another account', async () => {
+      await expect(
+        resolveAliases(['Fundraising'], {
+          name: 'Offering',
+          code: 'offering',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('names the conflicting account in the error', async () => {
+      await expect(
+        resolveAliases(['Fundraising'], {
+          name: 'Offering',
+          code: 'offering',
+        }),
+      ).rejects.toThrow(/"Fundraising" already refers to Harambee/);
+    });
+
+    it('rejects an alias matching another account name or code', async () => {
+      await expect(
+        resolveAliases(['tithe'], { name: 'Offering', code: 'offering' }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        resolveAliases(['Harambee'], { name: 'Offering', code: 'offering' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('ignores case and punctuation when detecting conflicts', async () => {
+      await expect(
+        resolveAliases(['  FUND-RAISING  '], {
+          name: 'Offering',
+          code: 'offering',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects a redundant alias matching the account itself', async () => {
+      await expect(
+        resolveAliases(['Offering'], { name: 'Offering', code: 'offering' }),
+      ).rejects.toThrow(/own name or code/);
+    });
+
+    it('lets an account keep its own aliases when editing', async () => {
+      await expect(
+        resolveAliases(
+          ['Zaka'],
+          { name: 'Tithe', code: 'tithe' },
+          'fund-tithe',
+        ),
+      ).resolves.toEqual(['Zaka']);
+    });
+
+    it('reports every conflicting alias, not just the first', async () => {
+      await expect(
+        resolveAliases(['Fundraising', 'Zaka'], {
+          name: 'Offering',
+          code: 'offering',
+        }),
+      ).rejects.toThrow(/Harambee.*Tithe/s);
+    });
+  });
+
+  it('still protects an unmigrated legacy General account', async () => {
     (service as any).fundAccountRepo = {
       findOne: jest.fn().mockResolvedValue({
         id: 'general',
@@ -309,12 +437,13 @@ describe('ChurchService discipleship name matching', () => {
         code: 'general',
         name: 'General',
         isActive: true,
+        isFallback: false,
       }),
     };
 
     await expect(
       service.archiveFundAccount('church-1', 'general', 'priest-1', {}),
-    ).rejects.toThrow('General fund account cannot be archived');
+    ).rejects.toThrow('fallback fund account cannot be archived');
   });
 
   it('uses the same outbox filters for CSV exports', async () => {

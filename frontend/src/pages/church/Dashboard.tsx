@@ -988,7 +988,9 @@ export default function ChurchDashboard() {
                         </div>
                       </td>
                       <td data-label="Fund Account">
-                        {item.fundAccountId ? item.fundAccountName : 'General'}
+                        {item.fundAccountId
+                          ? item.fundAccountName
+                          : 'Unassigned'}
                       </td>
                       <td data-label="Channel">{item.channel}</td>
                       <td data-label="Amount">

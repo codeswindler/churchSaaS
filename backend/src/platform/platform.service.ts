@@ -4,6 +4,7 @@ import * as bcrypt from 'bcrypt';
 import { In, Repository } from 'typeorm';
 import { buildChurchIntegrationSummary } from '../common/church.utils';
 import { getDefaultReceiptTemplateForFundCode } from '../common/receipt-templates';
+import { DEFAULT_FUND_ACCOUNT_SEEDS } from '../common/fund-accounts';
 import {
   ChurchPermission,
   DEFAULT_CHURCH_FEATURES,
@@ -294,6 +295,10 @@ export class PlatformService {
         smsShortcodes: this.normalizeSmsShortcodes(body.smsShortcodes),
         smsBaseUrl: this.normalizeOptionalText(body.smsBaseUrl),
         smsUnitRateKes: this.normalizeSmsUnitRate(body.smsUnitRateKes),
+        usesOwnSmsWallet: this.normalizeBoolean(
+          body.usesOwnSmsWallet,
+          false,
+        ),
         mpesaEnvironment:
           this.normalizeOptionalText(body.mpesaEnvironment) || 'sandbox',
         mpesaConsumerKey: this.normalizeOptionalText(body.mpesaConsumerKey),
@@ -461,6 +466,7 @@ export class PlatformService {
         integrations: buildChurchIntegrationSummary(church),
         commissionRatePct: Number(church.commissionRatePct || 0),
         smsUnitRateKes: Number(church.smsUnitRateKes || 0),
+        usesOwnSmsWallet: Boolean(church.usesOwnSmsWallet),
         enabledFeatures: normalizeFeatureList(church.enabledFeatures),
         contributionTotals: this.decorateRevenueTotals(
           totalsByChurchId.get(church.id),
@@ -512,6 +518,7 @@ export class PlatformService {
       smsSenders: senderAllocation.senders,
       smsBaseUrl: church.smsBaseUrl,
       smsUnitRateKes: Number(church.smsUnitRateKes || 0),
+      usesOwnSmsWallet: Boolean(church.usesOwnSmsWallet),
       mpesaEnvironment: church.mpesaEnvironment || 'sandbox',
       mpesaConsumerKey: church.mpesaConsumerKey,
       mpesaConsumerSecret: church.mpesaConsumerSecret,
@@ -819,6 +826,12 @@ export class PlatformService {
     }
     if (body.smsUnitRateKes !== undefined) {
       church.smsUnitRateKes = this.normalizeSmsUnitRate(body.smsUnitRateKes);
+    }
+    if (body.usesOwnSmsWallet !== undefined) {
+      church.usesOwnSmsWallet = this.normalizeBoolean(
+        body.usesOwnSmsWallet,
+        church.usesOwnSmsWallet,
+      );
     }
     if (body.mpesaEnvironment !== undefined) {
       church.mpesaEnvironment =
@@ -1531,29 +1544,7 @@ export class PlatformService {
   }
 
   private async seedDefaultFundAccounts(churchId: string) {
-    const templates = [
-      {
-        name: 'Tithe',
-        code: 'tithe',
-        description: 'Regular tithe contributions',
-      },
-      {
-        name: 'Offering',
-        code: 'offering',
-        description: 'General church offering',
-      },
-      {
-        name: 'Harambee',
-        code: 'harambee',
-        description: 'Special fundraising support',
-      },
-      {
-        name: 'General',
-        code: 'general',
-        description:
-          'Fallback account for payments whose account reference does not match a configured fund account.',
-      },
-    ];
+    const templates = DEFAULT_FUND_ACCOUNT_SEEDS;
 
     for (let index = 0; index < templates.length; index += 1) {
       const template = templates[index];
@@ -1572,6 +1563,8 @@ export class PlatformService {
           description: template.description,
           displayOrder: index + 1,
           isActive: true,
+          isFallback: template.isFallback === true,
+          aliases: template.aliases,
           receiptTemplate: getDefaultReceiptTemplateForFundCode(template.code),
         }),
       );

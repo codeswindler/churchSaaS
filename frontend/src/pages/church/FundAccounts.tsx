@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Archive, Plus, RotateCcw, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import SmsPhonePreview from '../../components/SmsPhonePreview';
 import api from '../../services/api';
@@ -33,13 +33,26 @@ const initialForm = {
   displayOrder: 0,
   targetAmount: '',
   isActive: true,
+  aliases: [] as string[],
   receiptTemplate: FUND_RECEIPT_TEMPLATE_PREFIX,
 };
 
 const RECEIPT_TEMPLATE_LIMIT = 459;
+const MAX_FUND_ALIASES = 12;
 
-function isGeneralFundAccount(account: any) {
-  return `${account?.code || account?.name || ''}`.trim().toLowerCase() === 'general';
+// Mirrors the backend: an M-Pesa reference matches an account when its
+// alphanumeric-only, lowercased form equals the account name, code, or an alias.
+function normalizeFundReference(value: unknown) {
+  return `${value ?? ''}`.toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function isFallbackFundAccount(account: any) {
+  if (!account) return false;
+  if (account.isFallback) return true;
+  // Back-compat for churches not yet migrated off the retired General account.
+  return (
+    `${account?.code || account?.name || ''}`.trim().toLowerCase() === 'general'
+  );
 }
 
 function formatKes(value: unknown) {
@@ -48,66 +61,56 @@ function formatKes(value: unknown) {
   })}`;
 }
 
+// Only the retired General account used the account-less wording. Every current
+// account, fallback included, prints {account}.
 function getReceiptTemplatePrefix(account: any) {
-  return isGeneralFundAccount(account)
+  return `${account?.code || ''}`.trim().toLowerCase() === 'general'
     ? GENERAL_RECEIPT_TEMPLATE_PREFIX
     : FUND_RECEIPT_TEMPLATE_PREFIX;
 }
 
-function normalizeReceiptExtraStart(extraMessage: string) {
-  return `${extraMessage || ''}`.replace(/^[ \t]+/, '');
+// A template is "untouched" when it still matches one of the shipped defaults
+// verbatim. Only untouched templates are re-seeded when the fund code changes
+// between general/non-general, so admin-authored wording is never overwritten.
+function isUntouchedDefaultTemplate(template: string) {
+  const value = `${template || ''}`.trim();
+  return RECEIPT_TEMPLATE_PREFIXES.some((prefix) => value === prefix);
 }
 
-function hasLeadingLineBreak(value: string) {
-  return /^\r?\n/.test(value);
+// Legacy rows may still hold pre-migration wording. We surface them as-is in the
+// editor (nothing is stripped anymore), but flag them so the admin knows why the
+// text looks different from the current default.
+function isLegacyReceiptTemplate(template: string) {
+  const value = `${template || ''}`.trimStart();
+  if (!value) {
+    return false;
+  }
+  if (value.startsWith(OLD_FUND_RECEIPT_TEMPLATE_PREFIX)) {
+    return true;
+  }
+  return LEGACY_RECEIPT_TEMPLATE_PATTERNS.some((pattern) =>
+    pattern.test(value),
+  );
 }
 
-function buildReceiptTemplate(
-  extraMessage: string,
-  prefix = FUND_RECEIPT_TEMPLATE_PREFIX,
-  collapseBlankExtra = false,
-) {
-  const extra = normalizeReceiptExtraStart(extraMessage);
-  if (!extra || (collapseBlankExtra && !extra.trim())) {
-    return prefix;
-  }
-  return hasLeadingLineBreak(extra) ? `${prefix}${extra}` : `${prefix} ${extra}`;
-}
+// Only placeholders the backend renderer actually resolves. {firstName} is
+// deliberately excluded: the SMS preview substitutes it, but the production
+// renderer has no value for it and would send an empty string.
+const RECEIPT_PLACEHOLDERS = [
+  { token: '{name}', label: 'Name', hint: 'Contributor name, e.g. Geoffrey' },
+  { token: '{amount}', label: 'Amount', hint: 'Contribution amount, e.g. 1,000.00' },
+  { token: '{account}', label: 'Account', hint: 'Fund account name, e.g. Tithe' },
+  { token: '{date}', label: 'Date', hint: 'Date received, e.g. Jun 4, 2026' },
+  { token: '{reference}', label: 'Reference', hint: 'M-Pesa payment reference' },
+];
 
-function normalizeExtractedReceiptExtra(value: string) {
-  if (hasLeadingLineBreak(value)) {
-    return value;
-  }
-  return value.replace(/^[ \t]+/, '');
-}
+const REQUIRED_RECEIPT_PLACEHOLDERS = ['{name}', '{amount}'];
 
-function getReceiptExtraMessage(
-  template: string,
-  prefix = FUND_RECEIPT_TEMPLATE_PREFIX,
-) {
-  const normalized = `${template || ''}`.trimStart();
-  if (!normalized) {
-    return '';
-  }
-  const knownPrefixes = [
-    prefix,
-    ...RECEIPT_TEMPLATE_PREFIXES.filter((item) => item !== prefix),
-  ];
-  for (const knownPrefix of knownPrefixes) {
-    if (normalized.startsWith(knownPrefix)) {
-      return normalizeExtractedReceiptExtra(
-        normalized.slice(knownPrefix.length),
-      );
-    }
-  }
-  for (const legacyPattern of LEGACY_RECEIPT_TEMPLATE_PATTERNS) {
-    if (legacyPattern.test(normalized)) {
-      return normalizeExtractedReceiptExtra(
-        normalized.replace(legacyPattern, ''),
-      );
-    }
-  }
-  return normalized;
+function getMissingReceiptPlaceholders(template: string) {
+  const value = `${template || ''}`;
+  return REQUIRED_RECEIPT_PLACEHOLDERS.filter(
+    (placeholder) => !value.includes(placeholder),
+  );
 }
 
 export default function ChurchFundAccounts() {
@@ -116,6 +119,8 @@ export default function ChurchFundAccounts() {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [form, setForm] = useState<any>(initialForm);
   const [previewAccount, setPreviewAccount] = useState<any | null>(null);
+  const receiptTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [aliasDraft, setAliasDraft] = useState('');
   const [accountView, setAccountView] = useState<'active' | 'archived'>(
     'active',
   );
@@ -128,17 +133,31 @@ export default function ChurchFundAccounts() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const receiptPrefix = getReceiptTemplatePrefix(form);
+      const existingAliases: string[] = form.aliases || [];
+      const draft = aliasDraft.trim();
+      const draftKey = normalizeFundReference(draft);
+      const pendingAliases =
+        draftKey &&
+        !existingAliases.some(
+          (alias) => normalizeFundReference(alias) === draftKey,
+        )
+          ? [...existingAliases, draft]
+          : existingAliases;
+
+      // The template is stored verbatim. If the admin cleared it entirely we
+      // fall back to the default for this fund's code rather than saving blank.
+      const template = `${form.receiptTemplate || ''}`.trim()
+        ? form.receiptTemplate
+        : getReceiptTemplatePrefix(form);
       const payload = {
         ...form,
         targetAmount: `${form.targetAmount || ''}`.trim()
           ? Number(form.targetAmount)
           : null,
-        receiptTemplate: buildReceiptTemplate(
-          getReceiptExtraMessage(form.receiptTemplate, receiptPrefix),
-          receiptPrefix,
-          true,
-        ),
+        // Commit a half-typed alias the admin never pressed Enter on, rather
+        // than silently dropping it. The backend re-validates for conflicts.
+        aliases: pendingAliases,
+        receiptTemplate: template,
       };
       if (editingId) {
         const response = await api.patch(
@@ -218,21 +237,12 @@ export default function ChurchFundAccounts() {
   const visibleAccounts =
     accountView === 'archived' ? archivedAccounts : activeAccounts;
   const receiptTemplatePrefix = getReceiptTemplatePrefix(form);
-  const receiptExtraMessage = getReceiptExtraMessage(
-    form.receiptTemplate,
-    receiptTemplatePrefix,
+  const composedReceiptTemplate = `${form.receiptTemplate || ''}`;
+  const missingReceiptPlaceholders = getMissingReceiptPlaceholders(
+    composedReceiptTemplate,
   );
-  const receiptExtraJoinerLength =
-    receiptExtraMessage && !hasLeadingLineBreak(receiptExtraMessage) ? 1 : 0;
-  const receiptExtraLimit = Math.max(
-    RECEIPT_TEMPLATE_LIMIT -
-      receiptTemplatePrefix.length -
-      receiptExtraJoinerLength,
-    0,
-  );
-  const composedReceiptTemplate = buildReceiptTemplate(
-    receiptExtraMessage,
-    receiptTemplatePrefix,
+  const isEditingLegacyTemplate = isLegacyReceiptTemplate(
+    composedReceiptTemplate,
   );
   const templateMetrics = getGsm7SmsMetrics(composedReceiptTemplate);
   const templateRemaining = RECEIPT_TEMPLATE_LIMIT - templateMetrics.length;
@@ -242,14 +252,9 @@ export default function ChurchFundAccounts() {
     activeAccounts[0] ||
     archivedAccounts[0] ||
     null;
-  const accountPreviewPrefix = getReceiptTemplatePrefix(accountPreview);
-  const accountPreviewTemplate = buildReceiptTemplate(
-    getReceiptExtraMessage(
-      accountPreview?.receiptTemplate || '',
-      accountPreviewPrefix,
-    ),
-    accountPreviewPrefix,
-  );
+  const accountPreviewTemplate =
+    accountPreview?.receiptTemplate ||
+    getReceiptTemplatePrefix(accountPreview);
   const accountPreviewMessage = renderSmsPreviewPlaceholders(
     accountPreviewTemplate,
     { account: accountPreview?.name || 'Account' },
@@ -258,6 +263,80 @@ export default function ChurchFundAccounts() {
     composedReceiptTemplate,
     { account: form.name || 'Account' },
   );
+
+  const formAliases: string[] = form.aliases || [];
+
+  // Pre-flight the same conflict rules the backend enforces, so the admin sees
+  // the problem while typing rather than as a 400 on save.
+  const aliasConflict = (() => {
+    const key = normalizeFundReference(aliasDraft);
+    if (!key) return null;
+    if (formAliases.some((alias) => normalizeFundReference(alias) === key)) {
+      return 'Already added to this account.';
+    }
+    if (
+      key === normalizeFundReference(form.name) ||
+      key === normalizeFundReference(form.code)
+    ) {
+      return 'Matches this account’s own name or code, so it already works.';
+    }
+    const clash = accounts.find(
+      (account: any) =>
+        account.id !== editingId &&
+        [account.name, account.code, ...(account.aliases || [])].some(
+          (value: string) => normalizeFundReference(value) === key,
+        ),
+    );
+    return clash ? `Already used by ${clash.name}.` : null;
+  })();
+
+  const canAddAlias =
+    Boolean(normalizeFundReference(aliasDraft)) &&
+    !aliasConflict &&
+    formAliases.length < MAX_FUND_ALIASES;
+
+  const addAlias = () => {
+    if (!canAddAlias) return;
+    setForm((current: any) => ({
+      ...current,
+      aliases: [...(current.aliases || []), aliasDraft.trim()],
+    }));
+    setAliasDraft('');
+  };
+
+  const removeAlias = (alias: string) => {
+    setForm((current: any) => ({
+      ...current,
+      aliases: (current.aliases || []).filter((item: string) => item !== alias),
+    }));
+  };
+
+  // Insert a placeholder at the caret (replacing any selection), then restore
+  // focus with the caret just past the inserted token.
+  const insertReceiptPlaceholder = (token: string) => {
+    const textarea = receiptTextareaRef.current;
+    const current = `${form.receiptTemplate || ''}`;
+
+    if (!textarea) {
+      setForm((prev: any) => ({
+        ...prev,
+        receiptTemplate: `${prev.receiptTemplate || ''}${token}`,
+      }));
+      return;
+    }
+
+    const start = textarea.selectionStart ?? current.length;
+    const end = textarea.selectionEnd ?? current.length;
+    const next = `${current.slice(0, start)}${token}${current.slice(end)}`;
+
+    setForm((prev: any) => ({ ...prev, receiptTemplate: next }));
+
+    requestAnimationFrame(() => {
+      const caret = start + token.length;
+      textarea.focus();
+      textarea.setSelectionRange(caret, caret);
+    });
+  };
 
   const closeEditor = () => {
     if (saveMutation.isPending) {
@@ -271,6 +350,7 @@ export default function ChurchFundAccounts() {
   const openCreateEditor = () => {
     setEditingId(null);
     setForm(initialForm);
+    setAliasDraft('');
     setIsEditorOpen(true);
   };
 
@@ -284,14 +364,18 @@ export default function ChurchFundAccounts() {
       targetAmount:
         Number(item.targetAmount || 0) > 0 ? String(item.targetAmount) : '',
       isActive: item.isActive,
+      aliases: item.aliases || [],
       receiptTemplate: item.receiptTemplate || initialForm.receiptTemplate,
     });
+    setAliasDraft('');
     setIsEditorOpen(true);
   };
 
   const handleArchiveAccount = (item: any) => {
-    if (isGeneralFundAccount(item)) {
-      toast.error('General account must stay available for fallback payments');
+    if (isFallbackFundAccount(item)) {
+      toast.error(
+        'The fallback account must stay available for unmatched payments',
+      );
       return;
     }
 
@@ -332,8 +416,10 @@ export default function ChurchFundAccounts() {
             </button>
           </div>
           <div className="mt-4 rounded-3xl border border-amber-200/15 bg-amber-200/10 p-4 text-sm text-amber-50">
-            Edit <span className="font-semibold">General</span> to control the
-            fallback receipt message for unmatched M-Pesa account references.
+            Unmatched M-Pesa account references are grouped under your fallback
+            account (<span className="font-semibold">Offering</span> by default).
+            Add aliases to an account to catch common spellings before they fall
+            through.
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/10 p-1">
             <button
@@ -393,6 +479,14 @@ export default function ChurchFundAccounts() {
                             Archived
                           </span>
                         ) : null}
+                        {isFallbackFundAccount(item) ? (
+                          <span
+                            title="Receives payments whose M-Pesa account reference matches no account"
+                            className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-emerald-100"
+                          >
+                            Fallback
+                          </span>
+                        ) : null}
                       </div>
                       <div className="mt-1 text-xs uppercase tracking-[0.18em] text-stone-500">
                         {item.code}
@@ -400,6 +494,11 @@ export default function ChurchFundAccounts() {
                       <div className="text-xs text-stone-400">
                         {item.description || 'No description'}
                       </div>
+                      {(item.aliases || []).length > 0 ? (
+                        <div className="mt-1 text-xs text-stone-400">
+                          Also matches: {(item.aliases || []).join(', ')}
+                        </div>
+                      ) : null}
                       <div className="mt-1 text-xs text-amber-100/80">
                         Target:{' '}
                         {Number(item.targetAmount || 0) > 0
@@ -431,7 +530,7 @@ export default function ChurchFundAccounts() {
                             <RotateCcw size={15} />
                             Restore
                           </button>
-                        ) : !isGeneralFundAccount(item) ? (
+                        ) : !isFallbackFundAccount(item) ? (
                           <button
                             className="btn-secondary px-3 py-2"
                             disabled={archiveMutation.isPending}
@@ -496,9 +595,10 @@ export default function ChurchFundAccounts() {
                       : 'Create contribution account'}
                   </h3>
                   <p className="mt-3 max-w-2xl text-sm text-stone-300">
-                    Each account controls its own receipt wording. The system
-                    also keeps a General account for payments whose M-Pesa
-                    account reference does not match an existing fund account.
+                    Each account controls its own receipt wording and can list
+                    aliases that route to it. Payments whose M-Pesa account
+                    reference matches nothing are grouped under the fallback
+                    account.
                   </p>
                 </div>
 
@@ -533,13 +633,26 @@ export default function ChurchFundAccounts() {
                         type={key === 'displayOrder' ? 'number' : 'text'}
                         value={form[key]}
                         onChange={(event) =>
-                          setForm((current: any) => ({
-                            ...current,
-                            [key]:
-                              key === 'displayOrder'
-                                ? Number(event.target.value)
-                                : event.target.value,
-                          }))
+                          setForm((current: any) => {
+                            const next = {
+                              ...current,
+                              [key]:
+                                key === 'displayOrder'
+                                  ? Number(event.target.value)
+                                  : event.target.value,
+                            };
+                            // Re-seed the default wording when the code flips
+                            // between general/non-general, but only while the
+                            // template is still an untouched shipped default.
+                            if (
+                              key === 'code' &&
+                              isUntouchedDefaultTemplate(current.receiptTemplate)
+                            ) {
+                              next.receiptTemplate =
+                                getReceiptTemplatePrefix(next);
+                            }
+                            return next;
+                          })
                         }
                       />
                     </div>
@@ -565,6 +678,75 @@ export default function ChurchFundAccounts() {
                       target, amount remaining, and progress.
                     </p>
                   </div>
+
+                  <div className="md:col-span-2">
+                    <label className="label">Account aliases (optional)</label>
+                    <p className="mb-2 text-xs text-stone-400">
+                      Other spellings contributors might type as their M-Pesa
+                      account reference. Anything listed here routes to this
+                      account. Case and punctuation are ignored.
+                    </p>
+
+                    {formAliases.length > 0 && (
+                      <div className="mb-2 flex flex-wrap gap-2">
+                        {formAliases.map((alias) => (
+                          <span
+                            key={alias}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-stone-100"
+                          >
+                            {alias}
+                            <button
+                              type="button"
+                              aria-label={`Remove alias ${alias}`}
+                              className="text-stone-400 transition hover:text-rose-200"
+                              onClick={() => removeAlias(alias)}
+                            >
+                              <X size={13} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex gap-2">
+                      <input
+                        className="input flex-1"
+                        type="text"
+                        placeholder="e.g. Tithes, Zaka, Sadaka ya Kumi"
+                        value={aliasDraft}
+                        disabled={formAliases.length >= MAX_FUND_ALIASES}
+                        onChange={(event) => setAliasDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ',') {
+                            event.preventDefault();
+                            addAlias();
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="btn-secondary px-4"
+                        disabled={!canAddAlias}
+                        onClick={addAlias}
+                      >
+                        Add
+                      </button>
+                    </div>
+
+                    {aliasConflict ? (
+                      <p className="mt-2 text-xs text-amber-200">
+                        {aliasConflict}
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-xs text-stone-500">
+                        {formAliases.length >= MAX_FUND_ALIASES
+                          ? `Alias limit reached (${MAX_FUND_ALIASES}).`
+                          : `Press Enter or comma to add. ${
+                              MAX_FUND_ALIASES - formAliases.length
+                            } remaining.`}
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 <div className="fund-account-editor-content grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] xl:items-start">
@@ -576,32 +758,88 @@ export default function ChurchFundAccounts() {
                       Personalized confirmation message
                     </h4>
                     <p className="mt-2 text-sm text-stone-300">
-                      The base receipt text is locked. Add optional wording
-                      after it if this fund account needs more detail.
+                      Write the full receipt message for this fund account.
+                      Insert a placeholder to have it replaced with real values
+                      when the receipt is sent.
                     </p>
 
-                    <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-stone-400">
-                      {receiptTemplatePrefix}
+                    <div className="mt-4">
+                      <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
+                        Insert placeholder
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {RECEIPT_PLACEHOLDERS.map((placeholder) => {
+                          const used = composedReceiptTemplate.includes(
+                            placeholder.token,
+                          );
+                          return (
+                            <button
+                              key={placeholder.token}
+                              type="button"
+                              title={placeholder.hint}
+                              onClick={() =>
+                                insertReceiptPlaceholder(placeholder.token)
+                              }
+                              className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                                used
+                                  ? 'border-emerald-300/40 bg-emerald-300/10 text-emerald-100'
+                                  : 'border-white/15 bg-white/5 text-stone-200 hover:border-white/30 hover:bg-white/10'
+                              }`}
+                            >
+                              {placeholder.label}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
 
                     <div className="mt-4">
-                      <label className="label">Additional message</label>
+                      <label className="label">Receipt message</label>
                       <textarea
+                        ref={receiptTextareaRef}
                         className="input min-h-36"
-                        maxLength={receiptExtraLimit}
-                        placeholder="Optional. Example: Thank you for supporting the ministry."
-                        value={receiptExtraMessage}
+                        maxLength={RECEIPT_TEMPLATE_LIMIT}
+                        placeholder={receiptTemplatePrefix}
+                        value={composedReceiptTemplate}
                         onChange={(event) =>
                           setForm((current: any) => ({
                             ...current,
-                            receiptTemplate: buildReceiptTemplate(
-                              event.target.value,
-                              receiptTemplatePrefix,
-                            ),
+                            receiptTemplate: event.target.value,
                           }))
                         }
                       />
+                      <button
+                        type="button"
+                        className="mt-2 text-xs text-stone-400 underline underline-offset-4 hover:text-stone-200"
+                        onClick={() =>
+                          setForm((current: any) => ({
+                            ...current,
+                            receiptTemplate: getReceiptTemplatePrefix(current),
+                          }))
+                        }
+                      >
+                        Reset to default wording
+                      </button>
                     </div>
+
+                    {missingReceiptPlaceholders.length > 0 && (
+                      <p className="mt-3 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-xs text-amber-100">
+                        Heads up: this message is missing{' '}
+                        {missingReceiptPlaceholders.join(' and ')}. Receipts will
+                        still send, but they won't show the{' '}
+                        {missingReceiptPlaceholders
+                          .map((token) => token.replace(/[{}]/g, ''))
+                          .join(' or ')}
+                        .
+                      </p>
+                    )}
+
+                    {isEditingLegacyTemplate && (
+                      <p className="mt-3 rounded-2xl border border-sky-300/30 bg-sky-300/10 px-4 py-3 text-xs text-sky-100">
+                        This account still uses older receipt wording. It keeps
+                        sending as-is until you change it here.
+                      </p>
+                    )}
 
                     <div className="mt-3 flex flex-col gap-2 text-xs text-stone-400 sm:flex-row sm:items-center sm:justify-between">
                       <span>

@@ -7,6 +7,12 @@ export const DEFAULT_GENERAL_RECEIPT_TEMPLATE =
 export const OLD_FUND_RECEIPT_TEMPLATE =
   'Dear {name}, we acknowledge receipt of KES {amount} towards {account}';
 
+/**
+ * Only the retired `general` account used the account-less wording, because it
+ * had no meaningful fund name to print. The fallback is now Offering, a real
+ * named account, so it uses the standard wording and {account} renders as
+ * "Offering". This branch is retained solely for unmigrated legacy rows.
+ */
 export function getDefaultReceiptTemplateForFundCode(code?: string | null) {
   return `${code || ''}`.trim().toLowerCase() === 'general'
     ? DEFAULT_GENERAL_RECEIPT_TEMPLATE

@@ -16,6 +16,14 @@ import {
   normalizeReceiptTemplateDefaultWording,
 } from '../common/receipt-templates';
 import {
+  FALLBACK_FUND_ACCOUNT_CODE,
+  FALLBACK_FUND_ACCOUNT_DESCRIPTION,
+  FALLBACK_FUND_ACCOUNT_NAME,
+  isFallbackFundAccount,
+  matchesFundAccountReference,
+  pickFallbackFundAccount,
+} from '../common/fund-accounts';
+import {
   Church,
   ChurchBillingModel,
   ChurchStatus,
@@ -376,7 +384,7 @@ export class ContributionsService {
 
     if (!fundAccount) {
       this.logger.warn(
-        `Accepted M-Pesa C2B validation for church=${church.slug} unmatched account=${payload.billRefNumber || 'n/a'}; confirmation will be grouped under General.`,
+        `Accepted M-Pesa C2B validation for church=${church.slug} unmatched account=${payload.billRefNumber || 'n/a'}; confirmation will be grouped under the fallback account.`,
       );
     }
 
@@ -436,11 +444,11 @@ export class ContributionsService {
       return { ResultCode: 0, ResultDesc: 'Accepted - duplicate' };
     }
 
-    const usedGeneralFallback = !fundAccount;
+    const usedFallbackAccount = !fundAccount;
     if (!fundAccount) {
-      fundAccount = await this.getOrCreateGeneralFundAccount(church.id);
+      fundAccount = await this.getOrCreateFallbackFundAccount(church.id);
       this.logger.warn(
-        `Grouped M-Pesa C2B confirmation ${payload.transId} under General for unmatched account=${payload.billRefNumber || 'n/a'}`,
+        `Grouped M-Pesa C2B confirmation ${payload.transId} under fallback account ${fundAccount.code} for unmatched account=${payload.billRefNumber || 'n/a'}`,
       );
     }
 
@@ -467,7 +475,7 @@ export class ContributionsService {
         notes: this.buildMpesaC2BNote(
           payload,
           fundAccount,
-          usedGeneralFallback,
+          usedFallbackAccount,
         ),
         receivedAt: payload.receivedAt,
       }),
@@ -583,12 +591,15 @@ export class ContributionsService {
     const byFundQb = baseQb
       .clone()
       .select('contribution.fundAccountId', 'fundAccountId')
+      // Rows with a NULL fundAccountId predate fund tracking. They are reported
+      // as "Unassigned" and marked with the sentinel code below so the UI can
+      // route a click-through to whichever account is currently the fallback.
       .addSelect(
-        "COALESCE(fundAccount.name, contribution.fundAccountName, 'General')",
+        "COALESCE(fundAccount.name, contribution.fundAccountName, 'Unassigned')",
         'fundAccountName',
       )
       .addSelect(
-        "COALESCE(fundAccount.code, CASE WHEN contribution.fundAccountId IS NULL THEN 'general' ELSE NULL END)",
+        "COALESCE(fundAccount.code, CASE WHEN contribution.fundAccountId IS NULL THEN '__unassigned__' ELSE NULL END)",
         'code',
       )
       .addSelect(`COALESCE(SUM(${netExpression}), 0)`, 'totalAmount')
@@ -641,7 +652,7 @@ export class ContributionsService {
       byFundAccount: rawByFundAccount
         .map((item: any) => ({
           fundAccountId: item.fundAccountId || null,
-          fundAccountName: item.fundAccountName || 'General',
+          fundAccountName: item.fundAccountName || 'Unassigned',
           code: item.code || null,
           totalAmount: Number(item.totalAmount || 0),
           count: Number(item.count || 0),
@@ -889,26 +900,31 @@ export class ContributionsService {
       return byCode;
     }
 
-    const normalizedReference = this.normalizeComparisonText(reference);
     const accounts = await this.fundAccountRepo.find({
       where: { churchId },
     });
 
-    return (
-      accounts.find(
-        (account) =>
-          this.normalizeComparisonText(account.name) === normalizedReference ||
-          this.normalizeComparisonText(account.code) === normalizedReference,
-      ) || null
+    // Match on name, code, or any configured alias. Active accounts win over
+    // archived ones so a retired account's alias can be reused by a live one.
+    const matches = accounts.filter((account) =>
+      matchesFundAccountReference(account, reference),
     );
+
+    return matches.find((account) => account.isActive) || matches[0] || null;
   }
 
-  private async getOrCreateGeneralFundAccount(churchId: string) {
-    const existing = await this.fundAccountRepo.findOne({
-      where: { churchId, code: 'general' },
-    });
+  private async getOrCreateFallbackFundAccount(churchId: string) {
+    const accounts = await this.fundAccountRepo.find({ where: { churchId } });
+    const existing = pickFallbackFundAccount(accounts);
+
     if (existing) {
-      if (!existing.isActive) {
+      // Keep the fallback reachable and correctly flagged. An archived fallback
+      // is reactivated rather than skipped, otherwise unmatched payments would
+      // have nowhere to land.
+      const needsFlag = !existing.isFallback;
+      const needsReactivation = !existing.isActive;
+      if (needsFlag || needsReactivation) {
+        existing.isFallback = true;
         existing.isActive = true;
         return this.fundAccountRepo.save(existing);
       }
@@ -918,13 +934,15 @@ export class ContributionsService {
     return this.fundAccountRepo.save(
       this.fundAccountRepo.create({
         churchId,
-        name: 'General',
-        code: 'general',
-        description:
-          'Fallback account for C2B payments whose account reference does not match an existing fund account.',
-        displayOrder: 999,
+        name: FALLBACK_FUND_ACCOUNT_NAME,
+        code: FALLBACK_FUND_ACCOUNT_CODE,
+        description: FALLBACK_FUND_ACCOUNT_DESCRIPTION,
+        displayOrder: 2,
         isActive: true,
-        receiptTemplate: getDefaultReceiptTemplateForFundCode('general'),
+        isFallback: true,
+        receiptTemplate: getDefaultReceiptTemplateForFundCode(
+          FALLBACK_FUND_ACCOUNT_CODE,
+        ),
       }),
     );
   }
@@ -1054,7 +1072,7 @@ export class ContributionsService {
   private buildMpesaC2BNote(
     payload: ParsedMpesaC2BPayload,
     fundAccount: FundAccount | null,
-    usedGeneralFallback = false,
+    usedFallbackAccount = false,
   ) {
     const pieces = [
       'M-Pesa C2B confirmation',
@@ -1062,8 +1080,8 @@ export class ContributionsService {
       fundAccount && !fundAccount.isActive
         ? 'recorded against archived fund account'
         : null,
-      usedGeneralFallback && payload.billRefNumber
-        ? 'grouped under General fallback account'
+      usedFallbackAccount && payload.billRefNumber
+        ? `grouped under ${fundAccount?.name || 'fallback'} fallback account`
         : null,
       !fundAccount && payload.billRefNumber ? 'fund account not matched' : null,
       payload.phone && !payload.phoneForContributor
@@ -1331,7 +1349,10 @@ export class ContributionsService {
       const fundAccount = await this.fundAccountRepo.findOne({
         where: { id: query.fundAccountId, churchId },
       });
-      filterQuery.includeUnassignedFallback = fundAccount?.code === 'general';
+      // Legacy rows with a NULL fundAccountId are historical fallback income,
+      // so they surface under whichever account is now the fallback.
+      filterQuery.includeUnassignedFallback =
+        isFallbackFundAccount(fundAccount);
     }
     return filterQuery;
   }

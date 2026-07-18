@@ -27,6 +27,15 @@ import {
   sanitizeSubscriptionForTenant,
 } from '../common/church.utils';
 import { getDefaultReceiptTemplateForFundCode } from '../common/receipt-templates';
+import {
+  FALLBACK_FUND_ACCOUNT_CODE,
+  FALLBACK_FUND_ACCOUNT_DESCRIPTION,
+  FALLBACK_FUND_ACCOUNT_NAME,
+  findConflictingFundAliases,
+  isFallbackFundAccount,
+  normalizeFundAliasList,
+  pickFallbackFundAccount,
+} from '../common/fund-accounts';
 import { ContributionsService } from '../contributions/contributions.service';
 import {
   ChurchCongregationPage,
@@ -216,6 +225,7 @@ export class ChurchService {
         churchId,
       );
     const subscription = sanitizeSubscriptionForTenant(rawSubscription);
+    const smsWallet = await this.getChurchSmsWalletSummary(church);
 
     if (!financeEnabled) {
       return {
@@ -223,6 +233,7 @@ export class ChurchService {
         enabledFeatures,
         financeEnabled: false,
         subscription,
+        smsWallet,
         reportSummary: {
           totals: {},
           byFundAccount: [],
@@ -244,8 +255,11 @@ export class ChurchService {
         .filter((item: any) => item.fundAccountId)
         .map((item: any) => [item.fundAccountId, item]),
     );
-    const legacyGeneralTotals = (reportSummary.byFundAccount || [])
-      .filter((item: any) => item.code === 'general' && !item.fundAccountId)
+    // Contributions recorded before fund tracking existed have no fundAccountId.
+    // They are rolled into whichever account is currently the fallback so the
+    // KPI totals still reconcile against the overall income figure.
+    const unassignedTotals = (reportSummary.byFundAccount || [])
+      .filter((item: any) => !item.fundAccountId)
       .reduce(
         (totals: { totalAmount: number; count: number }, item: any) => ({
           totalAmount: totals.totalAmount + Number(item.totalAmount || 0),
@@ -253,13 +267,14 @@ export class ChurchService {
         }),
         { totalAmount: 0, count: 0 },
       );
+    const fallbackAccountId = pickFallbackFundAccount(fundAccounts)?.id || null;
     const accountKpis = fundAccounts
       .filter((item) => item.isActive)
       .map((account) => {
         const contributionTotals = contributionTotalsByFundId.get(account.id);
         const fallbackTotals =
-          account.code === 'general'
-            ? legacyGeneralTotals
+          account.id === fallbackAccountId
+            ? unassignedTotals
             : { totalAmount: 0, count: 0 };
         return {
           fundAccountId: account.id,
@@ -278,6 +293,7 @@ export class ChurchService {
       enabledFeatures,
       financeEnabled: true,
       subscription,
+      smsWallet,
       reportSummary: {
         ...reportSummary,
         accountKpis,
@@ -1857,7 +1873,7 @@ export class ChurchService {
   }
 
   async listFundAccounts(churchId: string) {
-    await this.ensureGeneralFundAccount(churchId);
+    await this.ensureFallbackFundAccount(churchId);
     return this.fundAccountRepo.find({
       where: { churchId },
       order: { displayOrder: 'ASC', createdAt: 'ASC' },
@@ -1885,6 +1901,10 @@ export class ChurchService {
       isActive: body.isActive ?? true,
       displayOrder: Number(body.displayOrder || 0),
       targetAmount: this.normalizeFundAccountTargetAmount(body.targetAmount),
+      aliases: await this.resolveFundAccountAliases(churchId, body.aliases, {
+        name: body.name,
+        code,
+      }),
       receiptTemplate:
         this.normalizeReceiptTemplate(body.receiptTemplate) ||
         getDefaultReceiptTemplateForFundCode(code),
@@ -1938,6 +1958,15 @@ export class ChurchService {
           fundAccount.receiptTemplate
         : fundAccount.receiptTemplate;
 
+    if (body.aliases !== undefined) {
+      fundAccount.aliases = await this.resolveFundAccountAliases(
+        churchId,
+        body.aliases,
+        fundAccount,
+        fundAccountId,
+      );
+    }
+
     return this.fundAccountRepo.save(fundAccount);
   }
 
@@ -1953,8 +1982,10 @@ export class ChurchService {
     if (!fundAccount) {
       throw new NotFoundException('Fund account not found');
     }
-    if (this.isGeneralFundAccount(fundAccount)) {
-      throw new BadRequestException('General fund account cannot be archived');
+    if (this.isFallbackFundAccount(fundAccount)) {
+      throw new BadRequestException(
+        'The fallback fund account cannot be archived. Nominate another account as the fallback first.',
+      );
     }
 
     fundAccount.isActive = false;
@@ -2333,10 +2364,13 @@ export class ChurchService {
     if (!church) {
       throw new NotFoundException('Church not found');
     }
+    const usesOwnSmsWallet = this.smsService.usesOwnSmsWallet(church);
 
     return {
       defaultSmsShortcode: church.smsShortcode,
       smsShortcodes: this.smsService.getAvailableSmsShortcodes(church),
+      usesOwnSmsWallet,
+      smsBillingMode: usesOwnSmsWallet ? 'church_wallet' : 'platform_units',
       fundAccounts: await this.listFundAccounts(churchId),
     };
   }
@@ -2402,6 +2436,42 @@ export class ChurchService {
         units: 0,
       }
     );
+  }
+
+  private async getChurchSmsWalletSummary(church: Church) {
+    const usesOwnSmsWallet = this.smsService.usesOwnSmsWallet(church);
+    const summary: any = {
+      usesOwnSmsWallet,
+      billingMode: usesOwnSmsWallet ? 'church_wallet' : 'platform_units',
+      balance: null,
+      intelligence: null,
+      error: null,
+    };
+
+    if (!usesOwnSmsWallet) {
+      return summary;
+    }
+
+    try {
+      const balance = await this.smsService.getChurchBalanceIntelligence(
+        church.id,
+      );
+      return {
+        ...summary,
+        ...balance,
+      };
+    } catch (error: any) {
+      this.logger.warn(
+        `[SMS] Unable to load church SMS wallet balance | church=${church.id} | message=${error?.message || 'Unknown error'}`,
+      );
+      return {
+        ...summary,
+        error:
+          error?.response?.message ||
+          error?.message ||
+          'Unable to load SMS wallet balance',
+      };
+    }
   }
 
   async listAddressBooks(churchId: string) {
@@ -5328,9 +5398,10 @@ export class ChurchService {
     return Number(amount.toFixed(2));
   }
 
-  private isGeneralFundAccount(account: Pick<FundAccount, 'code' | 'name'>) {
-    return `${account?.code || account?.name || ''}`.trim().toLowerCase() ===
-      'general';
+  private isFallbackFundAccount(
+    account: Pick<FundAccount, 'code' | 'name' | 'isFallback'>,
+  ) {
+    return isFallbackFundAccount(account);
   }
 
   private resolveFundDisplayTargetAmount(
@@ -5824,27 +5895,65 @@ export class ChurchService {
     return book;
   }
 
-  private async ensureGeneralFundAccount(churchId: string) {
-    const existing = await this.fundAccountRepo.findOne({
-      where: { churchId, code: 'general' },
-    });
+  private async ensureFallbackFundAccount(churchId: string) {
+    const accounts = await this.fundAccountRepo.find({ where: { churchId } });
+    const existing = pickFallbackFundAccount(accounts);
 
     if (existing) {
+      // Backfill the flag for churches provisioned before isFallback existed.
+      if (!existing.isFallback) {
+        existing.isFallback = true;
+        return this.fundAccountRepo.save(existing);
+      }
       return existing;
     }
 
     return this.fundAccountRepo.save(
       this.fundAccountRepo.create({
         churchId,
-        name: 'General',
-        code: 'general',
-        description:
-          'Fallback account for payments whose account reference does not match a configured fund account.',
+        name: FALLBACK_FUND_ACCOUNT_NAME,
+        code: FALLBACK_FUND_ACCOUNT_CODE,
+        description: FALLBACK_FUND_ACCOUNT_DESCRIPTION,
         isActive: true,
-        displayOrder: 999,
-        receiptTemplate: getDefaultReceiptTemplateForFundCode('general'),
+        isFallback: true,
+        displayOrder: 2,
+        receiptTemplate: getDefaultReceiptTemplateForFundCode(
+          FALLBACK_FUND_ACCOUNT_CODE,
+        ),
       }),
     );
+  }
+
+  /**
+   * Normalizes an incoming alias list and rejects it if any alias would be
+   * ambiguous. Ambiguity matters here because M-Pesa account references are
+   * resolved by exact normalized match — two accounts claiming the same alias
+   * would make routing depend on row order.
+   */
+  private async resolveFundAccountAliases(
+    churchId: string,
+    value: unknown,
+    self: { name?: string | null; code?: string | null },
+    excludeFundAccountId?: string,
+  ) {
+    const aliases = normalizeFundAliasList(value);
+    if (!aliases.length) {
+      return [];
+    }
+
+    const otherAccounts = (
+      await this.fundAccountRepo.find({ where: { churchId } })
+    ).filter((account) => account.id !== excludeFundAccountId);
+
+    const conflicts = findConflictingFundAliases(aliases, self, otherAccounts);
+    if (conflicts.length) {
+      const detail = conflicts
+        .map((item) => `"${item.alias}" already refers to ${item.conflictsWith}`)
+        .join('; ');
+      throw new BadRequestException(`Alias conflict: ${detail}.`);
+    }
+
+    return aliases;
   }
 
   private normalizeReceiptTemplate(value: unknown) {

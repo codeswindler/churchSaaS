@@ -36,8 +36,26 @@ export class FundAccount {
   @Column({ type: 'varchar', length: 255, nullable: true })
   description: string | null;
 
+  /**
+   * Alternative account references that should resolve to this fund account.
+   * Lets contributors type "TITHES", "zaka" or a misspelling as their M-Pesa
+   * account reference and still be matched instead of falling through to the
+   * fallback account. Matching is case/punctuation-insensitive.
+   */
+  @Column({ type: 'simple-array', nullable: true })
+  aliases: string[] | null;
+
   @Column({ default: true })
   isActive: boolean;
+
+  /**
+   * Marks the account that receives M-Pesa payments whose account reference
+   * does not match any configured fund account. Exactly one account per church
+   * should carry this flag. Replaces the previous hardcoded `code === 'general'`
+   * sentinel so a church can nominate any account as its fallback.
+   */
+  @Column({ default: false })
+  isFallback: boolean;
 
   @Column({ type: 'datetime', nullable: true })
   archivedAt: Date | null;

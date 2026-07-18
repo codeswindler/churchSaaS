@@ -248,9 +248,14 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
           'ADD COLUMN `smsBaseUrl` varchar(255) NULL AFTER `smsShortcodes`',
         );
       }
+      if (!table.findColumnByName('usesOwnSmsWallet')) {
+        statements.push(
+          'ADD COLUMN `usesOwnSmsWallet` tinyint NOT NULL DEFAULT 0 AFTER `smsBaseUrl`',
+        );
+      }
       if (!table.findColumnByName('mpesaEnvironment')) {
         statements.push(
-          'ADD COLUMN `mpesaEnvironment` varchar(20) NULL AFTER `smsBaseUrl`',
+          'ADD COLUMN `mpesaEnvironment` varchar(20) NULL AFTER `usesOwnSmsWallet`',
         );
       }
       if (!table.findColumnByName('mpesaConsumerKey')) {
@@ -431,6 +436,11 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
         if (!churches.findColumnByName('smsUnitRateKes')) {
           statements.push(
             'ADD COLUMN `smsUnitRateKes` decimal(10,2) NOT NULL DEFAULT 0 AFTER `smsBaseUrl`',
+          );
+        }
+        if (!churches.findColumnByName('usesOwnSmsWallet')) {
+          statements.push(
+            'ADD COLUMN `usesOwnSmsWallet` tinyint NOT NULL DEFAULT 0 AFTER `smsUnitRateKes`',
           );
         }
 
@@ -624,6 +634,14 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
           'ADD COLUMN `targetAmount` decimal(14,2) NULL AFTER `displayOrder`',
         );
       }
+      if (!fundAccounts.findColumnByName('isFallback')) {
+        statements.push(
+          'ADD COLUMN `isFallback` tinyint(4) NOT NULL DEFAULT 0 AFTER `isActive`',
+        );
+      }
+      if (!fundAccounts.findColumnByName('aliases')) {
+        statements.push('ADD COLUMN `aliases` text NULL AFTER `description`');
+      }
 
       if (statements.length === 0) {
         return;
@@ -632,7 +650,9 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
       await queryRunner.query(
         `ALTER TABLE \`fund_accounts\` ${statements.join(', ')}`,
       );
-      this.logger.log('Ensured fund account archive and public target columns.');
+      this.logger.log(
+        'Ensured fund account archive, target, fallback and alias columns.',
+      );
     } finally {
       await queryRunner.release();
     }
