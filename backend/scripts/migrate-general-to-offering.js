@@ -22,7 +22,17 @@
  * is not reversible by this script.
  */
 
+const path = require('path');
 const mysql = require('mysql2/promise');
+
+// Load backend/.env so the script works from any shell without the caller
+// having to source it first. Without this it silently falls back to
+// root@localhost with no password, which fails confusingly.
+try {
+  require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+} catch {
+  // dotenv is optional; env vars may already be present.
+}
 
 const APPLY = process.argv.includes('--apply');
 const churchFlagIndex = process.argv.indexOf('--church');
@@ -54,14 +64,28 @@ function formatKes(value) {
 }
 
 async function main() {
+  // Fail loudly rather than falling back to root@localhost, which produces a
+  // misleading "Access denied" instead of naming the real problem.
+  if (!process.env.DB_USER || !process.env.DB_NAME) {
+    console.error(
+      'ERROR: DB_USER / DB_NAME not set and backend/.env was not found.\n' +
+        'Run from the backend directory, or: set -a; source .env; set +a',
+    );
+    process.exit(1);
+  }
+
   const connection = await mysql.createConnection({
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '3306', 10),
-    user: process.env.DB_USER || 'root',
+    user: process.env.DB_USER,
     password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'church_system',
+    database: process.env.DB_NAME,
     multipleStatements: false,
   });
+
+  console.log(
+    `Connected to ${process.env.DB_NAME} as ${process.env.DB_USER}@${process.env.DB_HOST || 'localhost'}\n`,
+  );
 
   console.log(
     APPLY
