@@ -1476,82 +1476,96 @@ export default function PlatformChurches() {
                       <input
                         type="checkbox"
                         className="mt-1"
-                        checked={form.usesOwnSmsWallet}
+                        checked={!form.usesOwnSmsWallet}
                         onChange={(event) =>
                           updateForm(
                             'usesOwnSmsWallet',
-                            event.target.checked as never,
+                            !event.target.checked as never,
                           )
                         }
                       />
                       <span className="text-sm text-stone-100">
                         <span className="font-semibold">
-                          Bill bulk SMS to this church&apos;s own wallet
+                          Use system SMS credentials
                         </span>
                         <span className="mt-1 block text-xs text-stone-400">
-                          Off: bulk sends use platform credentials and the church
-                          pays per batch with SMS units. On: bulk sends use the
-                          Partner ID and API key below, billed to the church&apos;s
-                          own Advanta account, and they see that balance in
-                          Messaging. Requires Partner ID, API key and a sender ID.
+                          On: this church sends bulk on the platform Advanta
+                          account and pays per batch with SMS units. Off: they
+                          send bulk on their own Advanta account, billed to their
+                          own wallet, and see that balance in Messaging.
                         </span>
                         <span className="mt-1 block text-xs text-emerald-200/80">
                           Auto-responses always use platform credentials either
-                          way, so churches never pay for receipts.
+                          way, so churches never pay for receipts. The sender ID
+                          below applies in both cases.
                         </span>
                       </span>
                     </label>
 
-                    {form.usesOwnSmsWallet &&
-                      !(
-                        form.smsPartnerId.trim() &&
-                        form.smsApiKey.trim() &&
-                        form.smsShortcode.trim()
-                      ) && (
-                        <p className="mt-2 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-xs text-amber-100">
-                          Partner ID, API key and a sender ID are all required
-                          before own-wallet billing takes effect. Until then this
-                          church keeps sending bulk on platform credentials.
-                        </p>
-                      )}
-
                     <div className="mt-4 grid gap-4 md:grid-cols-2">
-                      {[
-                        ['smsPartnerId', 'Partner ID'],
-                        ['smsBaseUrl', 'Base URL'],
-                      ].map(([key, label]) => (
-                        <div key={key}>
-                          <label className="label">{label}</label>
+                      {/* Partner ID, API key and base URL describe a
+                          church-owned Advanta account. When the church is on
+                          system credentials these come from platform settings,
+                          so the fields are hidden rather than showing values
+                          that are ignored at send time. */}
+                      {!form.usesOwnSmsWallet ? null : (
+                        <>
+                          {[
+                            ['smsPartnerId', 'Partner ID'],
+                            ['smsBaseUrl', 'Base URL'],
+                          ].map(([key, label]) => (
+                            <div key={key}>
+                              <label className="label">{label}</label>
+                              <input
+                                className="input"
+                                type="text"
+                                value={
+                                  form[key as keyof ChurchFormState] as string
+                                }
+                                onChange={(event) =>
+                                  updateForm(
+                                    key as keyof ChurchFormState,
+                                    event.target.value as never,
+                                  )
+                                }
+                              />
+                            </div>
+                          ))}
+                          {renderSensitiveField('smsApiKey', 'API key')}
+                        </>
+                      )}
+                      {form.usesOwnSmsWallet &&
+                        !(
+                          form.smsPartnerId.trim() &&
+                          form.smsApiKey.trim() &&
+                          form.smsShortcode.trim()
+                        ) && (
+                          <p className="md:col-span-2 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-xs text-amber-100">
+                            Partner ID, API key and a sender ID are all required
+                            before own-account sending takes effect. Until then
+                            this church keeps sending on system credentials.
+                          </p>
+                        )}
+                      {/* Unit rate only applies to churches billed by the
+                          platform; own-wallet churches pay their provider. */}
+                      {!form.usesOwnSmsWallet && (
+                        <div>
+                          <label className="label">SMS unit rate (KES)</label>
                           <input
                             className="input"
-                            type="text"
-                            value={form[key as keyof ChurchFormState] as string}
+                            min={0}
+                            step="0.01"
+                            type="number"
+                            value={form.smsUnitRateKes}
                             onChange={(event) =>
                               updateForm(
-                                key as keyof ChurchFormState,
-                                event.target.value as never,
+                                'smsUnitRateKes',
+                                Number(event.target.value || 0),
                               )
                             }
                           />
                         </div>
-                      ))}
-                      <div>
-                        <label className="label">SMS unit rate (KES)</label>
-                        <input
-                          className="input"
-                          min={0}
-                          step="0.01"
-                          type="number"
-                          value={form.smsUnitRateKes}
-                          onChange={(event) =>
-                            updateForm(
-                              'smsUnitRateKes',
-                              Number(event.target.value || 0),
-                            )
-                          }
-                        />
-                      </div>
-                      {renderSensitiveField('smsApiKey', 'API key')}
+                      )}
                       <div className="md:col-span-2">
                         <label className="label">Allocated sender IDs</label>
                         <input
