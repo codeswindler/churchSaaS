@@ -461,7 +461,7 @@ export default function ChurchFundAccounts() {
               <thead>
                 <tr>
                   <th>Name</th>
-                  <th>Actions</th>
+                  <th className="w-px whitespace-nowrap text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -511,10 +511,10 @@ export default function ChurchFundAccounts() {
                         </div>
                       ) : null}
                     </td>
-                    <td data-label="Actions">
-                      <div className="flex flex-wrap gap-2">
+                    <td data-label="Actions" className="w-px whitespace-nowrap align-middle">
+                      <div className="flex items-center justify-end gap-2">
                         <button
-                          className="btn-secondary px-3 py-2"
+                          className="btn-secondary inline-flex items-center gap-1.5 whitespace-nowrap px-3 py-2"
                           onFocus={() => setPreviewAccount(item)}
                           onClick={() => openEditEditor(item)}
                         >
@@ -522,7 +522,7 @@ export default function ChurchFundAccounts() {
                         </button>
                         {item.isActive === false ? (
                           <button
-                            className="btn-secondary px-3 py-2"
+                            className="btn-secondary inline-flex items-center gap-1.5 whitespace-nowrap px-3 py-2"
                             disabled={restoreMutation.isPending}
                             onFocus={() => setPreviewAccount(item)}
                             onClick={() => restoreMutation.mutate(item.id)}
@@ -532,7 +532,7 @@ export default function ChurchFundAccounts() {
                           </button>
                         ) : !isFallbackFundAccount(item) ? (
                           <button
-                            className="btn-secondary px-3 py-2"
+                            className="btn-secondary inline-flex items-center gap-1.5 whitespace-nowrap px-3 py-2"
                             disabled={archiveMutation.isPending}
                             onFocus={() => setPreviewAccount(item)}
                             onClick={() => handleArchiveAccount(item)}
