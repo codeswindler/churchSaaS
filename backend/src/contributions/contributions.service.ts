@@ -1178,7 +1178,7 @@ export class ContributionsService {
     }
 
     const message = this.renderReceiptMessage(contribution);
-    const churchSmsConfig = this.getChurchSmsConfig(contribution.church);
+    const churchSmsConfig = await this.getChurchSmsConfig(contribution.church);
     const hashedSafaricomMobile =
       this.resolveHashedSafaricomMobile(contribution);
     const success = contribution.contributor?.phone
@@ -1502,14 +1502,17 @@ export class ContributionsService {
     return parsed;
   }
 
-  private getChurchSmsConfig(church: Church | null): ChurchSmsConfig {
-    return {
-      churchId: church?.id,
-      smsPartnerId: church?.smsPartnerId,
-      smsApiKey: church?.smsApiKey,
-      smsShortcode: church?.smsShortcode,
-      smsBaseUrl: church?.smsBaseUrl,
-    };
+  /**
+   * Receipts are auto-responses, so they always bill the platform account —
+   * never a church's own SMS wallet — while still sending from the church's
+   * configured sender ID.
+   *
+   * This previously passed the church's own partnerId/apiKey straight through,
+   * which meant that as soon as a church was given credentials for bulk, their
+   * receipts silently started draining that same wallet.
+   */
+  private getChurchSmsConfig(church: Church | null): Promise<ChurchSmsConfig> {
+    return this.smsService.resolveSmsConfigForPurpose(church, 'transactional');
   }
 
   private buildPdfReport(

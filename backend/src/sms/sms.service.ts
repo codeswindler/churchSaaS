@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import axios from 'axios';
-import { MoreThan, Repository } from 'typeorm';
+import { MoreThan, Repository, SelectQueryBuilder } from 'typeorm';
 import {
   ChurchMpesaConfig,
   ChurchSmsConfig,
@@ -40,6 +40,17 @@ type ResolvedSmsConfig = {
   shortCode: string;
   baseUrl: string;
 };
+
+/**
+ * What a send is for, which determines who pays for it.
+ *
+ * 'transactional' - receipts, OTPs, any automatic reply. Always billed to the
+ *                   platform account; churches never pay for these.
+ * 'bulk'          - church-initiated campaigns. Billed to the church's own
+ *                   provider wallet when they have one, otherwise to the
+ *                   platform account under the SMS-unit arrangement.
+ */
+export type SmsCredentialPurpose = 'transactional' | 'bulk';
 
 type BulkRecipient = {
   contributorId: string | null;
@@ -408,29 +419,72 @@ export class SmsService {
     return this.getBalanceIntelligence(config);
   }
 
-  async getBalanceIntelligence(config: ChurchSmsConfig = {}) {
+  async getChurchBalanceIntelligence(churchId: string) {
+    const church = await this.churchRepo.findOne({ where: { id: churchId } });
+    if (!church) {
+      throw new BadRequestException('Church not found');
+    }
+    if (!this.usesOwnSmsWallet(church)) {
+      throw new BadRequestException(
+        'This church uses platform SMS-unit billing, not a church-owned SMS wallet',
+      );
+    }
+    // Their wallet only funds bulk; receipts are on the platform account.
+    return this.getBalanceIntelligence(this.getConfigFromChurch(church), {
+      churchWalletOnly: true,
+    });
+  }
+
+  async getBalanceIntelligence(
+    config: ChurchSmsConfig = {},
+    options: { churchWalletOnly?: boolean } = {},
+  ) {
     const balance = await this.getBalance(config);
     const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const last7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
+    // Usage must be scoped to the account that owns the balance. Without this,
+    // a church viewing its own wallet would see platform-wide burn and a wildly
+    // wrong "days remaining". A null churchId means the platform account, which
+    // legitimately spans every church.
+    //
+    // churchWalletOnly narrows further to bulk traffic: an own-wallet church
+    // pays for its campaigns but not its receipts, so counting receipts here
+    // would overstate their burn and understate days remaining.
+    const churchId = config.churchId || null;
+    const scope = (qb: SelectQueryBuilder<SmsOutbox>) => {
+      if (churchId) {
+        qb.andWhere('message.churchId = :churchId', { churchId });
+      }
+      if (options.churchWalletOnly) {
+        qb.andWhere('message.messageType = :billedType', {
+          billedType: SmsMessageType.BULK,
+        });
+      }
+      return qb;
+    };
+
     const [last24hUsage, sevenDayUsage, pendingUsage] = await Promise.all([
-      this.smsOutboxRepo
-        .createQueryBuilder('message')
-        .select('COALESCE(SUM(message.estimatedUnits), 0)', 'units')
-        .where('message.createdAt >= :since', { since: last24h })
-        .getRawOne(),
-      this.smsOutboxRepo
-        .createQueryBuilder('message')
-        .select('COALESCE(SUM(message.estimatedUnits), 0)', 'units')
-        .where('message.createdAt >= :since', { since: last7d })
-        .getRawOne(),
-      this.smsOutboxRepo
-        .createQueryBuilder('message')
-        .select('COALESCE(SUM(message.estimatedUnits), 0)', 'units')
-        .where('message.sendStatus = :status', {
-          status: SmsSendStatus.PENDING,
-        })
-        .getRawOne(),
+      scope(
+        this.smsOutboxRepo
+          .createQueryBuilder('message')
+          .select('COALESCE(SUM(message.estimatedUnits), 0)', 'units')
+          .where('message.createdAt >= :since', { since: last24h }),
+      ).getRawOne(),
+      scope(
+        this.smsOutboxRepo
+          .createQueryBuilder('message')
+          .select('COALESCE(SUM(message.estimatedUnits), 0)', 'units')
+          .where('message.createdAt >= :since', { since: last7d }),
+      ).getRawOne(),
+      scope(
+        this.smsOutboxRepo
+          .createQueryBuilder('message')
+          .select('COALESCE(SUM(message.estimatedUnits), 0)', 'units')
+          .where('message.sendStatus = :status', {
+            status: SmsSendStatus.PENDING,
+          }),
+      ).getRawOne(),
     ]);
 
     const last24hUnits = Number(last24hUsage?.units || 0);
@@ -501,6 +555,10 @@ export class SmsService {
     if (!church) {
       throw new Error('Church not found');
     }
+    // Both billing modes may send bulk. Own-wallet churches bill their own
+    // provider account; everyone else sends on platform credentials under the
+    // existing prompt-to-pay SMS-unit arrangement. No balance gate here — unit
+    // payment is collected by the purchase flow, not enforced at send time.
 
     const messageBody = this.sanitizeGsm7(body.message || '');
     if (!messageBody.trim()) {
@@ -552,7 +610,11 @@ export class SmsService {
           }),
     );
 
-    const config = this.getConfigFromChurch(church, body.smsShortcode);
+    const config = await this.resolveSmsConfigForPurpose(
+      church,
+      'bulk',
+      body.smsShortcode,
+    );
     const resolved = this.resolveConfig(config);
     const url = `${resolved.baseUrl}/api/services/sendbulk`;
     const plainRecipients = preparedRecipients.filter(
@@ -728,10 +790,15 @@ export class SmsService {
     const messageLengths = preparedRecipients.map(
       (recipient) => recipient.messageLength,
     );
-    const smsUnitRateKes = Number(church.smsUnitRateKes || 0);
+    const usesOwnSmsWallet = this.usesOwnSmsWallet(church);
+    const smsUnitRateKes = usesOwnSmsWallet
+      ? 0
+      : Number(church.smsUnitRateKes || 0);
 
     return {
       audience: this.resolveBatchAudienceLabel(body),
+      billingMode: usesOwnSmsWallet ? 'church_wallet' : 'platform_units',
+      usesOwnSmsWallet,
       rawRecipientCount: recipients.length,
       recipientCount: preparedRecipients.length,
       duplicateCount: Math.max(
@@ -779,6 +846,16 @@ export class SmsService {
       payerPhone?: string;
     },
   ) {
+    const church = await this.churchRepo.findOne({ where: { id: churchId } });
+    if (!church) {
+      throw new Error('Church not found');
+    }
+    if (this.usesOwnSmsWallet(church)) {
+      throw new BadRequestException(
+        'This church uses its own SMS wallet. Send directly without buying platform SMS units.',
+      );
+    }
+
     const payerPhone = this.normalizeKenyanPhone(body.payerPhone || '');
     if (!payerPhone) {
       throw new BadRequestException(
@@ -2469,6 +2546,64 @@ export class SmsService {
 
   public getAvailableSmsShortcodes(church: Church) {
     return getChurchSmsShortcodes(church);
+  }
+
+  public usesOwnSmsWallet(church: Church | null | undefined) {
+    return Boolean(
+      church?.usesOwnSmsWallet &&
+        church.smsPartnerId &&
+        church.smsApiKey &&
+        church.smsShortcode,
+    );
+  }
+
+  /**
+   * Chooses which provider credentials pay for a send.
+   *
+   * Credentials and sender ID are deliberately resolved independently:
+   *
+   *   - CREDENTIALS (partnerId / apiKey / baseUrl) decide who is billed.
+   *     Auto-responses ALWAYS bill the platform, so churches never pay for
+   *     receipts. Only bulk may bill a church, and only when that church has
+   *     its own configured wallet.
+   *
+   *   - SHORTCODE (sender ID) is whatever the church has configured, whichever
+   *     account is paying. Church sender IDs are expected to be registered
+   *     under the platform provider account as well as the church's own.
+   *
+   * Keeping these separate is the point: it means giving a church its own
+   * wallet for bulk cannot silently move their receipts onto that wallet.
+   */
+  public async resolveSmsConfigForPurpose(
+    church: Church | null | undefined,
+    purpose: SmsCredentialPurpose,
+    requestedShortcode?: string | null,
+  ): Promise<ChurchSmsConfig> {
+    const billToChurch =
+      purpose === 'bulk' && this.usesOwnSmsWallet(church);
+
+    const credentials: ChurchSmsConfig = billToChurch
+      ? {
+          smsPartnerId: church!.smsPartnerId,
+          smsApiKey: church!.smsApiKey,
+          smsBaseUrl: church!.smsBaseUrl,
+          smsConfigSource: 'church',
+        }
+      : await this.resolveSystemSmsConfig(church?.id ?? 'platform');
+
+    // Sender ID follows the church regardless of who is paying. Falls back to
+    // the paying account's shortcode when the church has not set one.
+    const shortcode = church
+      ? this.resolveChurchSmsShortcode(church, requestedShortcode) ||
+        credentials.smsShortcode
+      : credentials.smsShortcode;
+
+    return {
+      ...credentials,
+      churchId: church?.id,
+      smsShortcode: shortcode,
+      smsShortcodes: church?.smsShortcodes ?? credentials.smsShortcodes,
+    };
   }
 
   private resolveChurchSmsShortcode(
