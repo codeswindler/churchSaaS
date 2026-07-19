@@ -62,6 +62,7 @@ function createInitialForm() {
     defaultSmsSenderId: '',
     smsBaseUrl: 'https://quicksms.advantasms.com',
     smsUnitRateKes: 0,
+    usesOwnSmsWallet: false,
     mpesaEnvironment: 'sandbox',
     mpesaConsumerKey: '',
     mpesaConsumerSecret: '',
@@ -534,6 +535,7 @@ export default function PlatformChurches() {
         smsBaseUrl:
           response.data.smsBaseUrl || 'https://quicksms.advantasms.com',
         smsUnitRateKes: Number(response.data.smsUnitRateKes || 0),
+        usesOwnSmsWallet: Boolean(response.data.usesOwnSmsWallet),
         mpesaEnvironment: response.data.mpesaEnvironment || 'sandbox',
         mpesaConsumerKey: response.data.mpesaConsumerKey || '',
         mpesaConsumerSecret: response.data.mpesaConsumerSecret || '',
@@ -612,7 +614,7 @@ export default function PlatformChurches() {
           <input
             className="input pr-12"
             type={isVisible ? 'text' : hiddenType}
-            value={form[key]}
+            value={form[key] as string}
             onChange={(event) => updateForm(key, event.target.value as never)}
           />
           <button
@@ -1249,7 +1251,7 @@ export default function PlatformChurches() {
                             ref={key === 'name' ? nameInputRef : undefined}
                             className="input"
                             type="text"
-                            value={form[key as keyof ChurchFormState]}
+                            value={form[key as keyof ChurchFormState] as string}
                             onChange={(event) =>
                               updateForm(
                                 key as keyof ChurchFormState,
@@ -1423,7 +1425,7 @@ export default function PlatformChurches() {
                               type={
                                 key === 'adminPassword' ? 'password' : 'text'
                               }
-                              value={form[key as keyof ChurchFormState]}
+                              value={form[key as keyof ChurchFormState] as string}
                               onChange={(event) =>
                                 updateForm(
                                   key as keyof ChurchFormState,
@@ -1469,6 +1471,50 @@ export default function PlatformChurches() {
                         Advanta SMS Credentials
                       </p>
                     </div>
+
+                    <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={form.usesOwnSmsWallet}
+                        onChange={(event) =>
+                          updateForm(
+                            'usesOwnSmsWallet',
+                            event.target.checked as never,
+                          )
+                        }
+                      />
+                      <span className="text-sm text-stone-100">
+                        <span className="font-semibold">
+                          Bill bulk SMS to this church&apos;s own wallet
+                        </span>
+                        <span className="mt-1 block text-xs text-stone-400">
+                          Off: bulk sends use platform credentials and the church
+                          pays per batch with SMS units. On: bulk sends use the
+                          Partner ID and API key below, billed to the church&apos;s
+                          own Advanta account, and they see that balance in
+                          Messaging. Requires Partner ID, API key and a sender ID.
+                        </span>
+                        <span className="mt-1 block text-xs text-emerald-200/80">
+                          Auto-responses always use platform credentials either
+                          way, so churches never pay for receipts.
+                        </span>
+                      </span>
+                    </label>
+
+                    {form.usesOwnSmsWallet &&
+                      !(
+                        form.smsPartnerId.trim() &&
+                        form.smsApiKey.trim() &&
+                        form.smsShortcode.trim()
+                      ) && (
+                        <p className="mt-2 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-xs text-amber-100">
+                          Partner ID, API key and a sender ID are all required
+                          before own-wallet billing takes effect. Until then this
+                          church keeps sending bulk on platform credentials.
+                        </p>
+                      )}
+
                     <div className="mt-4 grid gap-4 md:grid-cols-2">
                       {[
                         ['smsPartnerId', 'Partner ID'],
@@ -1479,7 +1525,7 @@ export default function PlatformChurches() {
                           <input
                             className="input"
                             type="text"
-                            value={form[key as keyof ChurchFormState]}
+                            value={form[key as keyof ChurchFormState] as string}
                             onChange={(event) =>
                               updateForm(
                                 key as keyof ChurchFormState,
@@ -1607,7 +1653,7 @@ export default function PlatformChurches() {
                           <input
                             className="input"
                             type="text"
-                            value={form[key as keyof ChurchFormState]}
+                            value={form[key as keyof ChurchFormState] as string}
                             onChange={(event) =>
                               updateForm(
                                 key as keyof ChurchFormState,
@@ -1667,7 +1713,7 @@ export default function PlatformChurches() {
                             <input
                               className="input"
                               type="text"
-                              value={form[key as keyof ChurchFormState]}
+                              value={form[key as keyof ChurchFormState] as string}
                               onChange={(event) =>
                                 updateForm(
                                   key as keyof ChurchFormState,

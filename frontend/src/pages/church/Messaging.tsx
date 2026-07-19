@@ -252,6 +252,11 @@ export default function ChurchMessaging() {
   });
 
   const shortcodes = messagingConfig?.smsShortcodes || [];
+  // Own-wallet churches fund bulk sends from their own Advanta account, so they
+  // get a live balance here. Platform-billed churches use the buy-units flow
+  // below instead and have no wallet of their own to show.
+  const smsWallet = messagingConfig?.smsWallet || null;
+  const usesOwnSmsWallet = Boolean(messagingConfig?.usesOwnSmsWallet);
   const isLoadingFundAccounts =
     messagingConfigLoading || fundAccountsLoading;
   const resolvedFundAccounts = useMemo(
@@ -423,6 +428,27 @@ export default function ChurchMessaging() {
     outboxMode,
     selectedRecipient?.recipientKey,
   ]);
+
+  // Own-wallet churches send straight through on their own credentials. The
+  // purchase flow below is for platform-billed churches only, and the backend
+  // rejects it outright for own-wallet churches.
+  const sendDirectMutation = useMutation({
+    mutationFn: async (payload: typeof quotePayload) => {
+      const response = await api.post('/church/messaging/bulk', payload);
+      return response.data;
+    },
+    onSuccess: (data) => {
+      toast.success(
+        `Sent to ${Number(data?.recipientCount || 0).toLocaleString()} recipient(s)`,
+      );
+      setForm((current) => ({ ...current, message: '' }));
+      queryClient.invalidateQueries({ queryKey: ['church-messaging-config'] });
+      queryClient.invalidateQueries({ queryKey: ['church-sms-outbox'] });
+    },
+    onError: (error: any) => {
+      toast.error(getApiErrorMessage(error, 'Unable to send bulk SMS'));
+    },
+  });
 
   const createPurchaseMutation = useMutation({
     mutationFn: async (payload: typeof quotePayload & { payerPhone: string }) => {
@@ -746,6 +772,14 @@ export default function ChurchMessaging() {
       toast.error('Write the message before sending');
       return;
     }
+
+    // Own-wallet churches skip payment entirely — their provider account is
+    // billed directly, so there is nothing to buy and no phone to prompt.
+    if (usesOwnSmsWallet) {
+      sendDirectMutation.mutate(quotePayload);
+      return;
+    }
+
     if (!paymentPhone.trim()) {
       toast.error('Enter the M-Pesa phone number to buy SMS units');
       return;
@@ -769,11 +803,16 @@ export default function ChurchMessaging() {
   const purchaseIsBusy =
     createPurchaseMutation.isPending ||
     sendPaidPurchaseMutation.isPending ||
+    sendDirectMutation.isPending ||
     purchaseStatus === 'stk_sent' ||
     purchaseStatus === 'confirmed' ||
     purchaseStatus === 'sending';
   const purchaseAmount = Number(activePurchase?.amountKes || 0);
-  const purchaseButtonLabel = createPurchaseMutation.isPending
+  const purchaseButtonLabel = usesOwnSmsWallet
+    ? sendDirectMutation.isPending
+      ? 'Sending messages...'
+      : 'Send bulk SMS'
+    : createPurchaseMutation.isPending
     ? 'Sending STK push...'
     : sendPaidPurchaseMutation.isPending || purchaseStatus === 'sending'
       ? 'Sending messages...'
@@ -1058,6 +1097,52 @@ export default function ChurchMessaging() {
             <h3 className="mt-2 text-2xl font-semibold text-white">
               Create bulk SMS
             </h3>
+
+            {usesOwnSmsWallet && (
+              <div
+                className={`mt-4 rounded-2xl border p-4 ${
+                  smsWallet?.error
+                    ? 'border-rose-300/30 bg-rose-300/10'
+                    : smsWallet?.intelligence?.status === 'empty' ||
+                        smsWallet?.intelligence?.status === 'low'
+                      ? 'border-amber-300/30 bg-amber-300/10'
+                      : 'border-emerald-300/25 bg-emerald-300/10'
+                }`}
+              >
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-300">
+                    Your SMS wallet
+                  </p>
+                  {smsWallet?.intelligence?.label && (
+                    <span className="rounded-full border border-white/15 bg-black/20 px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-stone-100">
+                      {smsWallet.intelligence.label}
+                    </span>
+                  )}
+                </div>
+
+                {smsWallet?.error ? (
+                  <p className="mt-2 text-sm text-rose-100">
+                    {smsWallet.error}
+                  </p>
+                ) : (
+                  <>
+                    <strong className="mt-1 block text-2xl font-semibold text-white">
+                      {Number(smsWallet?.balance || 0).toLocaleString()} units
+                    </strong>
+                    {smsWallet?.intelligence?.hint && (
+                      <p className="mt-1 text-xs text-stone-300">
+                        {smsWallet.intelligence.hint}
+                      </p>
+                    )}
+                  </>
+                )}
+
+                <p className="mt-2 text-xs text-stone-400">
+                  Bulk messages are billed to this wallet. Contribution receipts
+                  are sent on platform credentials at no cost to you.
+                </p>
+              </div>
+            )}
 
             <div className="messaging-compose-layout mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] xl:items-start">
               <div className="grid gap-4 lg:grid-cols-2">
@@ -1481,19 +1566,21 @@ export default function ChurchMessaging() {
                 </p>
               </div>
 
-              <div className="lg:col-span-2">
-                <label className="label">M-Pesa payment phone</label>
-                <input
-                  className="input"
-                  placeholder="0712 345 678"
-                  value={paymentPhone}
-                  onChange={(event) => setPaymentPhone(event.target.value)}
-                />
-                <p className="mt-2 text-xs text-stone-400">
-                  The STK prompt is sent to this phone. Messages send
-                  automatically after payment confirmation.
-                </p>
-              </div>
+              {!usesOwnSmsWallet && (
+                <div className="lg:col-span-2">
+                  <label className="label">M-Pesa payment phone</label>
+                  <input
+                    className="input"
+                    placeholder="0712 345 678"
+                    value={paymentPhone}
+                    onChange={(event) => setPaymentPhone(event.target.value)}
+                  />
+                  <p className="mt-2 text-xs text-stone-400">
+                    The STK prompt is sent to this phone. Messages send
+                    automatically after payment confirmation.
+                  </p>
+                </div>
+              )}
 
               {activePurchase ? (
                 <div className="lg:col-span-2 rounded-3xl border border-amber-200/30 bg-amber-200/10 p-4">

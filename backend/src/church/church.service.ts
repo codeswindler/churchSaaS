@@ -2371,6 +2371,10 @@ export class ChurchService {
       smsShortcodes: this.smsService.getAvailableSmsShortcodes(church),
       usesOwnSmsWallet,
       smsBillingMode: usesOwnSmsWallet ? 'church_wallet' : 'platform_units',
+      // Own-wallet churches fund their own bulk sends, so they need to see that
+      // balance where they compose messages. Returns nulls for platform-billed
+      // churches, which use the buy-units flow instead.
+      smsWallet: await this.getChurchSmsWalletSummary(church),
       fundAccounts: await this.listFundAccounts(churchId),
     };
   }
