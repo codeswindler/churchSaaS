@@ -2370,6 +2370,7 @@ export class ChurchService {
       defaultSmsShortcode: church.smsShortcode,
       smsShortcodes: this.smsService.getAvailableSmsShortcodes(church),
       usesOwnSmsWallet,
+      receiptsBillChurchWallet: this.smsService.receiptsBillChurchWallet(church),
       smsBillingMode: usesOwnSmsWallet ? 'church_wallet' : 'platform_units',
       // Own-wallet churches fund their own bulk sends, so they need to see that
       // balance where they compose messages. Returns nulls for platform-billed
@@ -2444,8 +2445,11 @@ export class ChurchService {
 
   private async getChurchSmsWalletSummary(church: Church) {
     const usesOwnSmsWallet = this.smsService.usesOwnSmsWallet(church);
+    const receiptsBillChurchWallet =
+      this.smsService.receiptsBillChurchWallet(church);
     const summary: any = {
       usesOwnSmsWallet,
+      receiptsBillChurchWallet,
       billingMode: usesOwnSmsWallet ? 'church_wallet' : 'platform_units',
       balance: null,
       intelligence: null,

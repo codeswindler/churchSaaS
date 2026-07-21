@@ -443,6 +443,11 @@ export class SchemaBootstrapService implements OnApplicationBootstrap {
             'ADD COLUMN `usesOwnSmsWallet` tinyint NOT NULL DEFAULT 0 AFTER `smsUnitRateKes`',
           );
         }
+        if (!churches.findColumnByName('receiptsUseOwnSmsWallet')) {
+          statements.push(
+            'ADD COLUMN `receiptsUseOwnSmsWallet` tinyint NOT NULL DEFAULT 0 AFTER `usesOwnSmsWallet`',
+          );
+        }
 
         if (statements.length > 0) {
           await queryRunner.query(

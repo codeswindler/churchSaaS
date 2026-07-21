@@ -66,8 +66,17 @@ export class Church {
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   smsUnitRateKes: number;
 
+  /** Bill this church's own Advanta wallet for bulk sends. */
   @Column({ type: 'boolean', default: false })
   usesOwnSmsWallet: boolean;
+
+  /**
+   * Also bill their wallet for auto-responses (receipts, OTP). Off by default,
+   * so the platform absorbs receipt cost. Only has effect when
+   * usesOwnSmsWallet is set and their credentials are complete.
+   */
+  @Column({ type: 'boolean', default: false })
+  receiptsUseOwnSmsWallet: boolean;
 
   @Column({ type: 'varchar', length: 20, nullable: true })
   mpesaEnvironment: string | null;

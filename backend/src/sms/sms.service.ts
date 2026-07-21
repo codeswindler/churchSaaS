@@ -432,15 +432,15 @@ export class SmsService {
         'This church uses platform SMS-unit billing, not a church-owned SMS wallet',
       );
     }
-    // Their wallet only funds bulk; receipts are on the platform account.
     return this.getBalanceIntelligence(this.getConfigFromChurch(church), {
       churchWalletOnly: true,
+      includeReceipts: this.receiptsBillChurchWallet(church),
     });
   }
 
   async getBalanceIntelligence(
     config: ChurchSmsConfig = {},
-    options: { churchWalletOnly?: boolean } = {},
+    options: { churchWalletOnly?: boolean; includeReceipts?: boolean } = {},
   ) {
     const balance = await this.getBalance(config);
     const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -460,8 +460,13 @@ export class SmsService {
         qb.andWhere('message.churchId = :churchId', { churchId });
       }
       if (options.churchWalletOnly) {
-        qb.andWhere('message.messageType = :billedType', {
-          billedType: SmsMessageType.BULK,
+        // Receipts only count when the church has opted to fund them; otherwise
+        // the platform pays and including them would overstate their burn.
+        const billedTypes = options.includeReceipts
+          ? [SmsMessageType.BULK, SmsMessageType.RECEIPT]
+          : [SmsMessageType.BULK];
+        qb.andWhere('message.messageType IN (:...billedTypes)', {
+          billedTypes,
         });
       }
       return qb;
@@ -2580,13 +2585,25 @@ export class SmsService {
    * Keeping these separate is the point: it means giving a church its own
    * wallet for bulk cannot silently move their receipts onto that wallet.
    */
+  /**
+   * True when auto-responses should also bill the church. Off by default, and
+   * meaningless without a working own-wallet setup, so it is gated on both.
+   */
+  public receiptsBillChurchWallet(church: Church | null | undefined) {
+    return Boolean(
+      church?.receiptsUseOwnSmsWallet && this.usesOwnSmsWallet(church),
+    );
+  }
+
   public async resolveSmsConfigForPurpose(
     church: Church | null | undefined,
     purpose: SmsCredentialPurpose,
     requestedShortcode?: string | null,
   ): Promise<ChurchSmsConfig> {
     const billToChurch =
-      purpose === 'bulk' && this.usesOwnSmsWallet(church);
+      purpose === 'bulk'
+        ? this.usesOwnSmsWallet(church)
+        : this.receiptsBillChurchWallet(church);
 
     const credentials: ChurchSmsConfig = billToChurch
       ? {

@@ -488,6 +488,7 @@ export class PlatformService {
         commissionRatePct: Number(church.commissionRatePct || 0),
         smsUnitRateKes: Number(church.smsUnitRateKes || 0),
         usesOwnSmsWallet: Boolean(church.usesOwnSmsWallet),
+        receiptsUseOwnSmsWallet: Boolean(church.receiptsUseOwnSmsWallet),
         enabledFeatures: normalizeFeatureList(church.enabledFeatures),
         contributionTotals: this.decorateRevenueTotals(
           totalsByChurchId.get(church.id),
@@ -540,6 +541,7 @@ export class PlatformService {
       smsBaseUrl: church.smsBaseUrl,
       smsUnitRateKes: Number(church.smsUnitRateKes || 0),
       usesOwnSmsWallet: Boolean(church.usesOwnSmsWallet),
+      receiptsUseOwnSmsWallet: Boolean(church.receiptsUseOwnSmsWallet),
       mpesaEnvironment: church.mpesaEnvironment || 'sandbox',
       mpesaConsumerKey: church.mpesaConsumerKey,
       mpesaConsumerSecret: church.mpesaConsumerSecret,
@@ -852,6 +854,12 @@ export class PlatformService {
       church.usesOwnSmsWallet = this.normalizeBoolean(
         body.usesOwnSmsWallet,
         church.usesOwnSmsWallet,
+      );
+    }
+    if (body.receiptsUseOwnSmsWallet !== undefined) {
+      church.receiptsUseOwnSmsWallet = this.normalizeBoolean(
+        body.receiptsUseOwnSmsWallet,
+        church.receiptsUseOwnSmsWallet,
       );
     }
     if (body.mpesaEnvironment !== undefined) {

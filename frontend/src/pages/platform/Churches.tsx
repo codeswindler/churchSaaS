@@ -63,6 +63,7 @@ function createInitialForm() {
     smsBaseUrl: 'https://quicksms.advantasms.com',
     smsUnitRateKes: 0,
     usesOwnSmsWallet: false,
+    receiptsUseOwnSmsWallet: false,
     mpesaEnvironment: 'sandbox',
     mpesaConsumerKey: '',
     mpesaConsumerSecret: '',
@@ -536,6 +537,9 @@ export default function PlatformChurches() {
           response.data.smsBaseUrl || 'https://quicksms.advantasms.com',
         smsUnitRateKes: Number(response.data.smsUnitRateKes || 0),
         usesOwnSmsWallet: Boolean(response.data.usesOwnSmsWallet),
+        receiptsUseOwnSmsWallet: Boolean(
+          response.data.receiptsUseOwnSmsWallet,
+        ),
         mpesaEnvironment: response.data.mpesaEnvironment || 'sandbox',
         mpesaConsumerKey: response.data.mpesaConsumerKey || '',
         mpesaConsumerSecret: response.data.mpesaConsumerSecret || '',
@@ -1495,12 +1499,39 @@ export default function PlatformChurches() {
                           own wallet, and see that balance in Messaging.
                         </span>
                         <span className="mt-1 block text-xs text-emerald-200/80">
-                          Auto-responses always use platform credentials either
-                          way, so churches never pay for receipts. The sender ID
-                          below applies in both cases.
+                          Auto-responses use platform credentials by default,
+                          so churches do not pay for receipts unless you opt them
+                          in below. The sender ID applies in both cases.
                         </span>
                       </span>
                     </label>
+
+                    {form.usesOwnSmsWallet && (
+                      <label className="mt-2 flex cursor-pointer items-start gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={form.receiptsUseOwnSmsWallet}
+                          onChange={(event) =>
+                            updateForm(
+                              'receiptsUseOwnSmsWallet',
+                              event.target.checked as never,
+                            )
+                          }
+                        />
+                        <span className="text-sm text-stone-100">
+                          <span className="font-semibold">
+                            Also bill auto-responses to this church
+                          </span>
+                          <span className="mt-1 block text-xs text-stone-400">
+                            Off: the platform pays for their contribution
+                            receipts. On: receipts also draw from the
+                            church&apos;s own Advanta wallet, alongside their
+                            bulk messages.
+                          </span>
+                        </span>
+                      </label>
+                    )}
 
                     <div className="mt-4 grid gap-4 md:grid-cols-2">
                       {/* Partner ID, API key and base URL describe a
@@ -2174,6 +2205,7 @@ function buildUpdatePayload(form: ChurchFormState) {
     smsBaseUrl: form.smsBaseUrl,
     smsUnitRateKes: form.smsUnitRateKes,
     usesOwnSmsWallet: form.usesOwnSmsWallet,
+    receiptsUseOwnSmsWallet: form.receiptsUseOwnSmsWallet,
     mpesaEnvironment: form.mpesaEnvironment,
     mpesaConsumerKey: form.mpesaConsumerKey,
     mpesaConsumerSecret: form.mpesaConsumerSecret,
