@@ -158,8 +158,29 @@ export class PlatformService {
     }));
   }
 
+  /**
+   * Sender IDs are matched character-for-character by the SMS provider, so a
+   * smart apostrophe pasted from a document silently fails to match the
+   * registered ID and the provider rejects the send with "Unauthorized or
+   * inactive sender ID (shortcode) for this profile". Fold that punctuation
+   * back to ASCII and collapse copy-paste whitespace.
+   */
+  private normalizeSenderIdName(value: unknown) {
+    const name = this.normalizeOptionalText(value);
+    if (!name) {
+      return name;
+    }
+    return name
+      .replace(/[\u2018\u2019\u201B\u02BC\u00B4\u0060]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2010-\u2015\u2212]/g, '-')
+      .replace(/\u00A0/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   async createSmsSender(body: any) {
-    const name = this.normalizeOptionalText(body.name);
+    const name = this.normalizeSenderIdName(body.name);
     if (!name) {
       throw new BadRequestException('Sender ID name is required');
     }
@@ -186,7 +207,7 @@ export class PlatformService {
 
     let shouldSyncAllocations = false;
     if (body.name !== undefined) {
-      const name = this.normalizeOptionalText(body.name);
+      const name = this.normalizeSenderIdName(body.name);
       if (!name) {
         throw new BadRequestException('Sender ID name is required');
       }

@@ -274,7 +274,7 @@ export class SmsService {
         providerCode: axios.isAxiosError(e)
           ? `${e.response?.status || 'error'}`
           : 'error',
-        providerDescription: e?.message || 'SMS request failed',
+        providerDescription: this.describeSendFailure(e, 'SMS request failed'),
       });
       this.logger.error(
         `[SMS] Failed to send SMS | ${this.formatDiagnostics(diagnostics)} | ${this.describeAxiosError(e)}`,
@@ -375,7 +375,10 @@ export class SmsService {
         providerCode: axios.isAxiosError(e)
           ? `${e.response?.status || 'error'}`
           : 'error',
-        providerDescription: e?.message || 'Hashed SMS request failed',
+        providerDescription: this.describeSendFailure(
+          e,
+          'Hashed SMS request failed',
+        ),
       });
       this.logger.error(
         `[SMS] Failed to send hashed SMS | ${this.formatDiagnostics(diagnostics)} | ${this.describeAxiosError(e)}`,
@@ -680,7 +683,10 @@ export class SmsService {
             providerCode: axios.isAxiosError(error)
               ? `${error.response?.status || 'error'}`
               : 'error',
-            providerDescription: error?.message || 'Bulk SMS request failed',
+            providerDescription: this.describeSendFailure(
+              error,
+              'Bulk SMS request failed',
+            ),
             providerRawResponse: axios.isAxiosError(error)
               ? error.response?.data
               : null,
@@ -2756,6 +2762,23 @@ export class SmsService {
     }
 
     return fallback;
+  }
+
+  /**
+   * Builds the failure text stored on the outbox row. Axios only gives us
+   * "Request failed with status code 400", which is useless to an admin, so
+   * prefer the provider's own response body and fall back to the generic
+   * message when there isn't one.
+   */
+  private describeSendFailure(error: any, fallback: string) {
+    if (axios.isAxiosError(error) && error.response?.data !== undefined) {
+      const detail = this.describeProviderResponse(error.response.data);
+      if (detail && detail !== 'no-response') {
+        const status = error.response.status;
+        return status ? `HTTP ${status}: ${detail}` : detail;
+      }
+    }
+    return error?.message || fallback;
   }
 
   private describeAxiosError(error: any) {
