@@ -16,6 +16,7 @@ import {
   Upload,
   UserPlus,
   Users,
+  Wallet,
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -183,12 +184,43 @@ export default function ChurchMessaging() {
       ),
     [filters, outboxMode, outboxPage, selectedRecipient?.recipientKey],
   );
-  const outboxPageAction = useMemo(() => {
-    if (activeWorkspace !== 'outbox') {
+  // Own-wallet churches fund bulk sends themselves, so their provider balance
+  // sits in the page header rather than buried in the composer. Platform-billed
+  // churches have no wallet of their own and use the buy-units flow instead.
+  const walletPill = useMemo(() => {
+    if (!usesOwnSmsWallet) {
       return null;
     }
+    const status = smsWallet?.intelligence?.status;
+    const tone = smsWallet?.error
+      ? 'border-rose-300/30 bg-rose-300/10 text-rose-100'
+      : status === 'empty' || status === 'low'
+        ? 'border-amber-300/30 bg-amber-300/10 text-amber-100'
+        : 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100';
 
     return (
+      <span
+        className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium ${tone}`}
+        title={
+          smsWallet?.error ||
+          smsWallet?.intelligence?.hint ||
+          'Bulk messages are billed to your own SMS wallet. Receipts are not.'
+        }
+      >
+        <Wallet size={14} />
+        {smsWallet?.error
+          ? 'Wallet unavailable'
+          : `${Number(smsWallet?.balance || 0).toLocaleString()} SMS units`}
+      </span>
+    );
+  }, [usesOwnSmsWallet, smsWallet]);
+
+  const outboxPageAction = useMemo(() => {
+    if (activeWorkspace !== 'outbox') {
+      return walletPill;
+    }
+
+    const toggle = (
       <button
         className="btn-secondary justify-center whitespace-nowrap"
         type="button"
@@ -205,7 +237,14 @@ export default function ChurchMessaging() {
           : 'Simple recipient search'}
       </button>
     );
-  }, [activeWorkspace, outboxMode]);
+
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        {walletPill}
+        {toggle}
+      </div>
+    );
+  }, [activeWorkspace, outboxMode, walletPill]);
 
   useEffect(() => {
     setPageActions(outboxPageAction);
@@ -1098,51 +1137,6 @@ export default function ChurchMessaging() {
               Create bulk SMS
             </h3>
 
-            {usesOwnSmsWallet && (
-              <div
-                className={`mt-4 rounded-2xl border p-4 ${
-                  smsWallet?.error
-                    ? 'border-rose-300/30 bg-rose-300/10'
-                    : smsWallet?.intelligence?.status === 'empty' ||
-                        smsWallet?.intelligence?.status === 'low'
-                      ? 'border-amber-300/30 bg-amber-300/10'
-                      : 'border-emerald-300/25 bg-emerald-300/10'
-                }`}
-              >
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-300">
-                    Your SMS wallet
-                  </p>
-                  {smsWallet?.intelligence?.label && (
-                    <span className="rounded-full border border-white/15 bg-black/20 px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-stone-100">
-                      {smsWallet.intelligence.label}
-                    </span>
-                  )}
-                </div>
-
-                {smsWallet?.error ? (
-                  <p className="mt-2 text-sm text-rose-100">
-                    {smsWallet.error}
-                  </p>
-                ) : (
-                  <>
-                    <strong className="mt-1 block text-2xl font-semibold text-white">
-                      {Number(smsWallet?.balance || 0).toLocaleString()} units
-                    </strong>
-                    {smsWallet?.intelligence?.hint && (
-                      <p className="mt-1 text-xs text-stone-300">
-                        {smsWallet.intelligence.hint}
-                      </p>
-                    )}
-                  </>
-                )}
-
-                <p className="mt-2 text-xs text-stone-400">
-                  Bulk messages are billed to this wallet. Contribution receipts
-                  are sent on platform credentials at no cost to you.
-                </p>
-              </div>
-            )}
 
             <div className="messaging-compose-layout mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] xl:items-start">
               <div className="grid gap-4 lg:grid-cols-2">
