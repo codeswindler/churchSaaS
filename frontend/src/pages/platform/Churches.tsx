@@ -2173,6 +2173,7 @@ function buildUpdatePayload(form: ChurchFormState) {
     defaultSmsSenderId: form.defaultSmsSenderId,
     smsBaseUrl: form.smsBaseUrl,
     smsUnitRateKes: form.smsUnitRateKes,
+    usesOwnSmsWallet: form.usesOwnSmsWallet,
     mpesaEnvironment: form.mpesaEnvironment,
     mpesaConsumerKey: form.mpesaConsumerKey,
     mpesaConsumerSecret: form.mpesaConsumerSecret,
