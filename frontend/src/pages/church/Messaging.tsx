@@ -184,6 +184,53 @@ export default function ChurchMessaging() {
       ),
     [filters, outboxMode, outboxPage, selectedRecipient?.recipientKey],
   );
+
+  const messageMetrics = getGsm7SmsMetrics(form.message);
+  const selectedOutboxMetrics = selectedOutboxMessage
+    ? getGsm7SmsMetrics(selectedOutboxMessage.messageBody || '')
+    : null;
+
+  useEffect(() => {
+    const search = recipientSearch.trim();
+    if (search.length < 2) {
+      setDebouncedRecipientSearch('');
+      return;
+    }
+    const timeout = window.setTimeout(
+      () => setDebouncedRecipientSearch(search),
+      250,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [recipientSearch]);
+
+  const { data: messagingConfig, isLoading: messagingConfigLoading } = useQuery({
+    queryKey: ['church-messaging-config'],
+    queryFn: () =>
+      api.get('/church/messaging/config').then((response) => response.data),
+  });
+
+  const { data: addressBooks } = useQuery({
+    queryKey: ['church-address-books'],
+    queryFn: () =>
+      api
+        .get('/church/messaging/address-books')
+        .then((response) => response.data),
+  });
+
+  const { data: fundAccountList, isLoading: fundAccountsLoading } = useQuery({
+    queryKey: ['church-messaging-fund-accounts'],
+    queryFn: () =>
+      api.get('/church/fund-accounts').then((response) => response.data),
+    retry: false,
+  });
+
+  const shortcodes = messagingConfig?.smsShortcodes || [];
+  // Own-wallet churches fund bulk sends from their own Advanta account, so they
+  // get a live balance here. Platform-billed churches use the buy-units flow
+  // below instead and have no wallet of their own to show.
+  const smsWallet = messagingConfig?.smsWallet || null;
+  const usesOwnSmsWallet = Boolean(messagingConfig?.usesOwnSmsWallet);
+
   // Own-wallet churches fund bulk sends themselves, so their provider balance
   // sits in the page header rather than buried in the composer. Platform-billed
   // churches have no wallet of their own and use the buy-units flow instead.
@@ -250,52 +297,6 @@ export default function ChurchMessaging() {
     setPageActions(outboxPageAction);
     return () => setPageActions(null);
   }, [outboxPageAction, setPageActions]);
-
-  const messageMetrics = getGsm7SmsMetrics(form.message);
-  const selectedOutboxMetrics = selectedOutboxMessage
-    ? getGsm7SmsMetrics(selectedOutboxMessage.messageBody || '')
-    : null;
-
-  useEffect(() => {
-    const search = recipientSearch.trim();
-    if (search.length < 2) {
-      setDebouncedRecipientSearch('');
-      return;
-    }
-    const timeout = window.setTimeout(
-      () => setDebouncedRecipientSearch(search),
-      250,
-    );
-    return () => window.clearTimeout(timeout);
-  }, [recipientSearch]);
-
-  const { data: messagingConfig, isLoading: messagingConfigLoading } = useQuery({
-    queryKey: ['church-messaging-config'],
-    queryFn: () =>
-      api.get('/church/messaging/config').then((response) => response.data),
-  });
-
-  const { data: addressBooks } = useQuery({
-    queryKey: ['church-address-books'],
-    queryFn: () =>
-      api
-        .get('/church/messaging/address-books')
-        .then((response) => response.data),
-  });
-
-  const { data: fundAccountList, isLoading: fundAccountsLoading } = useQuery({
-    queryKey: ['church-messaging-fund-accounts'],
-    queryFn: () =>
-      api.get('/church/fund-accounts').then((response) => response.data),
-    retry: false,
-  });
-
-  const shortcodes = messagingConfig?.smsShortcodes || [];
-  // Own-wallet churches fund bulk sends from their own Advanta account, so they
-  // get a live balance here. Platform-billed churches use the buy-units flow
-  // below instead and have no wallet of their own to show.
-  const smsWallet = messagingConfig?.smsWallet || null;
-  const usesOwnSmsWallet = Boolean(messagingConfig?.usesOwnSmsWallet);
   const isLoadingFundAccounts =
     messagingConfigLoading || fundAccountsLoading;
   const resolvedFundAccounts = useMemo(
